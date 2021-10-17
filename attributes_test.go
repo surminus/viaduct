@@ -7,8 +7,8 @@ import (
 )
 
 func TestNewPlatform(t *testing.T) {
-	actual := newPlatform("test/fixtures/os-release")
-	expected := Platform{
+	actual := newPlatformAttributes("test/fixtures/os-release")
+	expected := PlatformAttributes{
 		Name:             "Linux Mint",
 		Version:          "20.2 (Uma)",
 		ID:               "linuxmint",

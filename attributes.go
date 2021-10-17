@@ -5,20 +5,21 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"os/user"
 	"runtime"
 	"strings"
 )
 
 // Attributes represents all possible attributes of a system
 type Attributes struct {
-	User     string `json:"user"`
-	OS       string `json:"os"`
-	Arch     string `json:"arch"`
-	Platform `json:"platform"`
+	User     string             `json:"user"`
+	OS       string             `json:"os"`
+	Arch     string             `json:"arch"`
+	Platform PlatformAttributes `json:"platform"`
 }
 
-// Platform has details about the platform (currently Linux only)
-type Platform struct {
+// PlatformAttributes has details about the platform (currently Linux only)
+type PlatformAttributes struct {
 	Name             string `json:"name"`
 	Version          string `json:"version"`
 	ID               string `json:"id"`
@@ -40,7 +41,7 @@ func InitAttributes(a *Attributes) {
 	a.Arch = runtime.GOARCH
 
 	if a.OS == "linux" {
-		a.Platform = newPlatform("/etc/os-release")
+		a.Platform = newPlatformAttributes("/etc/os-release")
 	}
 }
 
@@ -54,7 +55,7 @@ func (a Attributes) JSON() string {
 	return string(output)
 }
 
-func newPlatform(releaseFile string) (p Platform) {
+func newPlatformAttributes(releaseFile string) (p PlatformAttributes) {
 	file, err := os.Open(releaseFile)
 	if err != nil {
 		return p
