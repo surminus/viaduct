@@ -26,17 +26,25 @@ func (d *Directory) satisfy() {
 }
 
 // Create creates a directory
-func (d Directory) Create() (err error) {
+func (d Directory) Create() (path string) {
 	d.satisfy()
 
-	err = os.MkdirAll(d.Path, d.Mode)
-	return err
+	err := os.MkdirAll(d.Path, d.Mode)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return d.Path
 }
 
 // Delete deletes a directory
-func (d *Directory) Delete() (err error) {
+func (d *Directory) Delete() (path string) {
 	d.satisfy()
 
-	err = os.RemoveAll(d.Path)
-	return err
+	err := os.RemoveAll(d.Path)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return d.Path
 }

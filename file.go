@@ -28,19 +28,25 @@ func (f *File) satisfy() {
 }
 
 // Create creates or updates a file
-func (f File) Create() (err error) {
+func (f File) Create() (path string) {
 	f.satisfy()
 
-	err = ioutil.WriteFile(f.Path, []byte(f.Content), f.Mode)
+	err := ioutil.WriteFile(f.Path, []byte(f.Content), f.Mode)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	return err
+	return f.Path
 }
 
 // Delete deletes a file
-func (f *File) Delete() (err error) {
+func (f *File) Delete() (path string) {
 	f.satisfy()
 
-	err = os.Remove(f.Path)
+	err := os.Remove(f.Path)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	return err
+	return f.Path
 }

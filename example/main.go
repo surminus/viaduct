@@ -1,9 +1,12 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/surminus/viaduct"
 )
 
 func main() {
-	viaduct.File{Path: "foo", Content: "bar"}.Create()
+	dir := viaduct.Directory{Path: "test"}.Create()
+	viaduct.File{Path: fmt.Sprintf("%s/foo", dir), Content: "bar"}.Create()
 }
