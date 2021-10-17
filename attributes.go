@@ -12,7 +12,7 @@ import (
 
 // Attributes represents all possible attributes of a system
 type Attributes struct {
-	User     string             `json:"user"`
+	User     user.User          `json:"user"`
 	OS       string             `json:"os"`
 	Arch     string             `json:"arch"`
 	Platform PlatformAttributes `json:"platform"`
@@ -36,7 +36,12 @@ type PlatformAttributes struct {
 
 // InitAttributes populates the attributes
 func InitAttributes(a *Attributes) {
-	a.User = os.Getenv("USER")
+	user, err := user.Current()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	a.User = *user
 	a.OS = runtime.GOOS
 	a.Arch = runtime.GOARCH
 
