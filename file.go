@@ -18,7 +18,7 @@ type File struct {
 func (f *File) satisfy() {
 	// Set required values here, and error if they are not set
 	if f.Path == "" {
-		log.Fatal("Path is a required parameter")
+		log.Fatal("==> File [error] Required parameter: Path")
 	}
 
 	// Set optional defaults here
@@ -31,6 +31,7 @@ func (f *File) satisfy() {
 func (f File) Create() *File {
 	f.satisfy()
 
+	log.Println("==> File [create]", f.Path)
 	err := ioutil.WriteFile(f.Path, []byte(f.Content), f.Mode)
 	if err != nil {
 		log.Fatal(err)
@@ -43,6 +44,7 @@ func (f File) Create() *File {
 func (f File) Delete() *File {
 	f.satisfy()
 
+	log.Println("==> File [delete]", f.Path)
 	err := os.Remove(f.Path)
 	if err != nil {
 		log.Fatal(err)

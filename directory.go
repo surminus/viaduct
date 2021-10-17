@@ -16,7 +16,7 @@ type Directory struct {
 func (d *Directory) satisfy() {
 	// Set required values here, and error if they are not set
 	if d.Path == "" {
-		log.Fatal("Path is a required parameter")
+		log.Fatal("==> Directory [error] Required parameter: Path")
 	}
 
 	// Set optional defaults here
@@ -29,6 +29,7 @@ func (d *Directory) satisfy() {
 func (d Directory) Create() *Directory {
 	d.satisfy()
 
+	log.Println("==> Directory [create]", d.Path)
 	err := os.MkdirAll(d.Path, d.Mode)
 	if err != nil {
 		log.Fatal(err)
@@ -41,6 +42,7 @@ func (d Directory) Create() *Directory {
 func (d Directory) Delete() *Directory {
 	d.satisfy()
 
+	log.Println("==> Directory [delete]", d.Path)
 	err := os.RemoveAll(d.Path)
 	if err != nil {
 		log.Fatal(err)
