@@ -25,11 +25,10 @@ func main() {
 }
 ```
 
-In the example above, we are making use of the attributes of the previously
-created `Directory` resource when we create the file.
+Resources always return their resource object. In the example above, we use
+the `Directory` path as part of the file creation.
 
-Since the resource actions always return the resource object, we can easily
-delete what we created:
+This also means we can run whatever action we need to on that resource:
 
 ```
 func main() {
