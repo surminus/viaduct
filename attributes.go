@@ -40,7 +40,7 @@ func InitAttributes(a *Attributes) {
 	a.Arch = runtime.GOARCH
 
 	if a.OS == "linux" {
-		a.Platform = newPlatform()
+		a.Platform = newPlatform("/etc/os-release")
 	}
 }
 
@@ -54,8 +54,8 @@ func (a Attributes) JSON() string {
 	return string(output)
 }
 
-func newPlatform() (p Platform) {
-	file, err := os.Open("/etc/os-release")
+func newPlatform(releaseFile string) (p Platform) {
+	file, err := os.Open(releaseFile)
 	if err != nil {
 		return p
 	}
@@ -70,29 +70,29 @@ func newPlatform() (p Platform) {
 
 		switch splitText[0] {
 		case "NAME":
-			p.Name = splitText[1]
+			p.Name = strings.Trim(splitText[1], "\"")
 		case "VERSION":
-			p.Version = splitText[1]
+			p.Version = strings.Trim(splitText[1], "\"")
 		case "ID":
-			p.ID = splitText[1]
+			p.ID = strings.Trim(splitText[1], "\"")
 		case "ID_LIKE":
-			p.IDLike = splitText[1]
+			p.IDLike = strings.Trim(splitText[1], "\"")
 		case "PRETTY_NAME":
-			p.PrettyName = splitText[1]
+			p.PrettyName = strings.Trim(splitText[1], "\"")
 		case "VERSION_ID":
-			p.VersionID = splitText[1]
+			p.VersionID = strings.Trim(splitText[1], "\"")
 		case "HOME_URL":
-			p.HomeURL = splitText[1]
+			p.HomeURL = strings.Trim(splitText[1], "\"")
 		case "SUPPORT_URL":
-			p.SupportURL = splitText[1]
+			p.SupportURL = strings.Trim(splitText[1], "\"")
 		case "BUG_REPORT_URL":
-			p.BugReportURL = splitText[1]
+			p.BugReportURL = strings.Trim(splitText[1], "\"")
 		case "PRIVACY_POLICY_URL":
-			p.PrivacyPolicyURL = splitText[1]
+			p.PrivacyPolicyURL = strings.Trim(splitText[1], "\"")
 		case "VERSION_CODENAME":
-			p.VersionCodename = splitText[1]
+			p.VersionCodename = strings.Trim(splitText[1], "\"")
 		case "UBUNTU_CODENAME":
-			p.UbuntuCodename = splitText[1]
+			p.UbuntuCodename = strings.Trim(splitText[1], "\"")
 		}
 	}
 
