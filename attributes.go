@@ -2,6 +2,8 @@ package viaduct
 
 import (
 	"bufio"
+	"encoding/json"
+	"log"
 	"os"
 	"runtime"
 	"strings"
@@ -9,26 +11,26 @@ import (
 
 // Attributes represents all possible attributes of a system
 type Attributes struct {
-	User string
-	OS   string
-	Arch string
-	Platform
+	User     string `json:"user"`
+	OS       string `json:"os"`
+	Arch     string `json:"arch"`
+	Platform `json:"platform"`
 }
 
 // Platform has details about the platform (currently Linux only)
 type Platform struct {
-	Name             string
-	Version          string
-	ID               string
-	IDLike           string
-	PrettyName       string
-	VersionID        string
-	HomeURL          string
-	SupportURL       string
-	BugReportURL     string
-	PrivacyPolicyURL string
-	VersionCodename  string
-	UbuntuCodename   string
+	Name             string `json:"name"`
+	Version          string `json:"version"`
+	ID               string `json:"id"`
+	IDLike           string `json:"idLike"`
+	PrettyName       string `json:"prettyName"`
+	VersionID        string `json:"versionId"`
+	HomeURL          string `json:"homeUrl"`
+	SupportURL       string `json:"supportUrl"`
+	BugReportURL     string `json:"bugReportUrl"`
+	PrivacyPolicyURL string `json:"privacyPolicyUrl"`
+	VersionCodename  string `json:"versionCodename"`
+	UbuntuCodename   string `json:"ubuntuCodename"`
 }
 
 // InitAttributes populates the attributes
@@ -37,7 +39,19 @@ func InitAttributes(a *Attributes) {
 	a.OS = runtime.GOOS
 	a.Arch = runtime.GOARCH
 
-	a.Platform = newPlatform()
+	if a.OS == "linux" {
+		a.Platform = newPlatform()
+	}
+}
+
+// JSON returns a string representation of the loaded attributes
+func (a Attributes) JSON() string {
+	output, err := json.MarshalIndent(a, "", "\t")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return string(output)
 }
 
 func newPlatform() (p Platform) {
