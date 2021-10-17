@@ -40,6 +40,46 @@ func main() {
 }
 ```
 
+### Embedded files and templates
+
+There are helper functions to allow us to use the
+[`embed`](https://pkg.go.dev/embed) package to flexibly work with files and
+templates.
+
+To create a template, first create a file in `templates/test.txt` using Go
+[`template`](https://pkg.go.dev/text/template) syntax:
+
+```
+My name is {{ .Name }}
+```
+
+We can then generate the data to create our file:
+
+```
+import (
+    "embed"
+
+    "github.com/surminus/viaduct"
+)
+
+//go:embed templates
+var templates embed.FS
+
+func main() {
+    template := viaduct.NewTemplate(
+        templates,
+        "templates/test.txt",
+        struct{ Name string }{Name: "Bella"},
+    )
+
+    viaduct.File{Path: "test/foo", Content: template}.Create()
+}
+```
+
+The `EmbeddedFile` function works in a similar way, but without variables.
+
+### Attributes
+
 Like any good configuration management tool, we also have access to node
 attributes under the `Attribute` variable:
 

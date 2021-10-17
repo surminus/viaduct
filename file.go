@@ -1,9 +1,13 @@
 package viaduct
 
 import (
+	"bytes"
+	"embed"
 	"io/ioutil"
 	"log"
 	"os"
+	"text/template"
+	"time"
 )
 
 // File manages files on the filesystem
@@ -25,6 +29,36 @@ func (f *File) satisfy() {
 	if f.Mode == 0 {
 		f.Mode = 0644
 	}
+}
+
+// EmbeddedFile is a small helper function to helper reading
+// embedded files
+func EmbeddedFile(files embed.FS, path string) string {
+	out, err := files.ReadFile(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return string(out)
+}
+
+// NewTemplate makes it easier to return the data required
+// to parse a template
+func NewTemplate(files embed.FS, path string, variables interface{}) string {
+	out := EmbeddedFile(files, path)
+
+	tmpl, err := template.New(time.Now().String()).Parse(string(out))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var b bytes.Buffer
+	err = tmpl.Execute(&b, variables)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return b.String()
 }
 
 // Create creates or updates a file
