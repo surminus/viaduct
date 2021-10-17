@@ -2,9 +2,62 @@
 
 A configuration management framework written in Go.
 
-My motivation behind this is because I really like the idea of being able to
-compile your configuration management code and distributing it in a single
-cross-platform binary.
+The framework allows you to write configuration in plain Go, compiled and
+distributed as a binary.
 
-It also has the advantage of being able to write your configuration in a fully
-fledged language, similar to Chef with Ruby.
+## Getting started
+
+Create a project in `main.go` and import the framework:
+
+```
+import "github.com/surminus/viaduct"
+
+func main() {
+}
+```
+
+Add resources as part of the `main()` function. To create a directory and file:
+
+```
+func main() {
+    dir := viaduct.Directory{Path: "test"}.Create()
+    viaduct.File{Path: fmt.Sprintf("%s/foo", dir.Path), Content: "bar"}.Create()
+}
+```
+
+In the example above, we are making use of the attributes of the previously
+created `Directory` resource when we create the file.
+
+Since the resource actions always return the resource object, we can easily
+delete what we created:
+
+```
+func main() {
+    dir := viaduct.Directory{Path: "test"}.Create()
+    viaduct.File{Path: fmt.Sprintf("%s/foo", dir.Path), Content: "bar"}.Create()
+
+    dir.Delete()
+}
+```
+
+Like any good configuration management tool, we also have access to node
+attributes under the `Attribute` variable:
+
+```
+import (
+    "fmt"
+
+    "github.com/surminus/viaduct"
+)
+
+func main() {
+    dir := viaduct.Directory{Path: "test"}.Create()
+    viaduct.File{Path: fmt.Sprintf("%s/foo", dir.Path), Content: "bar"}.Create()
+
+    dir.Delete()
+
+    fmt.Println(viaduct.Attribute.JSON())
+}
+```
+
+When you're happy with your configuration, compile and run using `go build`.
