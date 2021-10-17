@@ -28,7 +28,7 @@ func (f *File) satisfy() {
 }
 
 // Create creates or updates a file
-func (f File) Create() (path string) {
+func (f File) Create() *File {
 	f.satisfy()
 
 	err := ioutil.WriteFile(f.Path, []byte(f.Content), f.Mode)
@@ -36,11 +36,11 @@ func (f File) Create() (path string) {
 		log.Fatal(err)
 	}
 
-	return f.Path
+	return &f
 }
 
 // Delete deletes a file
-func (f *File) Delete() (path string) {
+func (f File) Delete() *File {
 	f.satisfy()
 
 	err := os.Remove(f.Path)
@@ -48,5 +48,5 @@ func (f *File) Delete() (path string) {
 		log.Fatal(err)
 	}
 
-	return f.Path
+	return &f
 }

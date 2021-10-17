@@ -8,5 +8,5 @@ import (
 
 func main() {
 	dir := viaduct.Directory{Path: "test"}.Create()
-	viaduct.File{Path: fmt.Sprintf("%s/foo", dir), Content: "bar"}.Create()
+	viaduct.File{Path: fmt.Sprintf("%s/foo", dir.Path), Content: "bar"}.Create()
 }

@@ -26,7 +26,7 @@ func (d *Directory) satisfy() {
 }
 
 // Create creates a directory
-func (d Directory) Create() (path string) {
+func (d Directory) Create() *Directory {
 	d.satisfy()
 
 	err := os.MkdirAll(d.Path, d.Mode)
@@ -34,11 +34,11 @@ func (d Directory) Create() (path string) {
 		log.Fatal(err)
 	}
 
-	return d.Path
+	return &d
 }
 
 // Delete deletes a directory
-func (d *Directory) Delete() (path string) {
+func (d Directory) Delete() *Directory {
 	d.satisfy()
 
 	err := os.RemoveAll(d.Path)
@@ -46,5 +46,5 @@ func (d *Directory) Delete() (path string) {
 		log.Fatal(err)
 	}
 
-	return d.Path
+	return &d
 }
