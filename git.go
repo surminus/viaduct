@@ -31,6 +31,10 @@ func (g Git) Create() *Git {
 	g.satisfy()
 
 	log.Println("==> Git [create]", g.Path)
+	if Config.DryRun {
+		return &g
+	}
+
 	if _, err := os.Stat(g.Path); err == nil {
 		return &g
 	}
@@ -52,6 +56,10 @@ func (g Git) Delete() *Git {
 	g.satisfy()
 
 	log.Println("==> Git [delete]", g.Path)
+	if Config.DryRun {
+		return &g
+	}
+
 	err := os.RemoveAll(g.Path)
 	if err != nil {
 		log.Fatal(err)

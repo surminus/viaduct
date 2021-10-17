@@ -32,6 +32,10 @@ func (f File) Create() *File {
 	f.satisfy()
 
 	log.Println("==> File [create]", f.Path)
+	if Config.DryRun {
+		return &f
+	}
+
 	err := ioutil.WriteFile(f.Path, []byte(f.Content), f.Mode)
 	if err != nil {
 		log.Fatal(err)
@@ -45,6 +49,10 @@ func (f File) Delete() *File {
 	f.satisfy()
 
 	log.Println("==> File [delete]", f.Path)
+	if Config.DryRun {
+		return &f
+	}
+
 	err := os.Remove(f.Path)
 	if err != nil {
 		log.Fatal(err)

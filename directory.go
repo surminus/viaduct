@@ -30,6 +30,10 @@ func (d Directory) Create() *Directory {
 	d.satisfy()
 
 	log.Println("==> Directory [create]", d.Path)
+	if Config.DryRun {
+		return &d
+	}
+
 	err := os.MkdirAll(d.Path, d.Mode)
 	if err != nil {
 		log.Fatal(err)
@@ -43,6 +47,10 @@ func (d Directory) Delete() *Directory {
 	d.satisfy()
 
 	log.Println("==> Directory [delete]", d.Path)
+	if Config.DryRun {
+		return &d
+	}
+
 	err := os.RemoveAll(d.Path)
 	if err != nil {
 		log.Fatal(err)
