@@ -1,4 +1,4 @@
-# Viaduct
+# Viaduct [![CI](https://github.com/surminus/viaduct/actions/workflows/ci.yaml/badge.svg)](https://github.com/surminus/viaduct/actions/workflows/ci.yaml)
 
 A configuration management framework written in Go.
 
