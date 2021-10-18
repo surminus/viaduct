@@ -52,7 +52,7 @@ func InitAttributes(a *Attributes) {
 
 // JSON returns a string representation of the loaded attributes
 func (a Attributes) JSON() string {
-	output, err := json.MarshalIndent(a, "", "\t")
+	output, err := json.MarshalIndent(a, "", "    ")
 	if err != nil {
 		log.Fatal(err)
 	}

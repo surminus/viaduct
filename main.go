@@ -1,14 +1,22 @@
 package viaduct
 
-import "log"
+import (
+	"fmt"
+	"log"
+	"os"
+)
 
 var Attribute Attributes
 var Config Configs
 
 func init() {
-	log.Println("Initialising attributes...")
 	InitAttributes(&Attribute)
 	InitConfigs(&Config)
+
+	if Config.OutputAttributes {
+		fmt.Println(Attribute.JSON())
+		os.Exit(0)
+	}
 
 	if Config.DryRun {
 		log.Println("WARNING: dry run mode enabled")
