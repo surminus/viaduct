@@ -36,18 +36,7 @@ func (p Package) Install() *Package {
 		return &p
 	}
 
-	pkg := p.Name
-
-	switch Attribute.Platform.ID {
-	case "debian", "ubuntu", "linuxmint":
-		aptGetCmd("install", []string{pkg})
-	case "fedora", "centos":
-		dnfCmd("install", []string{pkg})
-	case "arch":
-		pacmanCmd("-S", []string{pkg})
-	default:
-		log.Fatal("Unrecognised distribution:", Attribute.Platform.ID)
-	}
+	installPkg(Attribute.Platform.ID, []string{p.Name})
 
 	return &p
 }
@@ -61,19 +50,36 @@ func (p Package) Remove() *Package {
 		return &p
 	}
 
-	pkg := p.Name
+	removePkg(Attribute.Platform.ID, []string{p.Name})
 
-	switch Attribute.Platform.ID {
+	return &p
+}
+
+func installPkg(platform string, pkgs []string) {
+	switch platform {
 	case "debian", "ubuntu", "linuxmint":
-		aptGetCmd("remove", []string{pkg})
+		aptGetCmd("install", pkgs)
 	case "fedora", "centos":
-		dnfCmd("remove", []string{pkg})
+		dnfCmd("install", pkgs)
 	case "arch":
-		pacmanCmd("-R", []string{pkg})
+		pacmanCmd("-S", pkgs)
 	default:
 		log.Fatal("Unrecognised distribution:", Attribute.Platform.ID)
 	}
-	return &p
+
+}
+
+func removePkg(platform string, pkgs []string) {
+	switch platform {
+	case "debian", "ubuntu", "linuxmint":
+		aptGetCmd("remove", pkgs)
+	case "fedora", "centos":
+		dnfCmd("remove", pkgs)
+	case "arch":
+		pacmanCmd("-R", pkgs)
+	default:
+		log.Fatal("Unrecognised distribution:", Attribute.Platform.ID)
+	}
 }
 
 func installCmd(args []string) (err error) {
