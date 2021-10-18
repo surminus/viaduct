@@ -21,5 +21,9 @@ func main() {
 			struct{ Name string }{Name: "Bella"}),
 	}.Create()
 
+	viaduct.Attribute.AddCustom("foo", "bar")
+
+	fmt.Println(viaduct.Attribute.GetCustom("foo"))
+
 	viaduct.Git{Path: "/tmp/viaduct", URL: "https://github.com/surminus/viaduct"}.Create()
 }

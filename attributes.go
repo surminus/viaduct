@@ -16,6 +16,7 @@ type Attributes struct {
 	OS       string             `json:"os"`
 	Arch     string             `json:"arch"`
 	Platform PlatformAttributes `json:"platform"`
+	Custom   map[string]string  `json:"custom"`
 }
 
 // PlatformAttributes has details about the platform (currently Linux only)
@@ -48,6 +49,8 @@ func InitAttributes(a *Attributes) {
 	if a.OS == "linux" {
 		a.Platform = newPlatformAttributes("/etc/os-release")
 	}
+
+	a.Custom = make(map[string]string)
 }
 
 // JSON returns a string representation of the loaded attributes
@@ -58,6 +61,16 @@ func (a Attributes) JSON() string {
 	}
 
 	return string(output)
+}
+
+// AddCustom allows us to add custom attributes during a run
+func (a *Attributes) AddCustom(key, value string) {
+	a.Custom[key] = value
+}
+
+// GetCustom returns the value of a custom attribute
+func (a *Attributes) GetCustom(key string) string {
+	return a.Custom[key]
 }
 
 func newPlatformAttributes(releaseFile string) (p PlatformAttributes) {
