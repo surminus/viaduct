@@ -1,22 +1,25 @@
 package main
 
 import (
+	"embed"
 	"fmt"
 
 	"github.com/surminus/viaduct"
 )
 
+//go:embed templates
+var templates embed.FS
+
 func main() {
 	dir := viaduct.Directory{Path: "test"}.Create()
-	viaduct.File{Path: fmt.Sprintf("%s/foo", dir.Path), Content: "bar"}.Create()
 
-	g := viaduct.Git{
-		Path: "/tmp/viaduct",
-		URL:  "https://github.com/surminus/viaduct",
+	viaduct.File{
+		Path: fmt.Sprintf("%s/foo", dir.Path),
+		Content: viaduct.NewTemplate(
+			templates,
+			"templates/test.txt",
+			struct{ Name string }{Name: "Bella"}),
 	}.Create()
 
-	fmt.Println(viaduct.Attribute.JSON())
-
-	g.Delete()
-	dir.Delete()
+	viaduct.Git{Path: "/tmp/viaduct", URL: "https://github.com/surminus/viaduct"}.Create()
 }
