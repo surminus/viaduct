@@ -13,7 +13,7 @@ type Package struct {
 
 // Packages allow installation of multiple packages
 type Packages struct {
-	Packages []*Package
+	Names []string
 }
 
 // satisfy sets default values for the parameters for a particular
@@ -27,7 +27,18 @@ func (p *Package) satisfy() {
 	// Set optional defaults here
 }
 
-// Install installs one or more packages
+// satisfy sets default values for the parameters for a particular
+// resource
+func (p *Packages) satisfy() {
+	// Set required values here, and error if they are not set
+	if len(p.Names) < 1 {
+		log.Fatal("==> Packages [error] At least one package required")
+	}
+
+	// Set optional defaults here
+}
+
+// Install installs a packages
 func (p Package) Install() *Package {
 	p.satisfy()
 
@@ -51,6 +62,34 @@ func (p Package) Remove() *Package {
 	}
 
 	removePkg(Attribute.Platform.ID, []string{p.Name})
+
+	return &p
+}
+
+// Install installs a packages
+func (p Packages) Install() *Packages {
+	p.satisfy()
+
+	log.Println("==> Packages [install]")
+	if Config.DryRun {
+		return &p
+	}
+
+	installPkg(Attribute.Platform.ID, p.Names)
+
+	return &p
+}
+
+// Remove uninstalls a package
+func (p Packages) Remove() *Packages {
+	p.satisfy()
+
+	log.Println("==> Packages [remove]")
+	if Config.DryRun {
+		return &p
+	}
+
+	removePkg(Attribute.Platform.ID, p.Names)
 
 	return &p
 }
