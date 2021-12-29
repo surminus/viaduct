@@ -26,4 +26,6 @@ func main() {
 	fmt.Println(viaduct.Attribute.GetCustom("foo"))
 
 	viaduct.Git{Path: "/tmp/viaduct", URL: "https://github.com/surminus/viaduct"}.Create()
+
+	viaduct.Execute{Command: "echo viaduct rocks!"}.Run()
 }
