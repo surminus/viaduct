@@ -6,15 +6,29 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/user"
+	"strconv"
 	"text/template"
 	"time"
 )
 
 // File manages files on the filesystem
 type File struct {
-	Path    string
+	// Path is the path of the file
+	Path string
+	// Content is the content of the file
 	Content string
-	Mode    os.FileMode
+	// Mode is the permissions set of the file
+	Mode os.FileMode
+
+	// User sets the user permissions by user name
+	User string
+	// Group sets the group permissions by group name
+	Group string
+	// UID sets the user permissions by UID
+	UID int
+	// GID sets the group permissions by GID
+	GID int
 }
 
 // satisfy sets default values for the parameters for a particular
@@ -28,6 +42,22 @@ func (f *File) satisfy() {
 	// Set optional defaults here
 	if f.Mode == 0 {
 		f.Mode = 0644
+	}
+
+	if f.User == "" && f.UID == 0 {
+		if uid, err := strconv.Atoi(Attribute.User.Uid); err != nil {
+			log.Fatalf("==> File [error] Internal error: %s", err)
+		} else {
+			f.UID = uid
+		}
+	}
+
+	if f.Group == "" && f.GID == 0 {
+		if gid, err := strconv.Atoi(Attribute.User.Gid); err != nil {
+			log.Fatalf("==> File [error] Internal error: %s", err)
+		} else {
+			f.GID = gid
+		}
 	}
 }
 
@@ -71,6 +101,37 @@ func (f File) Create() *File {
 	}
 
 	err := ioutil.WriteFile(f.Path, []byte(f.Content), f.Mode)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	uid := f.UID
+	if f.User != "" {
+		u, err := user.Lookup(f.User)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		uid, err = strconv.Atoi(u.Uid)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	gid := f.GID
+	if f.Group != "" {
+		g, err := user.LookupGroup(f.Group)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		gid, err = strconv.Atoi(g.Gid)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	err = os.Chown(f.Path, uid, gid)
 	if err != nil {
 		log.Fatal(err)
 	}
