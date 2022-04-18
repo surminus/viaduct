@@ -21,6 +21,9 @@ func main() {
 			struct{ Name string }{Name: "Bella"}),
 	}.Create()
 
+	link := viaduct.Link{Path: "test/linked_file", Source: "test/foo"}.Create()
+	link.Delete()
+
 	viaduct.Attribute.AddCustom("foo", "bar")
 
 	fmt.Println(viaduct.Attribute.GetCustom("foo"))

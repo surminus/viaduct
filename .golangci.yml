@@ -1,5 +1,6 @@
 linters:
   disable:
+    - exhaustivestruct
     - forbidigo
     - gochecknoglobals
     - gochecknoinits
