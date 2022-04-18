@@ -8,8 +8,13 @@ import (
 )
 
 type Execute struct {
-	Command          string
+	// Command is the command to run
+	Command string
+	// WorkingDirectory is where to run the command
 	WorkingDirectory string
+	// Unless is another command to run, which if exits cleanly signifies
+	// that we should not run the execute command
+	Unless string
 }
 
 func (e *Execute) satisfy() {
@@ -28,6 +33,20 @@ func (e Execute) Run() *Execute {
 	log.Println("==> Execute [run]", e.Command)
 	if Config.DryRun {
 		return &e
+	}
+
+	if e.Unless != "" {
+		log.Println("==> Execute [run] Unless:", e.Unless)
+
+		unless := strings.Split(e.Unless, " ")
+		// nolint:gosec
+		ucmd := exec.Command(unless[0], unless[1:]...)
+		ucmd.Stdout = os.Stdout
+		ucmd.Stderr = os.Stderr
+
+		if err := ucmd.Run(); err == nil {
+			return &e
+		}
 	}
 
 	command := strings.Split(e.Command, " ")

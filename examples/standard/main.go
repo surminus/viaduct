@@ -30,5 +30,6 @@ func main() {
 
 	viaduct.Git{Path: "/tmp/viaduct", URL: "https://github.com/surminus/viaduct"}.Create()
 
-	viaduct.Execute{Command: "echo viaduct rocks!"}.Run()
+	viaduct.Execute{Command: "echo viaduct rocks!", Unless: "false"}.Run()
+	viaduct.Execute{Command: "echo viaduct rocks!", Unless: "true"}.Run()
 }
