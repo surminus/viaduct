@@ -45,16 +45,18 @@ func (l Link) Create() *Link {
 		log.Fatal(err)
 	}
 
+	path := HelperExpandPath(l.Path)
+
 	// If the file exists and is a symlink, let's check the source is correct
-	if _, err := os.Lstat(l.Path); err == nil {
-		src, err := os.Readlink(l.Path)
+	if _, err := os.Lstat(path); err == nil {
+		src, err := os.Readlink(path)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		// If the source is not correct, let's delete the symlink
 		if src != l.Source {
-			if err := os.Remove(l.Path); err != nil {
+			if err := os.Remove(path); err != nil {
 				log.Fatal(err)
 			}
 		}
@@ -62,7 +64,7 @@ func (l Link) Create() *Link {
 
 	// Perform the link. This will error if the file exists, and we'll
 	// leave the safe behaviour in
-	if err := os.Symlink(source, l.Path); err != nil {
+	if err := os.Symlink(source, path); err != nil {
 		log.Fatal(err)
 	}
 
@@ -78,7 +80,9 @@ func (l Link) Delete() *Link {
 		return &l
 	}
 
-	if err := os.Remove(l.Path); err != nil {
+	path := HelperExpandPath(l.Path)
+
+	if err := os.Remove(path); err != nil {
 		log.Fatal(err)
 	}
 

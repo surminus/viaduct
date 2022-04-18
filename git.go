@@ -35,12 +35,12 @@ func (g Git) Create() *Git {
 		return &g
 	}
 
-	if _, err := os.Stat(g.Path); err == nil {
+	if _, err := os.Stat(HelperExpandPath(g.Path)); err == nil {
 		return &g
 	}
 
 	// nolint:exhaustivestruct
-	_, err := git.PlainClone(g.Path, false, &git.CloneOptions{
+	_, err := git.PlainClone(HelperExpandPath(g.Path), false, &git.CloneOptions{
 		URL:      g.URL,
 		Progress: os.Stdout,
 	})
@@ -60,7 +60,7 @@ func (g Git) Delete() *Git {
 		return &g
 	}
 
-	if err := os.RemoveAll(g.Path); err != nil {
+	if err := os.RemoveAll(HelperExpandPath(g.Path)); err != nil {
 		log.Fatal(err)
 	}
 

@@ -100,7 +100,9 @@ func (f File) Create() *File {
 		return &f
 	}
 
-	err := ioutil.WriteFile(f.Path, []byte(f.Content), f.Mode)
+	path := HelperExpandPath(f.Path)
+
+	err := ioutil.WriteFile(path, []byte(f.Content), f.Mode)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -132,7 +134,7 @@ func (f File) Create() *File {
 		}
 	}
 
-	err = os.Chown(f.Path, uid, gid)
+	err = os.Chown(path, uid, gid)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -149,7 +151,7 @@ func (f File) Delete() *File {
 		return &f
 	}
 
-	if err := os.Remove(f.Path); err != nil {
+	if err := os.Remove(HelperExpandPath(f.Path)); err != nil {
 		log.Fatal(err)
 	}
 
