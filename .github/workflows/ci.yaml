@@ -21,3 +21,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
     - run: go test
+    - uses: goreleaser/goreleaser-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
