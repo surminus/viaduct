@@ -108,7 +108,7 @@ func installPkg(platform string, pkgs []string, sudo bool) {
 		aptGetCmd("install", pkgs, sudo)
 	case "fedora", "centos":
 		dnfCmd("install", pkgs, sudo)
-	case "arch":
+	case "arch", "manjaro":
 		pacmanCmd("-S", pkgs, sudo)
 	default:
 		log.Fatal("Unrecognised distribution:", Attribute.Platform.ID)
