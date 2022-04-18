@@ -2,26 +2,31 @@
 
 A configuration management framework written in Go.
 
-The framework allows you to write configuration in plain Go, compiled and
-distributed as a binary.
+The framework allows you to write configuration in plain Go, which you would
+then compile and distribute as a binary to the target machines.
+
+This means that you don't need to bootstrap an instance with configuration
+files or a runtime environment (eg "install chef"): simply download the binary,
+and run it!
 
 ## Getting started
 
 Create a project in `main.go` and import the framework:
 
 ```
-import "github.com/surminus/viaduct"
+import (
+        v "github.com/surminus/viaduct" // By convention we use "v"
+)
 
-func main() {
-}
+func main() {}
 ```
 
 Add resources as part of the `main()` function. To create a directory and file:
 
 ```
 func main() {
-    dir := viaduct.Directory{Path: "test"}.Create()
-    viaduct.File{Path: fmt.Sprintf("%s/foo", dir.Path), Content: "bar"}.Create()
+        dir := v.Directory{Path: "test"}.Create()
+        v.File{Path: fmt.Sprintf("%s/foo", dir.Path), Content: "bar"}.Create()
 }
 ```
 
@@ -32,10 +37,10 @@ This also means we can run whatever action we need to on that resource:
 
 ```
 func main() {
-    dir := viaduct.Directory{Path: "test"}.Create()
-    viaduct.File{Path: fmt.Sprintf("%s/foo", dir.Path), Content: "bar"}.Create()
+        dir := viaduct.Directory{Path: "test"}.Create()
+        v.File{Path: fmt.Sprintf("%s/foo", dir.Path), Content: "bar"}.Create()
 
-    dir.Delete()
+        dir.Delete()
 }
 ```
 
@@ -56,22 +61,22 @@ We can then generate the data to create our file:
 
 ```
 import (
-    "embed"
+        "embed"
 
-    "github.com/surminus/viaduct"
+        v "github.com/surminus/viaduct"
 )
 
 //go:embed templates
 var templates embed.FS
 
 func main() {
-    template := viaduct.NewTemplate(
-        templates,
-        "templates/test.txt",
-        struct{ Name string }{Name: "Bella"},
-    )
+        template := v.NewTemplate(
+                templates,
+                "templates/test.txt",
+                struct{ Name string }{Name: "Bella"},
+        )
 
-    viaduct.File{Path: "test/foo", Content: template}.Create()
+        v.File{Path: "test/foo", Content: template}.Create()
 }
 ```
 
@@ -84,19 +89,12 @@ attributes under the `Attribute` variable:
 
 ```
 import (
-    "fmt"
+        "fmt"
 
-    "github.com/surminus/viaduct"
+        v "github.com/surminus/viaduct"
 )
 
 func main() {
-    dir := viaduct.Directory{Path: "test"}.Create()
-    viaduct.File{Path: fmt.Sprintf("%s/foo", dir.Path), Content: "bar"}.Create()
-
-    dir.Delete()
-
-    fmt.Println(viaduct.Attribute.JSON())
+        fmt.Println(v.Attribute.User.HomeDir) // Prints my home directory
 }
 ```
-
-When you're happy with your configuration, compile and run using `go build`.
