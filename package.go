@@ -169,6 +169,10 @@ func dnfCmd(command string, packages []string, sudo bool) {
 func pacmanCmd(command string, packages []string, sudo bool) {
 	args := []string{"pacman", command, "--noconfirm"}
 
+	if command == "-S" {
+		args = append(args, "--needed")
+	}
+
 	if sudo {
 		args = prependSudo(args)
 	}
