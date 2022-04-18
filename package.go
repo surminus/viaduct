@@ -129,6 +129,7 @@ func removePkg(platform string, pkgs []string, sudo bool) {
 }
 
 func installCmd(args []string) (err error) {
+	// nolint:gosec
 	cmd := exec.Command(args[0], args[1:]...)
 
 	cmd.Stdout = os.Stdout
@@ -147,8 +148,7 @@ func aptGetCmd(command string, packages []string, sudo bool) {
 	}
 	args = append(args, packages...)
 
-	err := installCmd(args)
-	if err != nil {
+	if err := installCmd(args); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -161,8 +161,7 @@ func dnfCmd(command string, packages []string, sudo bool) {
 	}
 	args = append(args, packages...)
 
-	err := installCmd(args)
-	if err != nil {
+	if err := installCmd(args); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -175,8 +174,7 @@ func pacmanCmd(command string, packages []string, sudo bool) {
 	}
 	args = append(args, packages...)
 
-	err := installCmd(args)
-	if err != nil {
+	if err := installCmd(args); err != nil {
 		log.Fatal(err)
 	}
 }

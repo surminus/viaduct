@@ -73,6 +73,7 @@ func (a *Attributes) GetCustom(key string) string {
 	return a.Custom[key]
 }
 
+// nolint:cyclop
 func newPlatformAttributes(releaseFile string) (p PlatformAttributes) {
 	file, err := os.Open(releaseFile)
 	if err != nil {
@@ -83,6 +84,7 @@ func newPlatformAttributes(releaseFile string) (p PlatformAttributes) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		splitText := strings.Split(scanner.Text(), "=")
+		// nolint:gomnd
 		if len(splitText) < 2 {
 			continue
 		}

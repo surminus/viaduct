@@ -32,13 +32,13 @@ func (e Execute) Run() *Execute {
 
 	command := strings.Split(e.Command, " ")
 
+	// nolint:gosec
 	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Dir = e.WorkingDirectory
 
-	err := cmd.Run()
-	if err != nil {
+	if err := cmd.Run(); err != nil {
 		log.Fatal(err)
 	}
 

@@ -1,0 +1,9 @@
+linters:
+  disable:
+    - forbidigo
+    - gochecknoglobals
+    - gochecknoinits
+    - godot
+    - testpackage
+    - wrapcheck
+    - wsl

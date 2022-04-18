@@ -42,17 +42,17 @@ func (d Directory) Create() *Directory {
 	return &d
 }
 
-// Delete deletes a directory
+// Delete deletes a directory.
 func (d Directory) Delete() *Directory {
 	d.satisfy()
 
 	log.Println("==> Directory [delete]", d.Path)
+
 	if Config.DryRun {
 		return &d
 	}
 
-	err := os.RemoveAll(d.Path)
-	if err != nil {
+	if err := os.RemoveAll(d.Path); err != nil {
 		log.Fatal(err)
 	}
 

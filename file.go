@@ -77,7 +77,7 @@ func EmbeddedFile(files embed.FS, path string) string {
 func NewTemplate(files embed.FS, path string, variables interface{}) string {
 	out := EmbeddedFile(files, path)
 
-	tmpl, err := template.New(time.Now().String()).Parse(string(out))
+	tmpl, err := template.New(time.Now().String()).Parse(out)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -106,6 +106,8 @@ func (f File) Create() *File {
 	}
 
 	uid := f.UID
+	gid := f.GID
+
 	if f.User != "" {
 		u, err := user.Lookup(f.User)
 		if err != nil {
@@ -118,7 +120,6 @@ func (f File) Create() *File {
 		}
 	}
 
-	gid := f.GID
 	if f.Group != "" {
 		g, err := user.LookupGroup(f.Group)
 		if err != nil {
@@ -148,8 +149,7 @@ func (f File) Delete() *File {
 		return &f
 	}
 
-	err := os.Remove(f.Path)
-	if err != nil {
+	if err := os.Remove(f.Path); err != nil {
 		log.Fatal(err)
 	}
 

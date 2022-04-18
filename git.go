@@ -39,6 +39,7 @@ func (g Git) Create() *Git {
 		return &g
 	}
 
+	// nolint:exhaustivestruct
 	_, err := git.PlainClone(g.Path, false, &git.CloneOptions{
 		URL:      g.URL,
 		Progress: os.Stdout,
@@ -59,8 +60,7 @@ func (g Git) Delete() *Git {
 		return &g
 	}
 
-	err := os.RemoveAll(g.Path)
-	if err != nil {
+	if err := os.RemoveAll(g.Path); err != nil {
 		log.Fatal(err)
 	}
 
