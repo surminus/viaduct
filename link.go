@@ -59,6 +59,9 @@ func (l Link) Create() *Link {
 			if err := os.Remove(path); err != nil {
 				log.Fatal(err)
 			}
+		} else {
+			// Otherwise everything is as we want it, so return
+			return &l
 		}
 	}
 
