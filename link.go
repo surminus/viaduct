@@ -40,7 +40,7 @@ func (l Link) Create() *Link {
 
 	// The source should always be the full path, so we will
 	// attempt to expand it
-	source, err := filepath.Abs(l.Source)
+	source, err := filepath.Abs(HelperExpandPath(l.Source))
 	if err != nil {
 		log.Fatal(err)
 	}
