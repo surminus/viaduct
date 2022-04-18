@@ -41,7 +41,7 @@ func (f *File) satisfy() {
 
 	// Set optional defaults here
 	if f.Mode == 0 {
-		f.Mode = 0644
+		f.Mode = 0o644
 	}
 
 	if f.User == "" && f.UID == 0 {

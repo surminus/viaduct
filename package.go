@@ -113,7 +113,6 @@ func installPkg(platform string, pkgs []string, sudo bool) {
 	default:
 		log.Fatal("Unrecognised distribution:", Attribute.Platform.ID)
 	}
-
 }
 
 func removePkg(platform string, pkgs []string, sudo bool) {

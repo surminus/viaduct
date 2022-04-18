@@ -43,7 +43,6 @@ func (g Git) Create() *Git {
 		URL:      g.URL,
 		Progress: os.Stdout,
 	})
-
 	if err != nil {
 		log.Fatal(err)
 	}

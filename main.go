@@ -6,8 +6,10 @@ import (
 	"os"
 )
 
-var Attribute Attributes
-var Config Configs
+var (
+	Attribute Attributes
+	Config    Configs
+)
 
 func init() {
 	InitAttributes(&Attribute)

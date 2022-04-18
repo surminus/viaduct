@@ -21,7 +21,7 @@ func (d *Directory) satisfy() {
 
 	// Set optional defaults here
 	if d.Mode == 0 {
-		d.Mode = 0755
+		d.Mode = 0o755
 	}
 }
 
