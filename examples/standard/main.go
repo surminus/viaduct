@@ -4,32 +4,36 @@ import (
 	"embed"
 	"fmt"
 
-	"github.com/surminus/viaduct"
+	v "github.com/surminus/viaduct"
 )
 
 //go:embed templates
 var templates embed.FS
 
 func main() {
-	dir := viaduct.Directory{Path: "test"}.Create()
+	dir := v.Directory{Path: "test"}.Create()
 
-	viaduct.File{
+	v.File{
 		Path: fmt.Sprintf("%s/foo", dir.Path),
-		Content: viaduct.NewTemplate(
+		Content: v.NewTemplate(
 			templates,
 			"templates/test.txt",
 			struct{ Name string }{Name: "Bella"}),
 	}.Create()
 
-	link := viaduct.Link{Path: "test/linked_file", Source: "test/foo"}.Create()
+	link := v.Link{Path: "test/linked_file", Source: "test/foo"}.Create()
 	link.Delete()
 
-	viaduct.Attribute.AddCustom("foo", "bar")
+	v.Attribute.AddCustom("foo", "bar")
 
-	fmt.Println(viaduct.Attribute.GetCustom("foo"))
+	fmt.Println(v.Attribute.GetCustom("foo"))
 
-	viaduct.Git{Path: "~/tmp/viaduct", URL: "https://github.com/surminus/viaduct"}.Create()
+	v.Git{
+		Path:   "~/tmp/viaduct",
+		URL:    "https://github.com/surminus/viaduct",
+		Ensure: true,
+	}.Create()
 
-	viaduct.Execute{Command: "echo viaduct rocks!", Unless: "false"}.Run()
-	viaduct.Execute{Command: "echo viaduct rocks!", Unless: "true"}.Run()
+	v.Execute{Command: "echo viaduct rocks!", Unless: "false"}.Run()
+	v.Execute{Command: "echo viaduct rocks!", Unless: "true"}.Run()
 }
