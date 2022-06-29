@@ -15,6 +15,7 @@ type Attributes struct {
 	User     user.User          `json:"user"`
 	OS       string             `json:"os"`
 	Arch     string             `json:"arch"`
+	Hostname string             `json:"hostname"`
 	Platform PlatformAttributes `json:"platform"`
 	Custom   map[string]string  `json:"custom"`
 }
@@ -45,6 +46,11 @@ func InitAttributes(a *Attributes) {
 	a.User = *user
 	a.OS = runtime.GOOS
 	a.Arch = runtime.GOARCH
+
+	a.Hostname, err = os.Hostname()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	if a.OS == "linux" {
 		a.Platform = newPlatformAttributes("/etc/os-release")
