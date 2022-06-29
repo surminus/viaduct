@@ -6,21 +6,16 @@ import (
 	"os/exec"
 )
 
-// Package installs a package
+// Package installs one or more packages. Use Name for a single package
+// install, or Names for multi-package install.
 type Package struct {
 	// Name is the package name
 	Name string
 
-	// Sudo runs the command with sudo
-	Sudo bool
-}
-
-// Packages allow installation of multiple packages
-type Packages struct {
 	// Names are the package names
 	Names []string
 
-	// Sudo runs the command with sudo
+	// Sudo runs the command with sudo. Optional.
 	Sudo bool
 }
 
@@ -28,19 +23,8 @@ type Packages struct {
 // resource
 func (p *Package) satisfy() {
 	// Set required values here, and error if they are not set
-	if p.Name == "" {
-		log.Fatal("==> Package [error] Required parameter: Name")
-	}
-
-	// Set optional defaults here
-}
-
-// satisfy sets default values for the parameters for a particular
-// resource
-func (p *Packages) satisfy() {
-	// Set required values here, and error if they are not set
-	if len(p.Names) < 1 {
-		log.Fatal("==> Packages [error] At least one package required")
+	if p.Name == "" && len(p.Names) < 1 {
+		log.Fatal("==> Package [error] Required parameter: Name / Names")
 	}
 
 	// Set optional defaults here
@@ -55,7 +39,9 @@ func (p Package) Install() *Package {
 		return &p
 	}
 
-	installPkg(Attribute.Platform.ID, []string{p.Name}, p.Sudo)
+	p.Names = append(p.Names, p.Name)
+
+	installPkg(Attribute.Platform.ID, p.Names, p.Sudo)
 
 	return &p
 }
@@ -69,35 +55,9 @@ func (p Package) Remove() *Package {
 		return &p
 	}
 
+	p.Names = append(p.Names, p.Name)
+
 	removePkg(Attribute.Platform.ID, []string{p.Name}, p.Sudo)
-
-	return &p
-}
-
-// Install installs a packages
-func (p Packages) Install() *Packages {
-	p.satisfy()
-
-	log.Println("==> Packages [install]")
-	if Config.DryRun {
-		return &p
-	}
-
-	installPkg(Attribute.Platform.ID, p.Names, p.Sudo)
-
-	return &p
-}
-
-// Remove uninstalls a package
-func (p Packages) Remove() *Packages {
-	p.satisfy()
-
-	log.Println("==> Packages [remove]")
-	if Config.DryRun {
-		return &p
-	}
-
-	removePkg(Attribute.Platform.ID, p.Names, p.Sudo)
 
 	return &p
 }
