@@ -81,7 +81,9 @@ func (g Git) Create() *Git {
 			ReferenceName: plumbing.ReferenceName(g.Reference),
 		})
 		if err != nil {
-			log.Fatal(err)
+			if err != git.NoErrAlreadyUpToDate {
+				log.Fatal(err)
+			}
 		}
 	}
 
