@@ -9,11 +9,16 @@ import (
 type Execute struct {
 	// Command is the command to run
 	Command string
-	// WorkingDirectory is where to run the command
+
+	// WorkingDirectory is where to run the command. Optional.
 	WorkingDirectory string
+
 	// Unless is another command to run, which if exits cleanly signifies
-	// that we should not run the execute command
+	// that we should not run the execute command. Optional.
 	Unless string
+
+	// Sudo runs the command using sudo. Optional.
+	Sudo bool
 }
 
 func (e *Execute) satisfy(log *logger) {
@@ -39,6 +44,9 @@ func (e Execute) Run() *Execute {
 		log.Warn("Unless: ", e.Unless)
 
 		unless := strings.Split(e.Unless, " ")
+		if e.Sudo {
+			unless = HelperPrependSudo(unless)
+		}
 		// nolint:gosec
 		ucmd := exec.Command(unless[0], unless[1:]...)
 		ucmd.Stdout = os.Stdout
@@ -50,6 +58,9 @@ func (e Execute) Run() *Execute {
 	}
 
 	command := strings.Split(e.Command, " ")
+	if e.Sudo {
+		command = HelperPrependSudo(command)
+	}
 
 	// nolint:gosec
 	cmd := exec.Command(command[0], command[1:]...)

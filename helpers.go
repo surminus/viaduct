@@ -15,3 +15,7 @@ func HelperExpandPath(path string) string {
 
 	return p
 }
+
+func HelperPrependSudo(args []string) []string {
+	return append([]string{"sudo"}, args...)
+}
