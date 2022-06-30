@@ -44,6 +44,9 @@ func main() {
 }
 ```
 
+I'm using Viaduct to set up my personal development environment at
+[surminus/myduct](https://github.com/surminus/myduct).
+
 ### Embedded files and templates
 
 There are helper functions to allow us to use the
