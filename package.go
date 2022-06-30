@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // Package installs one or more packages. Use Name for a single package
@@ -21,10 +22,10 @@ type Package struct {
 
 // satisfy sets default values for the parameters for a particular
 // resource
-func (p *Package) satisfy() {
+func (p *Package) satisfy(log *logger) {
 	// Set required values here, and error if they are not set
 	if p.Name == "" && len(p.Names) < 1 {
-		log.Fatal("==> Package [error] Required parameter: Name / Names")
+		log.Fatal("Required parameter: Name / Names")
 	}
 
 	// Set optional defaults here
@@ -32,14 +33,15 @@ func (p *Package) satisfy() {
 
 // Install installs a packages
 func (p Package) Install() *Package {
-	p.satisfy()
+	log := newLogger("Package", "install")
+	p.satisfy(log)
 
-	log.Println("==> Package [install]")
+	p.Names = append(p.Names, p.Name)
+
+	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
 	if Config.DryRun {
 		return &p
 	}
-
-	p.Names = append(p.Names, p.Name)
 
 	installPkg(Attribute.Platform.ID, p.Names, p.Sudo)
 
@@ -48,14 +50,15 @@ func (p Package) Install() *Package {
 
 // Remove uninstalls a package
 func (p Package) Remove() *Package {
-	p.satisfy()
+	log := newLogger("Package", "remove")
+	p.satisfy(log)
 
-	log.Println("==> Package [remove]")
+	p.Names = append(p.Names, p.Name)
+
+	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
 	if Config.DryRun {
 		return &p
 	}
-
-	p.Names = append(p.Names, p.Name)
 
 	removePkg(Attribute.Platform.ID, []string{p.Name}, p.Sudo)
 

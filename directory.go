@@ -1,7 +1,6 @@
 package viaduct
 
 import (
-	"log"
 	"os"
 	"os/user"
 	"strconv"
@@ -26,10 +25,10 @@ type Directory struct {
 
 // satisfy sets default values for the parameters for a particular
 // resource
-func (d *Directory) satisfy() {
+func (d *Directory) satisfy(log *logger) {
 	// Set required values here, and error if they are not set
 	if d.Path == "" {
-		log.Fatal("==> Directory [error] Required parameter: Path")
+		log.Fatal("Required parameter: Path")
 	}
 
 	// Set optional defaults here
@@ -39,7 +38,7 @@ func (d *Directory) satisfy() {
 
 	if d.User == "" && d.UID == 0 {
 		if uid, err := strconv.Atoi(Attribute.User.Uid); err != nil {
-			log.Fatalf("==> Directory [error] Internal error: %s", err)
+			log.Fatal(err)
 		} else {
 			d.UID = uid
 		}
@@ -47,7 +46,7 @@ func (d *Directory) satisfy() {
 
 	if d.Group == "" && d.GID == 0 {
 		if gid, err := strconv.Atoi(Attribute.User.Gid); err != nil {
-			log.Fatalf("==> Directory [error] Internal error: %s", err)
+			log.Fatal(err)
 		} else {
 			d.GID = gid
 		}
@@ -56,9 +55,10 @@ func (d *Directory) satisfy() {
 
 // Create creates a directory
 func (d Directory) Create() *Directory {
-	d.satisfy()
+	log := newLogger("Directory", "create")
+	d.satisfy(log)
 
-	log.Println("==> Directory [create]", d.Path)
+	log.Info(d.Path)
 	if Config.DryRun {
 		return &d
 	}
@@ -107,9 +107,10 @@ func (d Directory) Create() *Directory {
 
 // Delete deletes a directory.
 func (d Directory) Delete() *Directory {
-	d.satisfy()
+	log := newLogger("Directory", "delete")
+	d.satisfy(log)
 
-	log.Println("==> Directory [delete]", d.Path)
+	log.Info(d.Path)
 
 	if Config.DryRun {
 		return &d
