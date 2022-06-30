@@ -19,6 +19,9 @@ type Execute struct {
 
 	// Sudo runs the command using sudo. Optional.
 	Sudo bool
+
+	// Quiet suppresses output from STDOUT. Optional.
+	Quiet bool
 }
 
 func (e *Execute) satisfy(log *logger) {
@@ -64,7 +67,9 @@ func (e Execute) Run() *Execute {
 
 	// nolint:gosec
 	cmd := exec.Command(command[0], command[1:]...)
-	cmd.Stdout = os.Stdout
+	if !e.Quiet {
+		cmd.Stdout = os.Stdout
+	}
 	cmd.Stderr = os.Stderr
 	cmd.Dir = e.WorkingDirectory
 
