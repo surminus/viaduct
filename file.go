@@ -33,10 +33,10 @@ type File struct {
 
 // satisfy sets default values for the parameters for a particular
 // resource
-func (f *File) satisfy() {
+func (f *File) satisfy(log *logger) {
 	// Set required values here, and error if they are not set
 	if f.Path == "" {
-		log.Fatal("==> File [error] Required parameter: Path")
+		log.Fatal("Required parameter: Path")
 	}
 
 	// Set optional defaults here
@@ -46,7 +46,7 @@ func (f *File) satisfy() {
 
 	if f.User == "" && f.UID == 0 {
 		if uid, err := strconv.Atoi(Attribute.User.Uid); err != nil {
-			log.Fatalf("==> File [error] Internal error: %s", err)
+			log.Fatal(err)
 		} else {
 			f.UID = uid
 		}
@@ -54,7 +54,7 @@ func (f *File) satisfy() {
 
 	if f.Group == "" && f.GID == 0 {
 		if gid, err := strconv.Atoi(Attribute.User.Gid); err != nil {
-			log.Fatalf("==> File [error] Internal error: %s", err)
+			log.Fatal(err)
 		} else {
 			f.GID = gid
 		}
@@ -93,9 +93,10 @@ func NewTemplate(files embed.FS, path string, variables interface{}) string {
 
 // Create creates or updates a file
 func (f File) Create() *File {
-	f.satisfy()
+	log := newLogger("File", "create")
+	f.satisfy(log)
 
-	log.Println("==> File [create]", f.Path)
+	log.Info(f.Path)
 	if Config.DryRun {
 		return &f
 	}
@@ -144,9 +145,10 @@ func (f File) Create() *File {
 
 // Delete deletes a file
 func (f File) Delete() *File {
-	f.satisfy()
+	log := newLogger("File", "create")
+	f.satisfy(log)
 
-	log.Println("==> File [delete]", f.Path)
+	log.Info(f.Path)
 	if Config.DryRun {
 		return &f
 	}

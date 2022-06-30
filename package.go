@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // Package installs one or more packages. Use Name for a single package
@@ -17,14 +18,17 @@ type Package struct {
 
 	// Sudo runs the command with sudo. Optional.
 	Sudo bool
+
+	// Verbose displays output from STDOUT. Optional.
+	Verbose bool
 }
 
 // satisfy sets default values for the parameters for a particular
 // resource
-func (p *Package) satisfy() {
+func (p *Package) satisfy(log *logger) {
 	// Set required values here, and error if they are not set
 	if p.Name == "" && len(p.Names) < 1 {
-		log.Fatal("==> Package [error] Required parameter: Name / Names")
+		log.Fatal("Required parameter: Name / Names")
 	}
 
 	// Set optional defaults here
@@ -32,67 +36,72 @@ func (p *Package) satisfy() {
 
 // Install installs a packages
 func (p Package) Install() *Package {
-	p.satisfy()
+	log := newLogger("Package", "install")
+	p.satisfy(log)
 
-	log.Println("==> Package [install]")
+	p.Names = append(p.Names, p.Name)
+
+	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
 	if Config.DryRun {
 		return &p
 	}
 
-	p.Names = append(p.Names, p.Name)
-
-	installPkg(Attribute.Platform.ID, p.Names, p.Sudo)
+	installPkg(Attribute.Platform.ID, p.Names, p.Sudo, p.Verbose)
 
 	return &p
 }
 
 // Remove uninstalls a package
 func (p Package) Remove() *Package {
-	p.satisfy()
+	log := newLogger("Package", "remove")
+	p.satisfy(log)
 
-	log.Println("==> Package [remove]")
+	p.Names = append(p.Names, p.Name)
+
+	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
 	if Config.DryRun {
 		return &p
 	}
 
-	p.Names = append(p.Names, p.Name)
-
-	removePkg(Attribute.Platform.ID, []string{p.Name}, p.Sudo)
+	removePkg(Attribute.Platform.ID, []string{p.Name}, p.Sudo, p.Verbose)
 
 	return &p
 }
 
-func installPkg(platform string, pkgs []string, sudo bool) {
+func installPkg(platform string, pkgs []string, sudo, verbose bool) {
 	switch platform {
 	case "debian", "ubuntu", "linuxmint":
-		aptGetCmd("install", pkgs, sudo)
+		aptGetCmd("install", pkgs, sudo, verbose)
 	case "fedora", "centos":
-		dnfCmd("install", pkgs, sudo)
+		dnfCmd("install", pkgs, sudo, verbose)
 	case "arch", "manjaro":
-		pacmanCmd("-S", pkgs, sudo)
+		pacmanCmd("-S", pkgs, sudo, verbose)
 	default:
 		log.Fatal("Unrecognised distribution:", Attribute.Platform.ID)
 	}
 }
 
-func removePkg(platform string, pkgs []string, sudo bool) {
+func removePkg(platform string, pkgs []string, sudo, verbose bool) {
 	switch platform {
 	case "debian", "ubuntu", "linuxmint":
-		aptGetCmd("remove", pkgs, sudo)
+		aptGetCmd("remove", pkgs, sudo, verbose)
 	case "fedora", "centos":
-		dnfCmd("remove", pkgs, sudo)
+		dnfCmd("remove", pkgs, sudo, verbose)
 	case "arch":
-		pacmanCmd("-R", pkgs, sudo)
+		pacmanCmd("-R", pkgs, sudo, verbose)
 	default:
 		log.Fatal("Unrecognised distribution:", Attribute.Platform.ID)
 	}
 }
 
-func installCmd(args []string) (err error) {
+func installCmd(args []string, verbose bool) (err error) {
 	// nolint:gosec
 	cmd := exec.Command(args[0], args[1:]...)
 
-	cmd.Stdout = os.Stdout
+	if verbose {
+		cmd.Stdout = os.Stdout
+	}
+
 	cmd.Stderr = os.Stderr
 
 	err = cmd.Run()
@@ -100,7 +109,7 @@ func installCmd(args []string) (err error) {
 	return err
 }
 
-func aptGetCmd(command string, packages []string, sudo bool) {
+func aptGetCmd(command string, packages []string, sudo, verbose bool) {
 	args := []string{"apt-get", command, "-y"}
 
 	if sudo {
@@ -108,12 +117,12 @@ func aptGetCmd(command string, packages []string, sudo bool) {
 	}
 	args = append(args, packages...)
 
-	if err := installCmd(args); err != nil {
+	if err := installCmd(args, verbose); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func dnfCmd(command string, packages []string, sudo bool) {
+func dnfCmd(command string, packages []string, sudo, verbose bool) {
 	args := []string{"dnf", command, "-y"}
 
 	if sudo {
@@ -121,12 +130,12 @@ func dnfCmd(command string, packages []string, sudo bool) {
 	}
 	args = append(args, packages...)
 
-	if err := installCmd(args); err != nil {
+	if err := installCmd(args, verbose); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func pacmanCmd(command string, packages []string, sudo bool) {
+func pacmanCmd(command string, packages []string, sudo, verbose bool) {
 	args := []string{"pacman", command, "--noconfirm"}
 
 	if command == "-S" {
@@ -138,7 +147,7 @@ func pacmanCmd(command string, packages []string, sudo bool) {
 	}
 	args = append(args, packages...)
 
-	if err := installCmd(args); err != nil {
+	if err := installCmd(args, verbose); err != nil {
 		log.Fatal(err)
 	}
 }

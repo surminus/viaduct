@@ -1,7 +1,6 @@
 package viaduct
 
 import (
-	"log"
 	"os"
 
 	"gopkg.in/src-d/go-git.v4"
@@ -25,14 +24,14 @@ type Git struct {
 
 // satisfy sets default values for the parameters for a particular
 // resource
-func (g *Git) satisfy() {
+func (g *Git) satisfy(log *logger) {
 	// Set required values here, and error if they are not set
 	if g.Path == "" {
-		log.Fatal("==> Git [error] Required parameter: Path")
+		log.Fatal("Required parameter: Path")
 	}
 
 	if g.URL == "" {
-		log.Fatal("==> Git [error] Required parameter: URL")
+		log.Fatal("Required parameter: URL")
 	}
 
 	// Optional settings
@@ -47,9 +46,10 @@ func (g *Git) satisfy() {
 
 // Create creates or updates a file
 func (g Git) Create() *Git {
-	g.satisfy()
+	log := newLogger("Git", "create")
+	g.satisfy(log)
 
-	log.Println("==> Git [create]", g.Path)
+	log.Info(g.Path)
 	if Config.DryRun {
 		return &g
 	}
@@ -105,9 +105,10 @@ func (g Git) Create() *Git {
 
 // Delete deletes a file
 func (g Git) Delete() *Git {
-	g.satisfy()
+	log := newLogger("Git", "delete")
+	g.satisfy(log)
 
-	log.Println("==> Git [delete]", g.Path)
+	log.Info(g.Path)
 	if Config.DryRun {
 		return &g
 	}

@@ -1,7 +1,6 @@
 package viaduct
 
 import (
-	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -17,10 +16,10 @@ type Execute struct {
 	Unless string
 }
 
-func (e *Execute) satisfy() {
+func (e *Execute) satisfy(log *logger) {
 	// Set required values here, and error if they are not set
 	if e.Command == "" {
-		log.Fatal("==> Execute [error] Required parameter: Command")
+		log.Fatal("Required parameter: Command")
 	}
 
 	// Set optional defaults here
@@ -28,15 +27,16 @@ func (e *Execute) satisfy() {
 
 // Run runs the given command
 func (e Execute) Run() *Execute {
-	e.satisfy()
+	log := newLogger("Execute", "run")
+	e.satisfy(log)
 
-	log.Println("==> Execute [run]", e.Command)
+	log.Info(e.Command)
 	if Config.DryRun {
 		return &e
 	}
 
 	if e.Unless != "" {
-		log.Println("==> Execute [run] Unless:", e.Unless)
+		log.Warn("Unless: ", e.Unless)
 
 		unless := strings.Split(e.Unless, " ")
 		// nolint:gosec

@@ -1,7 +1,6 @@
 package viaduct
 
 import (
-	"log"
 	"os"
 	"path/filepath"
 )
@@ -15,10 +14,10 @@ type Link struct {
 
 // satisfy sets default values for the parameters for a particular
 // resource
-func (l *Link) satisfy() {
+func (l *Link) satisfy(log *logger) {
 	// Set required values here, and error if they are not set
 	if l.Path == "" {
-		log.Fatal("==> Link [error] Required parameter: Path")
+		log.Fatal("Required parameter: Path")
 	}
 
 	// Set optional defaults here
@@ -26,14 +25,15 @@ func (l *Link) satisfy() {
 
 // Create creates a new symlink from Source to Path
 func (l Link) Create() *Link {
-	l.satisfy()
+	log := newLogger("Link", "create")
+	l.satisfy(log)
 
 	// We must specify the source if we are performing a link
 	if l.Source == "" {
-		log.Fatal("==> Link [error] Required parameter: Source")
+		log.Fatal("Required parameter: Source")
 	}
 
-	log.Printf("==> Link [create] %s -> %s", l.Path, l.Source)
+	log.Info(l.Path, " -> ", l.Source)
 	if Config.DryRun {
 		return &l
 	}
@@ -76,9 +76,10 @@ func (l Link) Create() *Link {
 
 // Delete deletes the symlink from the Path
 func (l Link) Delete() *Link {
-	l.satisfy()
+	log := newLogger("Link", "delete")
+	l.satisfy(log)
 
-	log.Println("==> Link [delete]", l.Path)
+	log.Info(l.Path)
 	if Config.DryRun {
 		return &l
 	}
