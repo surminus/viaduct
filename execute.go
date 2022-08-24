@@ -50,8 +50,9 @@ func (e Execute) Run() *Execute {
 		if e.Sudo {
 			unless = HelperPrependSudo(unless)
 		}
+
 		// nolint:gosec
-		ucmd := exec.Command(unless[0], unless[1:]...)
+		ucmd := exec.Command("bash", "-c", strings.Join(unless, " "))
 		ucmd.Stdout = os.Stdout
 		ucmd.Stderr = os.Stderr
 
@@ -66,7 +67,7 @@ func (e Execute) Run() *Execute {
 	}
 
 	// nolint:gosec
-	cmd := exec.Command(command[0], command[1:]...)
+	cmd := exec.Command("bash", "-c", strings.Join(command, " "))
 	if !e.Quiet {
 		cmd.Stdout = os.Stdout
 	}
