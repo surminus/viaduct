@@ -9,6 +9,8 @@ import (
 var (
 	Attribute Attributes
 	Config    Configs
+
+	tmpDirPath string
 )
 
 func init() {

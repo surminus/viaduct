@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/user"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -18,6 +19,7 @@ type Attributes struct {
 	Hostname string             `json:"hostname"`
 	Platform PlatformAttributes `json:"platform"`
 	Custom   map[string]string  `json:"custom"`
+	TmpDir   string             `json:"tmp_dir"`
 }
 
 // PlatformAttributes has details about the platform (currently Linux only)
@@ -55,6 +57,26 @@ func InitAttributes(a *Attributes) {
 	if a.OS == "linux" {
 		a.Platform = newPlatformAttributes("/etc/os-release")
 	}
+
+	tmpDirPath = filepath.Join(a.User.HomeDir, ".viaduct", "tmp")
+
+	// Tidy up previous tmp dirs
+	err = os.RemoveAll(tmpDirPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = os.MkdirAll(tmpDirPath, 0o755)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	tmpdir, err := os.MkdirTemp(tmpDirPath, "")
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Create a new temporary dir for each run
+	a.TmpDir = tmpdir
 
 	a.Custom = make(map[string]string)
 }
