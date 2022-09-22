@@ -145,11 +145,16 @@ func (f File) Create() *File {
 
 // Delete deletes a file
 func (f File) Delete() *File {
-	log := newLogger("File", "create")
+	log := newLogger("File", "delete")
 	f.satisfy(log)
 
 	log.Info(f.Path)
 	if Config.DryRun {
+		return &f
+	}
+
+	// If the file does not exist, return early
+	if _, err := os.Stat(HelperExpandPath(f.Path)); err == nil {
 		return &f
 	}
 
