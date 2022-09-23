@@ -118,12 +118,12 @@ func (a Apt) Add() *Apt {
 		}
 
 		command := []string{"cp", tmp.Name(), a.path}
-		if err := a.runCommandWithSudo(command); err != nil {
+		if err := SudoCommand(command); err != nil {
 			log.Fatal(err)
 		}
 
 		command = []string{"chmod", "0644", a.path}
-		if err := a.runCommandWithSudo(command); err != nil {
+		if err := SudoCommand(command); err != nil {
 			log.Fatal(err)
 		}
 	} else {
@@ -147,7 +147,7 @@ func (a Apt) Remove() *Apt {
 	}
 
 	if a.Sudo {
-		if err := a.runCommandWithSudo(
+		if err := SudoCommand(
 			[]string{"test", "-f", a.path, "&&", "rm", "-f", a.path},
 		); err != nil {
 			log.Fatal(err)
@@ -163,13 +163,4 @@ func (a Apt) Remove() *Apt {
 	}
 
 	return &a
-}
-
-func (a Apt) runCommandWithSudo(command []string) error {
-	command = PrependSudo(command)
-
-	cmd := exec.Command("bash", "-c", strings.Join(command, " "))
-	cmd.Stderr = os.Stderr
-
-	return cmd.Run()
 }
