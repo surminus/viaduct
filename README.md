@@ -101,3 +101,12 @@ func main() {
         fmt.Println(v.Attribute.User.HomeDir) // Prints my home directory
 }
 ```
+
+### Sudo support
+
+Some resources allow running commands using `sudo`. Without `sudo`, then
+operations are performed using native Go functions. Enabling `sudo` means that
+instead operations are performed using `exec.Command`.
+
+Since packages may differ between different operating systems, this support
+means it may be unstable, and should be used cautiously.

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/user"
 	"strconv"
+	"strings"
 	"text/template"
 	"time"
 )
@@ -20,6 +21,8 @@ type File struct {
 	Content string
 	// Mode is the permissions set of the file
 	Mode os.FileMode
+	// Sudo performs the action using sudo
+	Sudo bool
 
 	// User sets the user permissions by user name
 	User string
@@ -103,9 +106,28 @@ func (f File) Create() *File {
 
 	path := ExpandPath(f.Path)
 
-	err := ioutil.WriteFile(path, []byte(f.Content), f.Mode)
-	if err != nil {
-		log.Fatal(err)
+	// If we want to run it as sudo, then we create a temporary file, write
+	// the content, and then copy the file into place.
+	if f.Sudo {
+		tmp, err := os.CreateTemp(Attribute.TmpDir, "create-file-*")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer tmp.Close()
+
+		err = os.WriteFile(tmp.Name(), []byte(f.Content), f.Mode)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if err := SudoCommand([]string{"cp", tmp.Name(), path}); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		err := ioutil.WriteFile(path, []byte(f.Content), f.Mode)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	uid := f.UID
@@ -135,9 +157,14 @@ func (f File) Create() *File {
 		}
 	}
 
-	err = os.Chown(path, uid, gid)
-	if err != nil {
-		log.Fatal(err)
+	if f.Sudo {
+		if err := SudoCommand([]string{"chown", strings.Join([]string{strconv.Itoa(uid), strconv.Itoa(gid)}, ":"), path}); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		if err := os.Chown(path, uid, gid); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	return &f
@@ -153,13 +180,25 @@ func (f File) Delete() *File {
 		return &f
 	}
 
-	// If the file does not exist, return early
-	if _, err := os.Stat(ExpandPath(f.Path)); err == nil {
-		return &f
-	}
+	path := ExpandPath(f.Path)
 
-	if err := os.Remove(ExpandPath(f.Path)); err != nil {
-		log.Fatal(err)
+	// If the file does not exist, return early
+	if f.Sudo {
+		if err := SudoCommand([]string{"test", "-f", path}); err != nil {
+			return &f
+		}
+
+		if err := SudoCommand([]string{"rm", "-f", path}); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		if _, err := os.Stat(path); err == nil {
+			return &f
+		}
+
+		if err := os.Remove(path); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	return &f
