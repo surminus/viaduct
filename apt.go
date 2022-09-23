@@ -117,13 +117,11 @@ func (a Apt) Add() *Apt {
 			log.Fatal(err)
 		}
 
-		command := []string{"cp", tmp.Name(), a.path}
-		if err := SudoCommand(command); err != nil {
+		if err := SudoCommand("cp", tmp.Name(), a.path); err != nil {
 			log.Fatal(err)
 		}
 
-		command = []string{"chmod", "0644", a.path}
-		if err := SudoCommand(command); err != nil {
+		if err := SudoCommand("chmod", "0644", a.path); err != nil {
 			log.Fatal(err)
 		}
 	} else {
@@ -147,9 +145,7 @@ func (a Apt) Remove() *Apt {
 	}
 
 	if a.Sudo {
-		if err := SudoCommand(
-			[]string{"test", "-f", a.path, "&&", "rm", "-f", a.path},
-		); err != nil {
+		if err := SudoCommand("test", "-f", a.path, "&&", "rm", "-f", a.path); err != nil {
 			log.Fatal(err)
 		}
 	} else {

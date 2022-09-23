@@ -120,7 +120,7 @@ func (f File) Create() *File {
 			log.Fatal(err)
 		}
 
-		if err := SudoCommand([]string{"cp", tmp.Name(), path}); err != nil {
+		if err := SudoCommand("cp", tmp.Name(), path); err != nil {
 			log.Fatal(err)
 		}
 	} else {
@@ -158,7 +158,7 @@ func (f File) Create() *File {
 	}
 
 	if f.Sudo {
-		if err := SudoCommand([]string{"chown", strings.Join([]string{strconv.Itoa(uid), strconv.Itoa(gid)}, ":"), path}); err != nil {
+		if err := SudoCommand("chown", strings.Join([]string{strconv.Itoa(uid), strconv.Itoa(gid)}, ":"), path); err != nil {
 			log.Fatal(err)
 		}
 	} else {
@@ -184,11 +184,11 @@ func (f File) Delete() *File {
 
 	// If the file does not exist, return early
 	if f.Sudo {
-		if err := SudoCommand([]string{"test", "-f", path}); err != nil {
+		if err := SudoCommand("test", "-f", path); err != nil {
 			return &f
 		}
 
-		if err := SudoCommand([]string{"rm", "-f", path}); err != nil {
+		if err := SudoCommand("rm", "-f", path); err != nil {
 			log.Fatal(err)
 		}
 	} else {
