@@ -40,12 +40,12 @@ func (l Link) Create() *Link {
 
 	// The source should always be the full path, so we will
 	// attempt to expand it
-	source, err := filepath.Abs(HelperExpandPath(l.Source))
+	source, err := filepath.Abs(ExpandPath(l.Source))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	path := HelperExpandPath(l.Path)
+	path := ExpandPath(l.Path)
 
 	// If the file exists and is a symlink, let's check the source is correct
 	if _, err := os.Lstat(path); err == nil {
@@ -84,7 +84,7 @@ func (l Link) Delete() *Link {
 		return &l
 	}
 
-	path := HelperExpandPath(l.Path)
+	path := ExpandPath(l.Path)
 
 	if err := os.Remove(path); err != nil {
 		log.Fatal(err)

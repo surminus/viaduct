@@ -63,9 +63,9 @@ func (d Directory) Create() *Directory {
 		return &d
 	}
 
-	path := HelperExpandPath(d.Path)
+	path := ExpandPath(d.Path)
 
-	err := os.MkdirAll(HelperExpandPath(path), d.Mode)
+	err := os.MkdirAll(ExpandPath(path), d.Mode)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func (d Directory) Delete() *Directory {
 		return &d
 	}
 
-	if err := os.RemoveAll(HelperExpandPath(d.Path)); err != nil {
+	if err := os.RemoveAll(ExpandPath(d.Path)); err != nil {
 		log.Fatal(err)
 	}
 

@@ -62,7 +62,7 @@ func (a *Apt) satisfy(log *logger) {
 func AptUpdate() {
 	command := []string{"apt-get", "update", "-y"}
 	if Attribute.User.Username != "root" {
-		command = HelperPrependSudo(command)
+		command = PrependSudo(command)
 	}
 
 	cmd := exec.Command("bash", "-c", strings.Join(command, " "))
@@ -166,7 +166,7 @@ func (a Apt) Remove() *Apt {
 }
 
 func (a Apt) runCommandWithSudo(command []string) error {
-	command = HelperPrependSudo(command)
+	command = PrependSudo(command)
 
 	cmd := exec.Command("bash", "-c", strings.Join(command, " "))
 	cmd.Stderr = os.Stderr

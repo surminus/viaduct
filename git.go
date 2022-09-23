@@ -55,7 +55,7 @@ func (g Git) Create() *Git {
 	}
 
 	var pathExists bool
-	if _, err := os.Stat(HelperExpandPath(g.Path)); err == nil {
+	if _, err := os.Stat(ExpandPath(g.Path)); err == nil {
 		if !g.Ensure {
 			return &g
 		}
@@ -64,7 +64,7 @@ func (g Git) Create() *Git {
 	}
 
 	if pathExists {
-		r, err := git.PlainOpen(HelperExpandPath(g.Path))
+		r, err := git.PlainOpen(ExpandPath(g.Path))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -89,7 +89,7 @@ func (g Git) Create() *Git {
 
 	if !pathExists {
 		// nolint:exhaustivestruct
-		_, err := git.PlainClone(HelperExpandPath(g.Path), false, &git.CloneOptions{
+		_, err := git.PlainClone(ExpandPath(g.Path), false, &git.CloneOptions{
 			Progress:      os.Stdout,
 			ReferenceName: plumbing.ReferenceName(g.Reference),
 			RemoteName:    "origin",
@@ -113,7 +113,7 @@ func (g Git) Delete() *Git {
 		return &g
 	}
 
-	if err := os.RemoveAll(HelperExpandPath(g.Path)); err != nil {
+	if err := os.RemoveAll(ExpandPath(g.Path)); err != nil {
 		log.Fatal(err)
 	}
 

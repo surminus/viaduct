@@ -48,7 +48,7 @@ func (e Execute) Run() *Execute {
 
 		unless := strings.Split(e.Unless, " ")
 		if e.Sudo {
-			unless = HelperPrependSudo(unless)
+			unless = PrependSudo(unless)
 		}
 
 		// nolint:gosec
@@ -63,7 +63,7 @@ func (e Execute) Run() *Execute {
 
 	command := strings.Split(e.Command, " ")
 	if e.Sudo {
-		command = HelperPrependSudo(command)
+		command = PrependSudo(command)
 	}
 
 	// nolint:gosec

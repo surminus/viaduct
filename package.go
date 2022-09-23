@@ -113,7 +113,7 @@ func aptGetCmd(command string, packages []string, sudo, verbose bool) {
 	args := []string{"apt-get", command, "-y"}
 
 	if sudo {
-		args = HelperPrependSudo(args)
+		args = PrependSudo(args)
 	}
 	args = append(args, packages...)
 
@@ -126,7 +126,7 @@ func dnfCmd(command string, packages []string, sudo, verbose bool) {
 	args := []string{"dnf", command, "-y"}
 
 	if sudo {
-		args = HelperPrependSudo(args)
+		args = PrependSudo(args)
 	}
 	args = append(args, packages...)
 
@@ -143,7 +143,7 @@ func pacmanCmd(command string, packages []string, sudo, verbose bool) {
 	}
 
 	if sudo {
-		args = HelperPrependSudo(args)
+		args = PrependSudo(args)
 	}
 	args = append(args, packages...)
 

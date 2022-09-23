@@ -6,8 +6,8 @@ import (
 	homedir "github.com/mitchellh/go-homedir"
 )
 
-// HelperExpandPath ensures that "~" are expanded
-func HelperExpandPath(path string) string {
+// ExpandPath ensures that "~" are expanded.
+func ExpandPath(path string) string {
 	p, err := homedir.Expand(path)
 	if err != nil {
 		log.Fatal(err)
@@ -16,6 +16,7 @@ func HelperExpandPath(path string) string {
 	return p
 }
 
-func HelperPrependSudo(args []string) []string {
+// PrependSudo takes a slice of args and simply prepends sudo to the front.
+func PrependSudo(args []string) []string {
 	return append([]string{"sudo"}, args...)
 }

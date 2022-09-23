@@ -101,7 +101,7 @@ func (f File) Create() *File {
 		return &f
 	}
 
-	path := HelperExpandPath(f.Path)
+	path := ExpandPath(f.Path)
 
 	err := ioutil.WriteFile(path, []byte(f.Content), f.Mode)
 	if err != nil {
@@ -154,11 +154,11 @@ func (f File) Delete() *File {
 	}
 
 	// If the file does not exist, return early
-	if _, err := os.Stat(HelperExpandPath(f.Path)); err == nil {
+	if _, err := os.Stat(ExpandPath(f.Path)); err == nil {
 		return &f
 	}
 
-	if err := os.Remove(HelperExpandPath(f.Path)); err != nil {
+	if err := os.Remove(ExpandPath(f.Path)); err != nil {
 		log.Fatal(err)
 	}
 
