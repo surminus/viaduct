@@ -38,3 +38,8 @@ func RunCommand(command ...string) error {
 func SudoCommand(command ...string) error {
 	return RunCommand(PrependSudo(command)...)
 }
+
+// IsUbuntu returns true if the distribution is Ubuntu
+func IsUbuntu() bool {
+	return strings.Contains(Attribute.Platform.IDLike, "ubuntu")
+}
