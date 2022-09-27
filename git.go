@@ -55,7 +55,7 @@ func (g Git) Create() *Git {
 	}
 
 	var pathExists bool
-	if _, err := os.Stat(ExpandPath(g.Path)); err == nil {
+	if FileExists(ExpandPath(g.Path)) {
 		if !g.Ensure {
 			return &g
 		}

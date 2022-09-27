@@ -192,7 +192,7 @@ func (f File) Delete() *File {
 			log.Fatal(err)
 		}
 	} else {
-		if _, err := os.Stat(path); err == nil {
+		if !FileExists(path) {
 			return &f
 		}
 

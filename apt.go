@@ -149,7 +149,7 @@ func (a Apt) Remove() *Apt {
 			log.Fatal(err)
 		}
 	} else {
-		if _, err := os.Stat(a.path); err != nil {
+		if !FileExists(a.path) {
 			return &a
 		}
 

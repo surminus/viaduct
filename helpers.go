@@ -43,3 +43,12 @@ func SudoCommand(command ...string) error {
 func IsUbuntu() bool {
 	return strings.Contains(Attribute.Platform.IDLike, "ubuntu")
 }
+
+// FileExists returns true if the file exists
+func FileExists(path string) bool {
+	if _, err := os.Stat(path); err == nil {
+		return true
+	}
+
+	return false
+}
