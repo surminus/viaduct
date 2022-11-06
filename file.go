@@ -175,8 +175,8 @@ func (f File) Delete() *File {
 	log := newLogger("File", "delete")
 	f.satisfy(log)
 
-	log.Info(f.Path)
 	if Config.DryRun {
+		log.Info(f.Path)
 		return &f
 	}
 
@@ -185,6 +185,7 @@ func (f File) Delete() *File {
 	// If the file does not exist, return early
 	if f.Sudo {
 		if err := SudoCommand("test", "-f", path); err != nil {
+			log.Noop(f.Path)
 			return &f
 		}
 
@@ -193,6 +194,7 @@ func (f File) Delete() *File {
 		}
 	} else {
 		if !FileExists(path) {
+			log.Noop(f.Path)
 			return &f
 		}
 
@@ -200,6 +202,8 @@ func (f File) Delete() *File {
 			log.Fatal(err)
 		}
 	}
+
+	log.Info(f.Path)
 
 	return &f
 }

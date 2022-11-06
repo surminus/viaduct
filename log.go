@@ -23,21 +23,26 @@ func newLogger(resource, action string) *logger {
 }
 
 func (l *logger) Fatal(v ...interface{}) {
-	log.Fatalln(loggerOutput(red(l.Resource), red(l.Action), v...))
+	log.Fatalln(loggerOutput(fatal(l.Resource), fatal(l.Action), v...))
 }
 
 func (l *logger) Info(v ...interface{}) {
-	log.Println(loggerOutput(green(l.Resource), green(l.Action), v...))
+	log.Println(loggerOutput(info(l.Resource), info(l.Action), v...))
 }
 
 func (l *logger) Warn(v ...interface{}) {
-	log.Println(loggerOutput(yellow(l.Resource), yellow(l.Action), v...))
+	log.Println(loggerOutput(warn(l.Resource), warn(l.Action), v...))
+}
+
+func (l *logger) Noop(v ...interface{}) {
+	log.Println(loggerOutput(noop(l.Resource), noop(fmt.Sprintf("%s (%s)", l.Action, "skipped")), v...))
 }
 
 func loggerOutput(resource, action string, v ...interface{}) string {
 	return fmt.Sprintf("==> %s [%s] %s", resource, action, fmt.Sprint(v...))
 }
 
-var green = color.New(color.FgGreen).SprintFunc()
-var red = color.New(color.FgRed).SprintFunc()
-var yellow = color.New(color.FgYellow).SprintFunc()
+var fatal = color.New(color.FgRed).SprintFunc()
+var info = color.New(color.FgGreen).SprintFunc()
+var noop = color.New(color.FgBlue, color.Faint).SprintFunc()
+var warn = color.New(color.FgYellow).SprintFunc()

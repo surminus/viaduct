@@ -33,8 +33,8 @@ func (l Link) Create() *Link {
 		log.Fatal("Required parameter: Source")
 	}
 
-	log.Info(l.Path, " -> ", l.Source)
 	if Config.DryRun {
+		log.Info(l.Path, " -> ", l.Source)
 		return &l
 	}
 
@@ -61,6 +61,7 @@ func (l Link) Create() *Link {
 			}
 		} else {
 			// Otherwise everything is as we want it, so return
+			log.Noop(l.Path, " -> ", l.Source)
 			return &l
 		}
 	}
@@ -71,6 +72,8 @@ func (l Link) Create() *Link {
 		log.Fatal(err)
 	}
 
+	log.Info(l.Path, " -> ", l.Source)
+
 	return &l
 }
 
@@ -79,16 +82,23 @@ func (l Link) Delete() *Link {
 	log := newLogger("Link", "delete")
 	l.satisfy(log)
 
-	log.Info(l.Path)
 	if Config.DryRun {
+		log.Info(l.Path)
 		return &l
 	}
 
 	path := ExpandPath(l.Path)
 
+	if !FileExists(path) {
+		log.Noop(l.Path)
+		return &l
+	}
+
 	if err := os.Remove(path); err != nil {
 		log.Fatal(err)
 	}
+
+	log.Info(l.Path)
 
 	return &l
 }

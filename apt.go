@@ -139,8 +139,8 @@ func (a Apt) Remove() *Apt {
 	log := newLogger("Apt", "remove")
 	a.satisfy(log)
 
-	log.Info(a.Name)
 	if Config.DryRun {
+		log.Info(a.Name)
 		return &a
 	}
 
@@ -150,6 +150,7 @@ func (a Apt) Remove() *Apt {
 		}
 	} else {
 		if !FileExists(a.path) {
+			log.Noop(a.Name)
 			return &a
 		}
 
@@ -157,6 +158,8 @@ func (a Apt) Remove() *Apt {
 			log.Fatal(err)
 		}
 	}
+
+	log.Info(a.Name)
 
 	return &a
 }
