@@ -3,6 +3,7 @@ package viaduct
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"os/user"
@@ -36,6 +37,18 @@ type PlatformAttributes struct {
 	PrivacyPolicyURL string `json:"privacyPolicyUrl"`
 	VersionCodename  string `json:"versionCodename"`
 	UbuntuCodename   string `json:"ubuntuCodename"`
+}
+
+// SetUser allows us to assign a default username
+func (a *Attributes) SetUser(username string) {
+	newLogger("Attribute", "set").Info(fmt.Sprintf("User -> %s", username))
+
+	u, err := user.Lookup(username)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	a.User = *u
 }
 
 // InitAttributes populates the attributes

@@ -2,7 +2,6 @@ package viaduct
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -62,7 +61,13 @@ func (a *Apt) satisfy(log *logger) {
 // AptUpdate is a helper function to perform "apt-get update" and will
 // automatically run using sudo if the user is not root
 func AptUpdate() {
-	newLogger("Apt", "update").Info()
+	log := newLogger("Apt", "update")
+
+	if Attribute.User.Username != "root" {
+		log.Fatal("Must be run as root")
+	}
+
+	log.Info()
 
 	command := []string{"apt-get", "update", "-y"}
 

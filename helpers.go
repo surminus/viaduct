@@ -5,31 +5,32 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"os/user"
+	"path/filepath"
 	"strings"
 	"syscall"
-
-	homedir "github.com/mitchellh/go-homedir"
 )
 
 // ExpandPath ensures that "~" are expanded.
 func ExpandPath(path string) string {
-	p, err := homedir.Expand(path)
+	if strings.HasPrefix(path, "~") {
+		if p, err := filepath.Abs(strings.Replace(path, "~", Attribute.User.HomeDir, 1)); err == nil {
+			return p
+		} else {
+			log.Fatal(err)
+		}
+	}
+
+	return path
+}
+
+// ExpandPathRoot is like ExpandPath, but ignores the user attribute
+func ExpandPathRoot(path string) string {
+	p, err := filepath.Abs(path)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	return p
-}
-
-// SetDefaultUser allows us to assign a default username
-func SetDefaultUser(username string) {
-	u, err := user.Lookup(username)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	Attribute.User = *u
 }
 
 // PrependSudo takes a slice of args and simply prepends sudo to the front.

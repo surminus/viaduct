@@ -79,8 +79,21 @@ func (g Git) Create() *Git {
 			log.Fatal(err)
 		}
 
+		// auth, err := ssh.NewPublicKeysFromFile(Attribute.User.Username, ExpandPath("~/.ssh/id_rsa"), "")
+		// if err != nil {
+		// 	log.Fatal(err)
+		// }
+
+		// if Attribute.User.Username != "root" {
+		// 	err = os.Setenv("SSH_KNOWN_HOSTS", ExpandPath("~/.ssh/known_hosts"))
+		// 	if err != nil {
+		// 		log.Fatal(err)
+		// 	}
+		// }
+
 		// nolint:exhaustivestruct
 		err = w.Pull(&git.PullOptions{
+			// Auth:          auth,
 			RemoteName:    "origin",
 			Progress:      os.Stdout,
 			ReferenceName: plumbing.ReferenceName(g.Reference),
