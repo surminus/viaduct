@@ -39,7 +39,6 @@ func (e Execute) Run() *Execute {
 	e.satisfy(log)
 
 	if e.Unless != "" {
-		unlessLog := newLogger("Execute", "unless")
 		unless := strings.Split(e.Unless, " ")
 		if e.Sudo {
 			unless = PrependSudo(unless)
@@ -51,12 +50,9 @@ func (e Execute) Run() *Execute {
 		ucmd.Stderr = os.Stderr
 
 		if err := ucmd.Run(); err == nil {
-			unlessLog.Info(e.Unless)
 			log.Noop(e.Command)
 			return &e
 		}
-
-		unlessLog.Warn(e.Unless)
 	}
 
 	log.Info(e.Command)

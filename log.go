@@ -35,7 +35,7 @@ func (l *logger) Warn(v ...interface{}) {
 }
 
 func (l *logger) Noop(v ...interface{}) {
-	log.Println(loggerOutput(noop(l.Resource), noop(fmt.Sprintf("%s (%s)", l.Action, "skipped")), v...))
+	log.Println(loggerOutput(noop(l.Resource), noop(fmt.Sprintf("%s (%s)", l.Action, "up-to-date")), v...))
 }
 
 func loggerOutput(resource, action string, v ...interface{}) string {
