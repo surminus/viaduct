@@ -1,6 +1,7 @@
 package viaduct
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -33,11 +34,6 @@ func (l Link) Create() *Link {
 		log.Fatal("Required parameter: Source")
 	}
 
-	if Config.DryRun {
-		log.Info(l.Path, " -> ", l.Source)
-		return &l
-	}
-
 	// The source should always be the full path, so we will
 	// attempt to expand it
 	source, err := filepath.Abs(ExpandPath(l.Source))
@@ -46,6 +42,12 @@ func (l Link) Create() *Link {
 	}
 
 	path := ExpandPath(l.Path)
+	logmsg := fmt.Sprintf("%s -> %s", source, path)
+
+	if Config.DryRun {
+		log.Info(logmsg)
+		return &l
+	}
 
 	// If the file exists and is a symlink, let's check the source is correct
 	if _, err := os.Lstat(path); err == nil {
@@ -55,24 +57,22 @@ func (l Link) Create() *Link {
 		}
 
 		// If the source is not correct, let's delete the symlink
-		if src != l.Source {
+		if src != source {
 			if err := os.Remove(path); err != nil {
 				log.Fatal(err)
 			}
 		} else {
 			// Otherwise everything is as we want it, so return
-			log.Noop(l.Path, " -> ", l.Source)
+			log.Noop(logmsg)
 			return &l
 		}
 	}
 
-	// Perform the link. This will error if the file exists, and we'll
-	// leave the safe behaviour in
 	if err := os.Symlink(source, path); err != nil {
 		log.Fatal(err)
 	}
 
-	log.Info(l.Path, " -> ", l.Source)
+	log.Info(logmsg)
 
 	return &l
 }
@@ -82,15 +82,15 @@ func (l Link) Delete() *Link {
 	log := newLogger("Link", "delete")
 	l.satisfy(log)
 
+	path := ExpandPath(l.Path)
+
 	if Config.DryRun {
-		log.Info(l.Path)
+		log.Info(path)
 		return &l
 	}
 
-	path := ExpandPath(l.Path)
-
 	if !FileExists(path) {
-		log.Noop(l.Path)
+		log.Noop(path)
 		return &l
 	}
 
@@ -98,7 +98,7 @@ func (l Link) Delete() *Link {
 		log.Fatal(err)
 	}
 
-	log.Info(l.Path)
+	log.Info(path)
 
 	return &l
 }
