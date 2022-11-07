@@ -113,7 +113,7 @@ user and group.
 
 Alternatively, you can set a default user attribute:
 ```
-v.SetDefaultUser("laura")
+v.Attribute.SetUser("laura")
 ```
 
 For resources that you wish to run as `root`, you can set the `Root` option:
