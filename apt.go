@@ -60,6 +60,8 @@ func (a *Apt) satisfy(log *logger) {
 // AptUpdate is a helper function to perform "apt-get update" and will
 // automatically run using sudo if the user is not root
 func AptUpdate() {
+	newLogger("Apt", "update").Info()
+
 	command := []string{"apt-get", "update", "-y"}
 	if Attribute.User.Username != "root" {
 		command = PrependSudo(command)
@@ -78,8 +80,8 @@ func (a Apt) Add() *Apt {
 	log := newLogger("Apt", "add")
 	a.satisfy(log)
 
-	log.Info(a.Name)
 	if Config.DryRun {
+		log.Info(a.Name)
 		return &a
 	}
 
@@ -103,6 +105,17 @@ func (a Apt) Add() *Apt {
 		a.Source,
 		"\n",
 	}...)
+
+	if FileExists(a.path) {
+		if con, err := os.ReadFile(a.path); err == nil {
+			if string(con) == strings.Join(content, " ") {
+				log.Noop(a.Name)
+				return &a
+			}
+		} else {
+			log.Fatal(err)
+		}
+	}
 
 	if a.Sudo {
 		// If we need sudo, create a temporary file, and then copy it using
@@ -130,6 +143,8 @@ func (a Apt) Add() *Apt {
 			log.Fatal(err)
 		}
 	}
+
+	log.Info(a.Name)
 
 	return &a
 }
