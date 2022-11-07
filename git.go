@@ -69,7 +69,7 @@ func (g Git) Create() *Git {
 	}
 
 	if pathExists {
-		r, err := git.PlainOpen(ExpandPath(g.Path))
+		r, err := git.PlainOpen(path)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -79,8 +79,21 @@ func (g Git) Create() *Git {
 			log.Fatal(err)
 		}
 
+		// auth, err := ssh.NewPublicKeysFromFile(Attribute.User.Username, ExpandPath("~/.ssh/id_rsa"), "")
+		// if err != nil {
+		// 	log.Fatal(err)
+		// }
+
+		if Attribute.User.Username != "root" {
+			err = os.Setenv("SSH_KNOWN_HOSTS", ExpandPath("~/.ssh/known_hosts"))
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+
 		// nolint:exhaustivestruct
 		err = w.Pull(&git.PullOptions{
+			// Auth:          auth,
 			RemoteName:    "origin",
 			Progress:      os.Stdout,
 			ReferenceName: plumbing.ReferenceName(g.Reference),
@@ -98,7 +111,7 @@ func (g Git) Create() *Git {
 
 	if !pathExists {
 		// nolint:exhaustivestruct
-		_, err := git.PlainClone(ExpandPath(g.Path), false, &git.CloneOptions{
+		_, err := git.PlainClone(path, false, &git.CloneOptions{
 			Progress:      os.Stdout,
 			ReferenceName: plumbing.ReferenceName(g.Reference),
 			RemoteName:    "origin",
@@ -127,7 +140,7 @@ func (g Git) Delete() *Git {
 	}
 
 	if DirExists(path) {
-		if err := os.RemoveAll(ExpandPath(g.Path)); err != nil {
+		if err := os.RemoveAll(path); err != nil {
 			log.Fatal(err)
 		}
 

@@ -104,9 +104,22 @@ func main() {
 
 ### Sudo support
 
-Some resources allow running commands using `sudo`. Without `sudo`, then
-operations are performed using native Go functions. Enabling `sudo` means that
-instead operations are performed using `exec.Command`.
+If you require to perform actions that require sudo access, such as using the
+`Package` resource, or creating files using `File`, then you should run the
+executible using `sudo`.
 
-Since packages may differ between different operating systems, this support
-means it may be unstable, and should be used cautiously.
+Otherwise, assigning permissions should be achieved by explicitly setting the
+user and group.
+
+Alternatively, you can set a default user attribute:
+```
+v.SetDefaultUser("laura")
+```
+
+For resources that you wish to run as `root`, you can set the `Root` option:
+```
+v.File{
+    Path: "foo",
+    Root: true,
+}
+```

@@ -3,6 +3,7 @@ package viaduct
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"os/user"
@@ -20,6 +21,10 @@ type Attributes struct {
 	Platform PlatformAttributes `json:"platform"`
 	Custom   map[string]string  `json:"custom"`
 	TmpDir   string             `json:"tmp_dir"`
+
+	// runuser specifies the user that it's run as, rather
+	// than the set user attribute, which can be modified
+	runuser user.User
 }
 
 // PlatformAttributes has details about the platform (currently Linux only)
@@ -38,6 +43,18 @@ type PlatformAttributes struct {
 	UbuntuCodename   string `json:"ubuntuCodename"`
 }
 
+// SetUser allows us to assign a default username
+func (a *Attributes) SetUser(username string) {
+	newLogger("Attribute", "set").Info(fmt.Sprintf("User -> %s", username))
+
+	u, err := user.Lookup(username)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	a.User = *u
+}
+
 // InitAttributes populates the attributes
 func InitAttributes(a *Attributes) {
 	user, err := user.Current()
@@ -48,6 +65,8 @@ func InitAttributes(a *Attributes) {
 	a.User = *user
 	a.OS = runtime.GOOS
 	a.Arch = runtime.GOARCH
+
+	a.runuser = *user
 
 	a.Hostname, err = os.Hostname()
 	if err != nil {

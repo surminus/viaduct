@@ -5,15 +5,27 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
-
-	homedir "github.com/mitchellh/go-homedir"
 )
 
 // ExpandPath ensures that "~" are expanded.
 func ExpandPath(path string) string {
-	p, err := homedir.Expand(path)
+	if strings.HasPrefix(path, "~") {
+		if p, err := filepath.Abs(strings.Replace(path, "~", Attribute.User.HomeDir, 1)); err == nil {
+			path = p
+		} else {
+			log.Fatal(err)
+		}
+	}
+
+	return path
+}
+
+// ExpandPathRoot is like ExpandPath, but ignores the user attribute
+func ExpandPathRoot(path string) string {
+	p, err := filepath.Abs(path)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -97,4 +109,8 @@ func MatchChown(path string, user, group int) bool {
 	}
 
 	return false
+}
+
+func isRoot() bool {
+	return Attribute.runuser.Username == "root"
 }
