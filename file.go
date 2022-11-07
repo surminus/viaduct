@@ -178,8 +178,8 @@ func (f File) Create() *File {
 	}
 
 	permlog := newLogger("File", "permissions")
-	chmodmsg := fmt.Sprintf("%s => %s", path, f.Mode)
-	chownmsg := fmt.Sprintf("%s => %d:%d", path, uid, gid)
+	chmodmsg := fmt.Sprintf("%s -> %s", path, f.Mode)
+	chownmsg := fmt.Sprintf("%s -> %d:%d", path, uid, gid)
 
 	if MatchChown(path, uid, gid) {
 		permlog.Noop(chownmsg)

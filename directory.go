@@ -107,8 +107,8 @@ func (d Directory) Create() *Directory {
 	}
 
 	permlog := newLogger("Directory", "permissions")
-	chmodmsg := fmt.Sprintf("%s => %s", path, d.Mode)
-	chownmsg := fmt.Sprintf("%s => %d:%d", path, uid, gid)
+	chmodmsg := fmt.Sprintf("%s -> %s", path, d.Mode)
+	chownmsg := fmt.Sprintf("%s -> %d:%d", path, uid, gid)
 
 	if MatchChmod(path, d.Mode) {
 		permlog.Noop(chmodmsg)

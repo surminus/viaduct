@@ -51,7 +51,7 @@ func (g Git) Create() *Git {
 	g.satisfy(log)
 
 	path := ExpandPath(g.Path)
-	logmsg := fmt.Sprintf("%s => %s", g.URL, path)
+	logmsg := fmt.Sprintf("%s -> %s", g.URL, path)
 
 	if Config.DryRun {
 		log.Info(logmsg)
