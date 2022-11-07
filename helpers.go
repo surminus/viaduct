@@ -1,10 +1,12 @@
 package viaduct
 
 import (
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 
 	homedir "github.com/mitchellh/go-homedir"
 )
@@ -48,6 +50,50 @@ func IsUbuntu() bool {
 func FileExists(path string) bool {
 	if _, err := os.Stat(path); err == nil {
 		return true
+	}
+
+	return false
+}
+
+// DirExists returns true if the file exists, and is a directory
+func DirExists(path string) bool {
+	if info, err := os.Stat(path); err == nil {
+		if info.IsDir() {
+			return true
+		}
+	}
+
+	return false
+}
+
+// MatchChmod returns true if the permissions of the path match
+func MatchChmod(path string, perms fs.FileMode) bool {
+	if info, err := os.Stat(path); err == nil {
+		if info.Mode() == perms {
+			return true
+		}
+
+		log.Print(info.Mode().String())
+	} else {
+		log.Fatal(err)
+	}
+
+	return false
+}
+
+// MatchChown returns true if the path is owned by the specified user and group
+func MatchChown(path string, user, group int) bool {
+	if info, err := os.Stat(path); err == nil {
+		stat := info.Sys().(*syscall.Stat_t)
+
+		uid := stat.Uid
+		gid := stat.Gid
+
+		if user == int(uid) && group == int(gid) {
+			return true
+		}
+	} else {
+		log.Fatal(err)
 	}
 
 	return false

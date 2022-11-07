@@ -1,6 +1,7 @@
 package viaduct
 
 import (
+	"fmt"
 	"os"
 	"os/user"
 	"strconv"
@@ -33,7 +34,10 @@ func (d *Directory) satisfy(log *logger) {
 
 	// Set optional defaults here
 	if d.Mode == 0 {
-		d.Mode = 0o755
+		d.Mode = os.ModeDir | 0755
+	} else {
+		// Explicity set modedir to avoid diffs
+		d.Mode = os.ModeDir | d.Mode
 	}
 
 	if d.User == "" && d.UID == 0 {
@@ -58,16 +62,21 @@ func (d Directory) Create() *Directory {
 	log := newLogger("Directory", "create")
 	d.satisfy(log)
 
-	log.Info(d.Path)
+	path := ExpandPath(d.Path)
+
 	if Config.DryRun {
+		log.Info(d.Path)
 		return &d
 	}
 
-	path := ExpandPath(d.Path)
+	if !DirExists(path) {
+		if err := os.MkdirAll(ExpandPath(path), d.Mode); err != nil {
+			log.Fatal(err)
+		}
 
-	err := os.MkdirAll(ExpandPath(path), d.Mode)
-	if err != nil {
-		log.Fatal(err)
+		log.Info(d.Path)
+	} else {
+		log.Noop(d.Path)
 	}
 
 	uid := d.UID
@@ -97,9 +106,30 @@ func (d Directory) Create() *Directory {
 		}
 	}
 
-	err = os.Chown(path, uid, gid)
-	if err != nil {
-		log.Fatal(err)
+	permlog := newLogger("Directory", "permissions")
+	chmodmsg := fmt.Sprintf("%s => %s", path, d.Mode)
+	chownmsg := fmt.Sprintf("%s => %d:%d", path, uid, gid)
+
+	if MatchChmod(path, d.Mode) {
+		permlog.Noop(chmodmsg)
+	} else {
+		err := os.Chmod(path, d.Mode)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		permlog.Info(chmodmsg)
+	}
+
+	if MatchChown(path, uid, gid) {
+		permlog.Noop(chownmsg)
+	} else {
+		err := os.Chown(path, uid, gid)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		permlog.Info(chownmsg)
 	}
 
 	return &d
@@ -110,14 +140,20 @@ func (d Directory) Delete() *Directory {
 	log := newLogger("Directory", "delete")
 	d.satisfy(log)
 
-	log.Info(d.Path)
-
 	if Config.DryRun {
+		log.Info(d.Path)
 		return &d
 	}
 
-	if err := os.RemoveAll(ExpandPath(d.Path)); err != nil {
-		log.Fatal(err)
+	path := ExpandPath(d.Path)
+
+	if DirExists(path) {
+		if err := os.RemoveAll(ExpandPath(d.Path)); err != nil {
+			log.Fatal(err)
+		}
+		log.Info(d.Path)
+	} else {
+		log.Noop(d.Path)
 	}
 
 	return &d
