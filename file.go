@@ -3,6 +3,7 @@ package viaduct
 import (
 	"bytes"
 	"embed"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -99,35 +100,54 @@ func (f File) Create() *File {
 	log := newLogger("File", "create")
 	f.satisfy(log)
 
-	log.Info(f.Path)
 	if Config.DryRun {
+		log.Info(f.Path)
 		return &f
 	}
 
 	path := ExpandPath(f.Path)
 
-	// If we want to run it as sudo, then we create a temporary file, write
-	// the content, and then copy the file into place.
-	if f.Sudo {
-		tmp, err := os.CreateTemp(Attribute.TmpDir, "create-file-*")
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer tmp.Close()
-
-		err = os.WriteFile(tmp.Name(), []byte(f.Content), f.Mode)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		if err := SudoCommand("cp", tmp.Name(), path); err != nil {
+	var shouldWriteFile bool
+	if FileExists(path) {
+		if content, err := os.ReadFile(path); err == nil {
+			if string(content) != f.Content {
+				shouldWriteFile = true
+			}
+		} else {
 			log.Fatal(err)
 		}
 	} else {
-		err := ioutil.WriteFile(path, []byte(f.Content), f.Mode)
-		if err != nil {
-			log.Fatal(err)
+		shouldWriteFile = true
+	}
+
+	// If we want to run it as sudo, then we create a temporary file, write
+	// the content, and then copy the file into place.
+	if shouldWriteFile {
+		if f.Sudo {
+			tmp, err := os.CreateTemp(Attribute.TmpDir, "create-file-*")
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer tmp.Close()
+
+			err = os.WriteFile(tmp.Name(), []byte(f.Content), f.Mode)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			if err := SudoCommand("cp", tmp.Name(), path); err != nil {
+				log.Fatal(err)
+			}
+			log.Info(path)
+		} else {
+			err := ioutil.WriteFile(path, []byte(f.Content), f.Mode)
+			if err != nil {
+				log.Fatal(err)
+			}
+			log.Info(path)
 		}
+	} else {
+		log.Noop(path)
 	}
 
 	uid := f.UID
@@ -157,13 +177,39 @@ func (f File) Create() *File {
 		}
 	}
 
-	if f.Sudo {
-		if err := SudoCommand("chown", strings.Join([]string{strconv.Itoa(uid), strconv.Itoa(gid)}, ":"), path); err != nil {
-			log.Fatal(err)
-		}
+	permlog := newLogger("File", "permissions")
+	chmodmsg := fmt.Sprintf("%s => %s", path, f.Mode)
+	chownmsg := fmt.Sprintf("%s => %d:%d", path, uid, gid)
+
+	if MatchChown(path, uid, gid) {
+		permlog.Noop(chownmsg)
 	} else {
-		if err := os.Chown(path, uid, gid); err != nil {
-			log.Fatal(err)
+		if f.Sudo {
+			if err := SudoCommand("chown", strings.Join([]string{strconv.Itoa(uid), strconv.Itoa(gid)}, ":"), path); err != nil {
+				log.Fatal(err)
+			}
+			permlog.Info(chownmsg)
+		} else {
+			if err := os.Chown(path, uid, gid); err != nil {
+				log.Fatal(err)
+			}
+			permlog.Info(chownmsg)
+		}
+	}
+
+	if MatchChmod(path, f.Mode) {
+		permlog.Noop(chmodmsg)
+	} else {
+		if f.Sudo {
+			if err := SudoCommand("chmod", f.Mode.String(), path); err != nil {
+				log.Fatal(err)
+			}
+			permlog.Info(chownmsg)
+		} else {
+			if err := os.Chown(path, uid, gid); err != nil {
+				log.Fatal(err)
+			}
+			permlog.Info(chownmsg)
 		}
 	}
 
