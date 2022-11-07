@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/user"
 	"strconv"
-	"strings"
 	"text/template"
 	"time"
 )
@@ -22,8 +21,8 @@ type File struct {
 	Content string
 	// Mode is the permissions set of the file
 	Mode os.FileMode
-	// Sudo performs the action using sudo
-	Sudo bool
+	// Root enforces using the root user
+	Root bool
 
 	// User sets the user permissions by user name
 	User string
@@ -48,7 +47,7 @@ func (f *File) satisfy(log *logger) {
 		f.Mode = 0o644
 	}
 
-	if f.User == "" && f.UID == 0 {
+	if f.User == "" && f.UID == 0 && !f.Root {
 		if uid, err := strconv.Atoi(Attribute.User.Uid); err != nil {
 			log.Fatal(err)
 		} else {
@@ -56,7 +55,7 @@ func (f *File) satisfy(log *logger) {
 		}
 	}
 
-	if f.Group == "" && f.GID == 0 {
+	if f.Group == "" && f.GID == 0 && !f.Root {
 		if gid, err := strconv.Atoi(Attribute.User.Gid); err != nil {
 			log.Fatal(err)
 		} else {
@@ -123,29 +122,11 @@ func (f File) Create() *File {
 	// If we want to run it as sudo, then we create a temporary file, write
 	// the content, and then copy the file into place.
 	if shouldWriteFile {
-		if f.Sudo {
-			tmp, err := os.CreateTemp(Attribute.TmpDir, "create-file-*")
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer tmp.Close()
-
-			err = os.WriteFile(tmp.Name(), []byte(f.Content), f.Mode)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			if err := SudoCommand("cp", tmp.Name(), path); err != nil {
-				log.Fatal(err)
-			}
-			log.Info(path)
-		} else {
-			err := ioutil.WriteFile(path, []byte(f.Content), f.Mode)
-			if err != nil {
-				log.Fatal(err)
-			}
-			log.Info(path)
+		err := ioutil.WriteFile(path, []byte(f.Content), f.Mode)
+		if err != nil {
+			log.Fatal(err)
 		}
+		log.Info(path)
 	} else {
 		log.Noop(path)
 	}
@@ -184,33 +165,19 @@ func (f File) Create() *File {
 	if MatchChown(path, uid, gid) {
 		permlog.Noop(chownmsg)
 	} else {
-		if f.Sudo {
-			if err := SudoCommand("chown", strings.Join([]string{strconv.Itoa(uid), strconv.Itoa(gid)}, ":"), path); err != nil {
-				log.Fatal(err)
-			}
-			permlog.Info(chownmsg)
-		} else {
-			if err := os.Chown(path, uid, gid); err != nil {
-				log.Fatal(err)
-			}
-			permlog.Info(chownmsg)
+		if err := os.Chown(path, uid, gid); err != nil {
+			log.Fatal(err)
 		}
+		permlog.Info(chownmsg)
 	}
 
 	if MatchChmod(path, f.Mode) {
 		permlog.Noop(chmodmsg)
 	} else {
-		if f.Sudo {
-			if err := SudoCommand("chmod", f.Mode.String(), path); err != nil {
-				log.Fatal(err)
-			}
-			permlog.Info(chownmsg)
-		} else {
-			if err := os.Chown(path, uid, gid); err != nil {
-				log.Fatal(err)
-			}
-			permlog.Info(chownmsg)
+		if err := os.Chown(path, uid, gid); err != nil {
+			log.Fatal(err)
 		}
+		permlog.Info(chownmsg)
 	}
 
 	return &f
@@ -229,24 +196,13 @@ func (f File) Delete() *File {
 	path := ExpandPath(f.Path)
 
 	// If the file does not exist, return early
-	if f.Sudo {
-		if err := SudoCommand("test", "-f", path); err != nil {
-			log.Noop(f.Path)
-			return &f
-		}
+	if !FileExists(path) {
+		log.Noop(f.Path)
+		return &f
+	}
 
-		if err := SudoCommand("rm", "-f", path); err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		if !FileExists(path) {
-			log.Noop(f.Path)
-			return &f
-		}
-
-		if err := os.Remove(path); err != nil {
-			log.Fatal(err)
-		}
+	if err := os.Remove(path); err != nil {
+		log.Fatal(err)
 	}
 
 	log.Info(f.Path)

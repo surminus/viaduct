@@ -22,6 +22,8 @@ type Directory struct {
 	UID int
 	// GID sets the group permissions by GID
 	GID int
+	// Root enforces the use of the root user
+	Root bool
 }
 
 // satisfy sets default values for the parameters for a particular
@@ -40,7 +42,7 @@ func (d *Directory) satisfy(log *logger) {
 		d.Mode = os.ModeDir | d.Mode
 	}
 
-	if d.User == "" && d.UID == 0 {
+	if d.User == "" && d.UID == 0 && !d.Root {
 		if uid, err := strconv.Atoi(Attribute.User.Uid); err != nil {
 			log.Fatal(err)
 		} else {
@@ -48,7 +50,7 @@ func (d *Directory) satisfy(log *logger) {
 		}
 	}
 
-	if d.Group == "" && d.GID == 0 {
+	if d.Group == "" && d.GID == 0 && !d.Root {
 		if gid, err := strconv.Atoi(Attribute.User.Gid); err != nil {
 			log.Fatal(err)
 		} else {

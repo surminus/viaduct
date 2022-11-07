@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/user"
 	"strings"
 	"syscall"
 
@@ -19,6 +20,16 @@ func ExpandPath(path string) string {
 	}
 
 	return p
+}
+
+// SetDefaultUser allows us to assign a default username
+func SetDefaultUser(username string) {
+	u, err := user.Lookup(username)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	Attribute.User = *u
 }
 
 // PrependSudo takes a slice of args and simply prepends sudo to the front.

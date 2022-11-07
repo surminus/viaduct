@@ -17,9 +17,6 @@ type Execute struct {
 	// that we should not run the execute command. Optional.
 	Unless string
 
-	// Sudo runs the command using sudo. Optional.
-	Sudo bool
-
 	// Quiet suppresses output from STDOUT. Optional.
 	Quiet bool
 }
@@ -40,9 +37,6 @@ func (e Execute) Run() *Execute {
 
 	if e.Unless != "" {
 		unless := strings.Split(e.Unless, " ")
-		if e.Sudo {
-			unless = PrependSudo(unless)
-		}
 
 		// nolint:gosec
 		ucmd := exec.Command("bash", "-c", strings.Join(unless, " "))
@@ -61,9 +55,6 @@ func (e Execute) Run() *Execute {
 	}
 
 	command := strings.Split(e.Command, " ")
-	if e.Sudo {
-		command = PrependSudo(command)
-	}
 
 	// nolint:gosec
 	cmd := exec.Command("bash", "-c", strings.Join(command, " "))

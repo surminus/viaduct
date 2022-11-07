@@ -26,8 +26,6 @@ type Apt struct {
 	// Parameters is a map of optional parameters that gets represented as key
 	// value pairs, eg "[arch=amd64]"
 	Parameters map[string]string
-	// Sudo will run commands using sudo
-	Sudo bool
 
 	// path is a private attribute for where to write the apt file
 	path string
@@ -43,6 +41,10 @@ func (a *Apt) satisfy(log *logger) {
 
 	if a.URI == "" {
 		log.Fatal("Required parameter: URI")
+	}
+
+	if Attribute.User.Username != "root" {
+		log.Fatal("Apt resource must be run as root")
 	}
 
 	// Set optional defaults here
@@ -63,9 +65,6 @@ func AptUpdate() {
 	newLogger("Apt", "update").Info()
 
 	command := []string{"apt-get", "update", "-y"}
-	if Attribute.User.Username != "root" {
-		command = PrependSudo(command)
-	}
 
 	cmd := exec.Command("bash", "-c", strings.Join(command, " "))
 	cmd.Stderr = os.Stderr
@@ -117,31 +116,8 @@ func (a Apt) Add() *Apt {
 		}
 	}
 
-	if a.Sudo {
-		// If we need sudo, create a temporary file, and then copy it using
-		// standard "cp" command prepended with "sudo"
-		tmp, err := os.CreateTemp(Attribute.TmpDir, fmt.Sprintf("apt-%s-*", a.Name))
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer tmp.Close()
-
-		if _, err := tmp.WriteString(strings.Join(content, " ")); err != nil {
-			log.Fatal(err)
-		}
-
-		if err := SudoCommand("cp", tmp.Name(), a.path); err != nil {
-			log.Fatal(err)
-		}
-
-		if err := SudoCommand("chmod", "0644", a.path); err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		// Otherwise we can just use os package to write the file directly
-		if err := os.WriteFile(a.path, []byte(strings.Join(content, " ")), 0o644); err != nil {
-			log.Fatal(err)
-		}
+	if err := os.WriteFile(a.path, []byte(strings.Join(content, " ")), 0o644); err != nil {
+		log.Fatal(err)
 	}
 
 	log.Info(a.Name)
@@ -159,19 +135,13 @@ func (a Apt) Remove() *Apt {
 		return &a
 	}
 
-	if a.Sudo {
-		if err := SudoCommand("test", "-f", a.path, "&&", "rm", "-f", a.path); err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		if !FileExists(a.path) {
-			log.Noop(a.Name)
-			return &a
-		}
+	if !FileExists(a.path) {
+		log.Noop(a.Name)
+		return &a
+	}
 
-		if err := os.Remove(a.path); err != nil {
-			log.Fatal(err)
-		}
+	if err := os.Remove(a.path); err != nil {
+		log.Fatal(err)
 	}
 
 	log.Info(a.Name)

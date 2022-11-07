@@ -16,9 +16,6 @@ type Package struct {
 	// Names are the package names
 	Names []string
 
-	// Sudo runs the command with sudo. Optional.
-	Sudo bool
-
 	// Verbose displays output from STDOUT. Optional.
 	Verbose bool
 }
@@ -29,6 +26,10 @@ func (p *Package) satisfy(log *logger) {
 	// Set required values here, and error if they are not set
 	if p.Name == "" && len(p.Names) < 1 {
 		log.Fatal("Required parameter: Name / Names")
+	}
+
+	if Attribute.User.Username != "root" {
+		log.Fatal("Package resource must be run as root")
 	}
 
 	// Set optional defaults here
@@ -46,7 +47,7 @@ func (p Package) Install() *Package {
 		return &p
 	}
 
-	installPkg(Attribute.Platform.ID, p.Names, p.Sudo, p.Verbose)
+	installPkg(Attribute.Platform.ID, p.Names, p.Verbose)
 
 	return &p
 }
@@ -63,32 +64,32 @@ func (p Package) Remove() *Package {
 		return &p
 	}
 
-	removePkg(Attribute.Platform.ID, []string{p.Name}, p.Sudo, p.Verbose)
+	removePkg(Attribute.Platform.ID, []string{p.Name}, p.Verbose)
 
 	return &p
 }
 
-func installPkg(platform string, pkgs []string, sudo, verbose bool) {
+func installPkg(platform string, pkgs []string, verbose bool) {
 	switch platform {
 	case "debian", "ubuntu", "linuxmint":
-		aptGetCmd("install", pkgs, sudo, verbose)
+		aptGetCmd("install", pkgs, verbose)
 	case "fedora", "centos":
-		dnfCmd("install", pkgs, sudo, verbose)
+		dnfCmd("install", pkgs, verbose)
 	case "arch", "manjaro":
-		pacmanCmd("-S", pkgs, sudo, verbose)
+		pacmanCmd("-S", pkgs, verbose)
 	default:
 		log.Fatal("Unrecognised distribution:", Attribute.Platform.ID)
 	}
 }
 
-func removePkg(platform string, pkgs []string, sudo, verbose bool) {
+func removePkg(platform string, pkgs []string, verbose bool) {
 	switch platform {
 	case "debian", "ubuntu", "linuxmint":
-		aptGetCmd("remove", pkgs, sudo, verbose)
+		aptGetCmd("remove", pkgs, verbose)
 	case "fedora", "centos":
-		dnfCmd("remove", pkgs, sudo, verbose)
+		dnfCmd("remove", pkgs, verbose)
 	case "arch":
-		pacmanCmd("-R", pkgs, sudo, verbose)
+		pacmanCmd("-R", pkgs, verbose)
 	default:
 		log.Fatal("Unrecognised distribution:", Attribute.Platform.ID)
 	}
@@ -109,12 +110,9 @@ func installCmd(args []string, verbose bool) (err error) {
 	return err
 }
 
-func aptGetCmd(command string, packages []string, sudo, verbose bool) {
+func aptGetCmd(command string, packages []string, verbose bool) {
 	args := []string{"apt-get", command, "-y"}
 
-	if sudo {
-		args = PrependSudo(args)
-	}
 	args = append(args, packages...)
 
 	if err := installCmd(args, verbose); err != nil {
@@ -122,12 +120,9 @@ func aptGetCmd(command string, packages []string, sudo, verbose bool) {
 	}
 }
 
-func dnfCmd(command string, packages []string, sudo, verbose bool) {
+func dnfCmd(command string, packages []string, verbose bool) {
 	args := []string{"dnf", command, "-y"}
 
-	if sudo {
-		args = PrependSudo(args)
-	}
 	args = append(args, packages...)
 
 	if err := installCmd(args, verbose); err != nil {
@@ -135,16 +130,13 @@ func dnfCmd(command string, packages []string, sudo, verbose bool) {
 	}
 }
 
-func pacmanCmd(command string, packages []string, sudo, verbose bool) {
+func pacmanCmd(command string, packages []string, verbose bool) {
 	args := []string{"pacman", command, "--noconfirm"}
 
 	if command == "-S" {
 		args = append(args, "--needed")
 	}
 
-	if sudo {
-		args = PrependSudo(args)
-	}
 	args = append(args, packages...)
 
 	if err := installCmd(args, verbose); err != nil {
