@@ -1,6 +1,7 @@
 package viaduct
 
 import (
+	"fmt"
 	"os"
 
 	"gopkg.in/src-d/go-git.v4"
@@ -49,14 +50,18 @@ func (g Git) Create() *Git {
 	log := newLogger("Git", "create")
 	g.satisfy(log)
 
-	log.Info(g.Path)
+	path := ExpandPath(g.Path)
+	logmsg := fmt.Sprintf("%s => %s", g.URL, path)
+
 	if Config.DryRun {
+		log.Info(logmsg)
 		return &g
 	}
 
 	var pathExists bool
-	if FileExists(ExpandPath(g.Path)) {
+	if FileExists(path) {
 		if !g.Ensure {
+			log.Noop(logmsg)
 			return &g
 		}
 
@@ -81,9 +86,13 @@ func (g Git) Create() *Git {
 			ReferenceName: plumbing.ReferenceName(g.Reference),
 		})
 		if err != nil {
-			if err != git.NoErrAlreadyUpToDate {
+			if err == git.NoErrAlreadyUpToDate {
+				log.Noop(logmsg)
+			} else {
 				log.Fatal(err)
 			}
+		} else {
+			log.Info(logmsg)
 		}
 	}
 
@@ -98,23 +107,33 @@ func (g Git) Create() *Git {
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		log.Info(logmsg)
 	}
 
 	return &g
 }
 
-// Delete deletes a file
+// Delete deletes the git directory
 func (g Git) Delete() *Git {
 	log := newLogger("Git", "delete")
 	g.satisfy(log)
 
-	log.Info(g.Path)
+	path := ExpandPath(g.Path)
+
 	if Config.DryRun {
+		log.Info(path)
 		return &g
 	}
 
-	if err := os.RemoveAll(ExpandPath(g.Path)); err != nil {
-		log.Fatal(err)
+	if DirExists(path) {
+		if err := os.RemoveAll(ExpandPath(g.Path)); err != nil {
+			log.Fatal(err)
+		}
+
+		log.Info(path)
+	} else {
+		log.Noop(path)
 	}
 
 	return &g
