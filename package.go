@@ -40,7 +40,9 @@ func (p Package) Install() *Package {
 	log := newLogger("Package", "install")
 	p.satisfy(log)
 
-	p.Names = append(p.Names, p.Name)
+	if p.Name != "" {
+		p.Names = append(p.Names, p.Name)
+	}
 
 	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
 	if Config.DryRun {
