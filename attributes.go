@@ -55,8 +55,8 @@ func (a *Attributes) SetUser(username string) {
 	a.User = *u
 }
 
-// InitAttributes populates the attributes
-func InitAttributes(a *Attributes) {
+// initAttributes populates the attributes
+func initAttributes(a *Attributes) {
 	user, err := user.Current()
 	if err != nil {
 		log.Fatal(err)
