@@ -9,6 +9,12 @@ This means that you don't need to bootstrap an instance with configuration
 files or a runtime environment (eg "install chef"): simply download the binary,
 and run it!
 
+### v2
+
+I'm currently working on adding concurrency support with resource dependency
+management, and hope to merge this in soon! It should however work alongside
+the scripted style syntax described here, so should not break anything.
+
 ## Getting started
 
 Create a project in `main.go` and import the framework:
