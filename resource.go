@@ -61,10 +61,15 @@ var allowedKindOperations = map[Operation][]ResourceKind{
 // ResourceID is an id of a resource
 type ResourceID string
 
-func newResource(o Operation, deps []ResourceID) *Resource {
+func newResource(o Operation, deps []*Resource) *Resource {
+	var dependsOn []ResourceID
+	for _, d := range deps {
+		dependsOn = append(dependsOn, d.ResourceID)
+	}
+
 	return &Resource{
 		Operation: o,
-		DependsOn: deps,
+		DependsOn: dependsOn,
 		Status:    StatusPending,
 	}
 }

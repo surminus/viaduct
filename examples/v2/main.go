@@ -7,17 +7,17 @@ import (
 func main() {
 	foo := v.New()
 
-	foo.SetName(foo.Run(v.E("echo hello!")), "some-unique-name")
+	foo.Run(v.E("echo hello!"))
 	dir := foo.Create(v.D("test"))
 
-	cowsay := foo.Create(v.P("cowsay"), "some-unique-name", dir)
+	foo.SetName(foo.Create(v.P("cowsay"), dir), "cowsay")
 
 	foo.Create(v.File{
 		Path:    "test/foo",
 		Content: "bar",
-	}, dir, "some-unique-name")
+	}, dir)
 
-	foo.Delete(v.P("cowsay"), cowsay, "some-unique-name")
+	foo.SetDep(foo.Delete(v.P("cowsay")), "cowsay")
 
 	foo.Start()
 }

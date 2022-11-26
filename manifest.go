@@ -39,16 +39,25 @@ func New() *Manifest {
 
 // SetName allows us to overwrite the generated ID with our name. This name
 // still needs to be unique.
-func (m *Manifest) SetName(r ResourceID, newName string) {
-	if res, ok := m.resources[r]; ok {
+func (m *Manifest) SetName(r *Resource, newName string) {
+	if res, ok := m.resources[r.ResourceID]; ok {
+		old := r.ResourceID
 		newID := ResourceID(newName)
 
 		res.ResourceID = newID
 		m.resources[newID] = res
 
-		delete(m.resources, r)
+		delete(m.resources, old)
 	} else {
 		log.Fatalf("Unknown resource: %s", r)
+	}
+}
+
+// WithDep sets an explicit dependency using a name
+func (m *Manifest) SetDep(r *Resource, name string) {
+	if v, ok := m.resources[r.ResourceID]; ok {
+		v.DependsOn = append(v.DependsOn, ResourceID(name))
+		m.resources[r.ResourceID] = v
 	}
 }
 
@@ -77,40 +86,40 @@ func attrJSON(a any) string {
 	return string(str)
 }
 
-func (m *Manifest) Create(a any, deps ...ResourceID) ResourceID {
+func (m *Manifest) Create(a any, deps ...*Resource) *Resource {
 	r := newResource(OperationCreate, deps)
 	r.setKind(a)
 	r.checkAllowedOperation(OperationCreate)
 
 	m.addResource(r, a)
-	return r.ResourceID
+	return r
 }
 
-func (m *Manifest) Delete(a any, deps ...ResourceID) ResourceID {
+func (m *Manifest) Delete(a any, deps ...*Resource) *Resource {
 	r := newResource(OperationDelete, deps)
 	r.setKind(a)
 	r.checkAllowedOperation(OperationDelete)
 
 	m.addResource(r, a)
-	return r.ResourceID
+	return r
 }
 
-func (m *Manifest) Run(a Execute, deps ...ResourceID) ResourceID {
+func (m *Manifest) Run(a Execute, deps ...*Resource) *Resource {
 	r := newResource(OperationRun, deps)
 	r.setKind(a)
 	r.checkAllowedOperation(OperationRun)
 
 	m.addResource(r, a)
-	return r.ResourceID
+	return r
 }
 
-func (m *Manifest) Update(a Apt, deps ...ResourceID) (id ResourceID) {
+func (m *Manifest) Update(a Apt, deps ...*Resource) *Resource {
 	r := newResource(OperationUpdate, deps)
 	r.setKind(a)
 	r.checkAllowedOperation(OperationUpdate)
 
 	m.addResource(r, a)
-	return r.ResourceID
+	return r
 }
 
 // Start will run the specified resources concurrently, taking into account
