@@ -58,10 +58,15 @@ func (a *Apt) satisfy(log *logger) {
 	a.path = filepath.Join("/etc", "apt", "sources.list.d", fmt.Sprintf("%s.list", a.Name))
 }
 
-// AptUpdate is a helper function to perform "apt-get update" and will
-// automatically run using sudo if the user is not root
-func AptUpdate() {
+// AptUpdate is a helper function to perform "apt-get update"
+// Should be converted to a proper resource
+func (a Apt) Update() *Apt {
 	log := newLogger("Apt", "update")
+
+	if Config.DryRun {
+		log.Info()
+		return &a
+	}
 
 	if !isRoot() {
 		log.Fatal("Must be run as root")
@@ -77,6 +82,8 @@ func AptUpdate() {
 	if err := cmd.Run(); err != nil {
 		log.Fatal(err)
 	}
+
+	return &a
 }
 
 // Add adds a new apt repository
