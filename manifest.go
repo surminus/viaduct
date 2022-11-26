@@ -49,7 +49,20 @@ func New() *Manifest {
 	}
 }
 
-func (m *Manifest) Create(a any, deps ...ResourceID) (id ResourceID) {
+func (m *Manifest) addResource(r *Resource) (err error) {
+	// Create a string representation of our resource
+	r.setID()
+
+	if _, ok := m.resources[r.ResourceID]; ok {
+		log.Fatalf("resource already exists with attributes: %s", r.Attributes)
+	}
+
+	m.resources[r.ResourceID] = *r
+
+	return err
+}
+
+func (m *Manifest) Create(a any, deps ...ResourceID) ResourceID {
 	r := newResource(OperationCreate, deps)
 
 	switch a.(type) {
@@ -69,20 +82,11 @@ func (m *Manifest) Create(a any, deps ...ResourceID) (id ResourceID) {
 		log.Fatal("Operation \"Create\" not supported")
 	}
 
-	// Create a string representation of our resource
-	r.setID()
-	id = r.ResourceID
-
-	if _, ok := m.resources[id]; ok {
-		log.Fatal(fmt.Sprintf("Resource already exists with the following attributes:\n%s", r.Attributes))
-	}
-
-	m.resources[id] = *r
-
-	return id
+	m.addResource(r)
+	return r.ResourceID
 }
 
-func (m *Manifest) Delete(a any, deps ...ResourceID) (id ResourceID) {
+func (m *Manifest) Delete(a any, deps ...ResourceID) ResourceID {
 	r := newResource(OperationDelete, deps)
 
 	switch a.(type) {
@@ -102,57 +106,30 @@ func (m *Manifest) Delete(a any, deps ...ResourceID) (id ResourceID) {
 		log.Fatal("Operation \"Delete\" not supported")
 	}
 
-	// Create a string representation of our resource
-	r.setID()
-	id = r.ResourceID
-
-	if _, ok := m.resources[id]; ok {
-		log.Fatal(fmt.Sprintf("Resource already exists with the following attributes:\n%s", r.Attributes))
-	}
-
-	m.resources[id] = *r
-
-	return id
+	m.addResource(r)
+	return r.ResourceID
 }
 
-func (m *Manifest) Run(a Execute, deps ...ResourceID) (id ResourceID) {
+func (m *Manifest) Run(a Execute, deps ...ResourceID) ResourceID {
 	r := newResource(OperationRun, deps)
 	r.Kind = KindExecute
 	r.Attributes = a
 
-	// Create a string representation of our resource
-	r.setID()
-	id = r.ResourceID
-
-	if _, ok := m.resources[id]; ok {
-		log.Fatal(fmt.Sprintf("Resource already exists with the following attributes:\n%s", r.Attributes))
-	}
-
-	m.resources[id] = *r
-
-	return id
+	m.addResource(r)
+	return r.ResourceID
 }
 
-func (m *Manifest) Install(a Package, deps ...ResourceID) (id ResourceID) {
+func (m *Manifest) Install(a Package, deps ...ResourceID) ResourceID {
 	r := newResource(OperationInstall, deps)
 
 	r.Kind = KindPackage
 	r.Attributes = a
 
-	// Create a string representation of our resource
-	r.setID()
-	id = r.ResourceID
-
-	if _, ok := m.resources[id]; ok {
-		log.Fatal(fmt.Sprintf("Resource already exists with the following attributes:\n%s", r.Attributes))
-	}
-
-	m.resources[id] = *r
-
-	return id
+	m.addResource(r)
+	return r.ResourceID
 }
 
-func (m *Manifest) Remove(a any, deps ...ResourceID) (id ResourceID) {
+func (m *Manifest) Remove(a any, deps ...ResourceID) ResourceID {
 	r := newResource(OperationRemove, deps)
 
 	switch a.(type) {
@@ -166,36 +143,18 @@ func (m *Manifest) Remove(a any, deps ...ResourceID) (id ResourceID) {
 		log.Fatal("Operation \"Remove\" not supported")
 	}
 
-	// Create a string representation of our resource
-	r.setID()
-	id = r.ResourceID
-
-	if _, ok := m.resources[id]; ok {
-		log.Fatal(fmt.Sprintf("Resource already exists with the following attributes:\n%s", r.Attributes))
-	}
-
-	m.resources[id] = *r
-
-	return id
+	m.addResource(r)
+	return r.ResourceID
 }
 
-func (m *Manifest) Add(a Apt, deps ...ResourceID) (id ResourceID) {
+func (m *Manifest) Add(a Apt, deps ...ResourceID) ResourceID {
 	r := newResource(OperationAdd, deps)
 
 	r.Kind = KindApt
 	r.Attributes = a
 
-	// Create a string representation of our resource
-	r.setID()
-	id = r.ResourceID
-
-	if _, ok := m.resources[id]; ok {
-		log.Fatal(fmt.Sprintf("Resource already exists with the following attributes:\n%s", r.Attributes))
-	}
-
-	m.resources[id] = *r
-
-	return id
+	m.addResource(r)
+	return r.ResourceID
 }
 
 func (m *Manifest) Update(a Apt, deps ...ResourceID) (id ResourceID) {
