@@ -21,6 +21,11 @@ type Execute struct {
 	Quiet bool
 }
 
+// E is a shortcut for declaring a new Execute resource
+func E(command string) Execute {
+	return Execute{Command: command}
+}
+
 func (e *Execute) satisfy(log *logger) {
 	// Set required values here, and error if they are not set
 	if e.Command == "" {

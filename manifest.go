@@ -1,7 +1,7 @@
 package viaduct
 
 import (
-	"fmt"
+	"encoding/json"
 	"log"
 	"math/rand"
 	"sync"
@@ -16,13 +16,10 @@ type (
 
 const (
 	// Operations
-	OperationAdd     Operation = "OperationAdd"
-	OperationCreate  Operation = "OperationCreate"
-	OperationDelete  Operation = "OperationDelete"
-	OperationInstall Operation = "OperationInstall"
-	OperationRemove  Operation = "OperationRemove"
-	OperationRun     Operation = "OperationRun"
-	OperationUpdate  Operation = "OperationUpdate"
+	OperationCreate Operation = "OperationCreate"
+	OperationDelete Operation = "OperationDelete"
+	OperationRun    Operation = "OperationRun"
+	OperationUpdate Operation = "OperationUpdate"
 
 	// Statuses
 	StatusPending Status = "StatusPending"
@@ -62,10 +59,22 @@ func (m *Manifest) addResource(r *Resource) (err error) {
 	return err
 }
 
+func attrJSON(a any) string {
+	str, err := json.MarshalIndent(a, "", "  ")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return string(str)
+}
+
 func (m *Manifest) Create(a any, deps ...ResourceID) ResourceID {
 	r := newResource(OperationCreate, deps)
 
 	switch a.(type) {
+	case Apt:
+		r.Kind = KindApt
+		r.Attributes = a
 	case File:
 		r.Kind = KindFile
 		r.Attributes = a
@@ -78,8 +87,11 @@ func (m *Manifest) Create(a any, deps ...ResourceID) ResourceID {
 	case Link:
 		r.Kind = KindLink
 		r.Attributes = a
+	case Package:
+		r.Kind = KindPackage
+		r.Attributes = a
 	default:
-		log.Fatal("Operation \"Create\" not supported")
+		log.Fatalf("Operation \"Create\" not supported for resource with attributes:\n%s", attrJSON(a))
 	}
 
 	m.addResource(r)
@@ -90,6 +102,9 @@ func (m *Manifest) Delete(a any, deps ...ResourceID) ResourceID {
 	r := newResource(OperationDelete, deps)
 
 	switch a.(type) {
+	case Apt:
+		r.Kind = KindApt
+		r.Attributes = a
 	case File:
 		r.Kind = KindFile
 		r.Attributes = a
@@ -102,8 +117,11 @@ func (m *Manifest) Delete(a any, deps ...ResourceID) ResourceID {
 	case Link:
 		r.Kind = KindLink
 		r.Attributes = a
+	case Package:
+		r.Kind = KindPackage
+		r.Attributes = a
 	default:
-		log.Fatal("Operation \"Delete\" not supported")
+		log.Fatalf("Operation \"Delete\" not supported for resource with attributes:\n%s", attrJSON(a))
 	}
 
 	m.addResource(r)
@@ -119,61 +137,14 @@ func (m *Manifest) Run(a Execute, deps ...ResourceID) ResourceID {
 	return r.ResourceID
 }
 
-func (m *Manifest) Install(a Package, deps ...ResourceID) ResourceID {
-	r := newResource(OperationInstall, deps)
-
-	r.Kind = KindPackage
-	r.Attributes = a
-
-	m.addResource(r)
-	return r.ResourceID
-}
-
-func (m *Manifest) Remove(a any, deps ...ResourceID) ResourceID {
-	r := newResource(OperationRemove, deps)
-
-	switch a.(type) {
-	case Apt:
-		r.Kind = KindApt
-		r.Attributes = a
-	case Package:
-		r.Kind = KindPackage
-		r.Attributes = a
-	default:
-		log.Fatal("Operation \"Remove\" not supported")
-	}
-
-	m.addResource(r)
-	return r.ResourceID
-}
-
-func (m *Manifest) Add(a Apt, deps ...ResourceID) ResourceID {
-	r := newResource(OperationAdd, deps)
-
-	r.Kind = KindApt
-	r.Attributes = a
-
-	m.addResource(r)
-	return r.ResourceID
-}
-
 func (m *Manifest) Update(a Apt, deps ...ResourceID) (id ResourceID) {
 	r := newResource(OperationUpdate, deps)
 
 	r.Kind = KindApt
 	r.Attributes = a
 
-	// Create a string representation of our resource
-	r.setID()
-	id = r.ResourceID
-
-	if _, ok := m.resources[id]; ok {
-		log.Fatal(fmt.Sprintf("Resource already exists with the following attributes:\n%s", r.Attributes))
-	}
-
-	m.resources[id] = *r
-
-	return id
+	m.addResource(r)
+	return r.ResourceID
 }
 
 // Start will run the specified resources concurrently, taking into account

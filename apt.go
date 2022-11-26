@@ -86,8 +86,8 @@ func (a Apt) Update() *Apt {
 	return &a
 }
 
-// Add adds a new apt repository
-func (a Apt) Add() *Apt {
+// Create adds a new apt repository
+func (a Apt) Create() *Apt {
 	log := newLogger("Apt", "add")
 	a.satisfy(log)
 
@@ -137,8 +137,8 @@ func (a Apt) Add() *Apt {
 	return &a
 }
 
-// Add removes an apt repository
-func (a Apt) Remove() *Apt {
+// Delete removes an apt repository
+func (a Apt) Delete() *Apt {
 	log := newLogger("Apt", "remove")
 	a.satisfy(log)
 

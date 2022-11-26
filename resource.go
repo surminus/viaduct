@@ -50,10 +50,10 @@ func (r Resource) run() {
 		attr := r.Attributes.(Apt)
 
 		switch r.Operation {
-		case OperationAdd:
-			attr.Add()
-		case OperationRemove:
-			attr.Remove()
+		case OperationCreate:
+			attr.Create()
+		case OperationDelete:
+			attr.Delete()
 		case OperationUpdate:
 			attr.Update()
 		default:
@@ -116,10 +116,10 @@ func (r Resource) run() {
 		attr := r.Attributes.(Package)
 
 		switch r.Operation {
-		case OperationInstall:
-			attr.Install()
-		case OperationRemove:
-			attr.Remove()
+		case OperationCreate:
+			attr.Create()
+		case OperationDelete:
+			attr.Delete()
 		default:
 			log.Fatalf("Unknown operation for %s: %s", r.Kind, r.Operation)
 		}

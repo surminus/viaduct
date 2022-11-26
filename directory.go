@@ -26,6 +26,11 @@ type Directory struct {
 	Root bool
 }
 
+// D is a shortcut for declaring a new Directory resource
+func D(path string) Directory {
+	return Directory{Path: path}
+}
+
 // satisfy sets default values for the parameters for a particular
 // resource
 func (d *Directory) satisfy(log *logger) {
