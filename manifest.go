@@ -37,6 +37,21 @@ func New() *Manifest {
 	}
 }
 
+// SetName allows us to overwrite the generated ID with our name. This name
+// still needs to be unique.
+func (m *Manifest) SetName(r ResourceID, newName string) {
+	if res, ok := m.resources[r]; ok {
+		newID := ResourceID(newName)
+
+		res.ResourceID = newID
+		m.resources[newID] = res
+
+		delete(m.resources, r)
+	} else {
+		log.Fatalf("Unknown resource: %s", r)
+	}
+}
+
 func (m *Manifest) addResource(r *Resource, a any) (err error) {
 	// Set attributes
 	r.Attributes = a
