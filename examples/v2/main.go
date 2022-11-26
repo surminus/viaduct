@@ -7,14 +7,17 @@ import (
 func main() {
 	foo := v.New()
 
-	test := foo.Run(v.Execute{Command: "echo hello!"})
+	cowsay := foo.Install(v.Package{Name: "cowsay"})
 
+	test := foo.Run(v.Execute{Command: "echo hello!"})
 	dir := foo.Create(v.Directory{Path: "test"})
 
 	foo.Create(v.File{
 		Path:    "test/foo",
 		Content: "bar",
-	}, v.DependsOn(dir), v.DependsOn(test))
+	}, dir, test)
+
+	foo.Remove(v.Package{Name: "cowsay"}, cowsay)
 
 	foo.Start()
 }

@@ -3,6 +3,7 @@ package viaduct
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -15,12 +16,17 @@ type (
 
 const (
 	// Operations
-	OperationCreate Operation = "OperationCreate"
-	OperationDelete Operation = "OperationDelete"
+	OperationAdd     Operation = "OperationAdd"
+	OperationCreate  Operation = "OperationCreate"
+	OperationDelete  Operation = "OperationDelete"
+	OperationInstall Operation = "OperationInstall"
+	OperationRemove  Operation = "OperationRemove"
+	OperationRun     Operation = "OperationRun"
+	OperationUpdate  Operation = "OperationUpdate"
 
 	// Statuses
-	StatusSuccess Status = "StatusSuccess"
 	StatusPending Status = "StatusPending"
+	StatusSuccess Status = "StatusSuccess"
 
 	// Kinds
 	KindApt       Kind = "KindApt"
@@ -29,23 +35,21 @@ const (
 	KindFile      Kind = "KindFile"
 	KindGit       Kind = "KindGit"
 	KindLink      Kind = "KindLink"
-
-	// Package has implicit dependency issues we need to think about
-	KindPackage Kind = "KindPackage"
+	KindPackage   Kind = "KindPackage"
 )
 
 // Manifest is a map of resources to allow concurrent runs
 type Manifest struct {
-	resources map[string]Resource
+	resources map[ResourceID]Resource
 }
 
 func New() *Manifest {
 	return &Manifest{
-		resources: make(map[string]Resource),
+		resources: make(map[ResourceID]Resource),
 	}
 }
 
-func (m *Manifest) Create(a any, deps ...Dependency) (id string) {
+func (m *Manifest) Create(a any, deps ...ResourceID) (id ResourceID) {
 	r := newResource(OperationCreate, deps)
 
 	switch a.(type) {
@@ -66,7 +70,8 @@ func (m *Manifest) Create(a any, deps ...Dependency) (id string) {
 	}
 
 	// Create a string representation of our resource
-	id = r.id()
+	r.setID()
+	id = r.ResourceID
 
 	if _, ok := m.resources[id]; ok {
 		log.Fatal(fmt.Sprintf("Resource already exists with the following attributes:\n%s", r.Attributes))
@@ -77,7 +82,7 @@ func (m *Manifest) Create(a any, deps ...Dependency) (id string) {
 	return id
 }
 
-func (m *Manifest) Delete(a any, deps ...Dependency) (id string) {
+func (m *Manifest) Delete(a any, deps ...ResourceID) (id ResourceID) {
 	r := newResource(OperationDelete, deps)
 
 	switch a.(type) {
@@ -98,7 +103,8 @@ func (m *Manifest) Delete(a any, deps ...Dependency) (id string) {
 	}
 
 	// Create a string representation of our resource
-	id = r.id()
+	r.setID()
+	id = r.ResourceID
 
 	if _, ok := m.resources[id]; ok {
 		log.Fatal(fmt.Sprintf("Resource already exists with the following attributes:\n%s", r.Attributes))
@@ -109,19 +115,98 @@ func (m *Manifest) Delete(a any, deps ...Dependency) (id string) {
 	return id
 }
 
-func (m *Manifest) Run(a any, deps ...Dependency) (id string) {
-	r := newResource(OperationDelete, deps)
+func (m *Manifest) Run(a Execute, deps ...ResourceID) (id ResourceID) {
+	r := newResource(OperationRun, deps)
+	r.Kind = KindExecute
+	r.Attributes = a
+
+	// Create a string representation of our resource
+	r.setID()
+	id = r.ResourceID
+
+	if _, ok := m.resources[id]; ok {
+		log.Fatal(fmt.Sprintf("Resource already exists with the following attributes:\n%s", r.Attributes))
+	}
+
+	m.resources[id] = *r
+
+	return id
+}
+
+func (m *Manifest) Install(a Package, deps ...ResourceID) (id ResourceID) {
+	r := newResource(OperationInstall, deps)
+
+	r.Kind = KindPackage
+	r.Attributes = a
+
+	// Create a string representation of our resource
+	r.setID()
+	id = r.ResourceID
+
+	if _, ok := m.resources[id]; ok {
+		log.Fatal(fmt.Sprintf("Resource already exists with the following attributes:\n%s", r.Attributes))
+	}
+
+	m.resources[id] = *r
+
+	return id
+}
+
+func (m *Manifest) Remove(a any, deps ...ResourceID) (id ResourceID) {
+	r := newResource(OperationRemove, deps)
 
 	switch a.(type) {
-	case Execute:
-		r.Kind = KindExecute
+	case Apt:
+		r.Kind = KindApt
+		r.Attributes = a
+	case Package:
+		r.Kind = KindPackage
 		r.Attributes = a
 	default:
-		log.Fatal("Operation \"Delete\" not supported")
+		log.Fatal("Operation \"Remove\" not supported")
 	}
 
 	// Create a string representation of our resource
-	id = r.id()
+	r.setID()
+	id = r.ResourceID
+
+	if _, ok := m.resources[id]; ok {
+		log.Fatal(fmt.Sprintf("Resource already exists with the following attributes:\n%s", r.Attributes))
+	}
+
+	m.resources[id] = *r
+
+	return id
+}
+
+func (m *Manifest) Add(a Apt, deps ...ResourceID) (id ResourceID) {
+	r := newResource(OperationAdd, deps)
+
+	r.Kind = KindApt
+	r.Attributes = a
+
+	// Create a string representation of our resource
+	r.setID()
+	id = r.ResourceID
+
+	if _, ok := m.resources[id]; ok {
+		log.Fatal(fmt.Sprintf("Resource already exists with the following attributes:\n%s", r.Attributes))
+	}
+
+	m.resources[id] = *r
+
+	return id
+}
+
+func (m *Manifest) Update(a Apt, deps ...ResourceID) (id ResourceID) {
+	r := newResource(OperationUpdate, deps)
+
+	r.Kind = KindApt
+	r.Attributes = a
+
+	// Create a string representation of our resource
+	r.setID()
+	id = r.ResourceID
 
 	if _, ok := m.resources[id]; ok {
 		log.Fatal(fmt.Sprintf("Resource already exists with the following attributes:\n%s", r.Attributes))
@@ -147,7 +232,7 @@ func (m *Manifest) Start() {
 	wg.Wait()
 }
 
-func (m *Manifest) runResource(id string, r Resource, lock *sync.RWMutex, wg *sync.WaitGroup) {
+func (m *Manifest) runResource(id ResourceID, r Resource, lock *sync.RWMutex, wg *sync.WaitGroup) {
 	// If we have a dependency, wait until the status of the dependency
 	// is successful
 	if len(r.DependsOn) > 0 {
@@ -159,7 +244,7 @@ func (m *Manifest) runResource(id string, r Resource, lock *sync.RWMutex, wg *sy
 
 			lock.RLock()
 			for _, dep := range r.DependsOn {
-				if d, ok := m.resources[string(dep)]; ok {
+				if d, ok := m.resources[dep]; ok {
 					if d.Status != StatusSuccess {
 						depsSuccess = false
 					}
@@ -171,7 +256,8 @@ func (m *Manifest) runResource(id string, r Resource, lock *sync.RWMutex, wg *sy
 				break
 			}
 
-			time.Sleep(10 * time.Millisecond)
+			// Random sleep to add some jitter
+			time.Sleep(time.Duration(rand.Intn(30)) * time.Millisecond)
 		}
 
 		if !depsSuccess {

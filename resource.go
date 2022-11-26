@@ -15,19 +15,17 @@ type Resource struct {
 	// What the resource is doing, such as "create" or "delete"
 	Operation
 	// A list of resource dependencies
-	DependsOn []Dependency
+	DependsOn []ResourceID
 	// Status denotes the current status of the resource
 	Status
+	// ResourceID is the resources generated ID
+	ResourceID
 }
 
-// Dependency is an id of a resource
-type Dependency string
+// ResourceID is an id of a resource
+type ResourceID string
 
-func DependsOn(in string) Dependency {
-	return Dependency(in)
-}
-
-func newResource(o Operation, deps []Dependency) *Resource {
+func newResource(o Operation, deps []ResourceID) *Resource {
 	return &Resource{
 		Operation: o,
 		DependsOn: deps,
@@ -35,7 +33,7 @@ func newResource(o Operation, deps []Dependency) *Resource {
 	}
 }
 
-func (r *Resource) id() string {
+func (r *Resource) setID() {
 	j, err := json.Marshal(r)
 	if err != nil {
 		log.Fatal(err)
@@ -43,11 +41,24 @@ func (r *Resource) id() string {
 
 	h := sha1.New()
 	h.Write(j)
-	return hex.EncodeToString(h.Sum(nil))
+	r.ResourceID = ResourceID(hex.EncodeToString(h.Sum(nil)))
 }
 
 func (r Resource) run() {
 	switch r.Kind {
+	case KindApt:
+		attr := r.Attributes.(Apt)
+
+		switch r.Operation {
+		case OperationAdd:
+			attr.Add()
+		case OperationRemove:
+			attr.Remove()
+		case OperationUpdate:
+			attr.Update()
+		default:
+			log.Fatalf("Unknown operation for %s: %s", r.Kind, r.Operation)
+		}
 	case KindFile:
 		attr := r.Attributes.(File)
 
@@ -56,6 +67,8 @@ func (r Resource) run() {
 			attr.Create()
 		case OperationDelete:
 			attr.Delete()
+		default:
+			log.Fatalf("Unknown operation for %s: %s", r.Kind, r.Operation)
 		}
 	case KindDirectory:
 		attr := r.Attributes.(Directory)
@@ -65,10 +78,18 @@ func (r Resource) run() {
 			attr.Create()
 		case OperationDelete:
 			attr.Delete()
+		default:
+			log.Fatalf("Unknown operation for %s: %s", r.Kind, r.Operation)
 		}
 	case KindExecute:
 		attr := r.Attributes.(Execute)
-		attr.Run()
+
+		switch r.Operation {
+		case OperationRun:
+			attr.Run()
+		default:
+			log.Fatalf("Unknown operation for %s: %s", r.Kind, r.Operation)
+		}
 	case KindGit:
 		attr := r.Attributes.(Git)
 
@@ -77,6 +98,8 @@ func (r Resource) run() {
 			attr.Create()
 		case OperationDelete:
 			attr.Delete()
+		default:
+			log.Fatalf("Unknown operation for %s: %s", r.Kind, r.Operation)
 		}
 	case KindLink:
 		attr := r.Attributes.(Link)
@@ -86,6 +109,19 @@ func (r Resource) run() {
 			attr.Create()
 		case OperationDelete:
 			attr.Delete()
+		default:
+			log.Fatalf("Unknown operation for %s: %s", r.Kind, r.Operation)
+		}
+	case KindPackage:
+		attr := r.Attributes.(Package)
+
+		switch r.Operation {
+		case OperationInstall:
+			attr.Install()
+		case OperationRemove:
+			attr.Remove()
+		default:
+			log.Fatalf("Unknown operation for %s: %s", r.Kind, r.Operation)
 		}
 	}
 }
