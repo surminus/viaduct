@@ -160,15 +160,15 @@ func (m *Manifest) runResource(id ResourceID, r Resource, lock *sync.RWMutex, wg
 		for i := 0; i < 600000; i++ {
 			depsSuccess = true
 
-			lock.RLock()
 			for _, dep := range r.DependsOn {
+				lock.RLock()
 				if d, ok := m.resources[dep]; ok {
 					if d.Status != StatusSuccess {
 						depsSuccess = false
 					}
 				}
+				lock.RUnlock()
 			}
-			lock.RUnlock()
 
 			if depsSuccess {
 				break
