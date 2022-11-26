@@ -49,7 +49,7 @@ func (m *Manifest) SetName(r *Resource, newName string) {
 
 		delete(m.resources, old)
 	} else {
-		log.Fatalf("Unknown resource: %s", r)
+		log.Fatalf("Unknown resource: %s", attrJSON(r.Attributes))
 	}
 }
 
@@ -61,9 +61,22 @@ func (m *Manifest) SetDep(r *Resource, name string) {
 	}
 }
 
+func (m *Manifest) WithLock(r *Resource) {
+	if v, ok := m.resources[r.ResourceID]; ok {
+		v.GlobalLock = true
+		m.resources[r.ResourceID] = v
+	}
+}
+
 func (m *Manifest) addResource(r *Resource, a any) (err error) {
 	// Set attributes
 	r.Attributes = a
+
+	// Package resources should never run at the same time, and
+	// the AptUpdate operation should also take a global lock.
+	if r.ResourceKind == KindPackage || r.Operation == OperationUpdate {
+		r.GlobalLock = true
+	}
 
 	// Create a string representation of our resource
 	r.setID()
@@ -126,18 +139,18 @@ func (m *Manifest) Update(a Apt, deps ...*Resource) *Resource {
 // any dependencies that have been declared
 func (m *Manifest) Start() {
 	var wg sync.WaitGroup
-	var lock sync.RWMutex
+	var lock, globalLock sync.RWMutex
 
 	wg.Add(len(m.resources))
 
 	for id, resource := range m.resources {
-		go m.runResource(id, resource, &lock, &wg)
+		go m.runResource(id, resource, &lock, &wg, &globalLock)
 	}
 
 	wg.Wait()
 }
 
-func (m *Manifest) runResource(id ResourceID, r Resource, lock *sync.RWMutex, wg *sync.WaitGroup) {
+func (m *Manifest) runResource(id ResourceID, r Resource, lock *sync.RWMutex, wg *sync.WaitGroup, globalLock *sync.RWMutex) {
 	// If we have a dependency, wait until the status of the dependency
 	// is successful
 	if len(r.DependsOn) > 0 {
@@ -170,6 +183,10 @@ func (m *Manifest) runResource(id ResourceID, r Resource, lock *sync.RWMutex, wg
 		}
 	}
 
+	if r.GlobalLock {
+		globalLock.Lock()
+	}
+
 	// Run the resource operation
 	r.run()
 
@@ -179,6 +196,10 @@ func (m *Manifest) runResource(id ResourceID, r Resource, lock *sync.RWMutex, wg
 		m.resources[id] = re
 	}
 	lock.Unlock()
+
+	if r.GlobalLock {
+		globalLock.Unlock()
+	}
 
 	wg.Done()
 }

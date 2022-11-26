@@ -31,6 +31,9 @@ type Resource struct {
 	Status
 	// ResourceID is the resources generated ID
 	ResourceID
+	// GlobalLock will mean the resource will not run at the same time
+	// as other resources that have this set to true
+	GlobalLock bool
 }
 
 var allowedKindOperations = map[Operation][]ResourceKind{

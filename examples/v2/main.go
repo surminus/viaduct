@@ -10,14 +10,14 @@ func main() {
 	foo.Run(v.E("echo hello!"))
 	dir := foo.Create(v.D("test"))
 
-	foo.SetName(foo.Create(v.P("cowsay"), dir), "cowsay")
+	foo.Create(v.P("cowsay"), dir)
 
 	foo.Create(v.File{
 		Path:    "test/foo",
 		Content: "bar",
 	}, dir)
 
-	foo.SetDep(foo.Delete(v.P("cowsay")), "cowsay")
+	foo.Delete(v.P("cowsay"))
 
 	foo.Start()
 }
