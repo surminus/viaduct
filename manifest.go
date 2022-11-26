@@ -46,12 +46,15 @@ func New() *Manifest {
 	}
 }
 
-func (m *Manifest) addResource(r *Resource) (err error) {
+func (m *Manifest) addResource(r *Resource, a any) (err error) {
+	// Set attributes
+	r.Attributes = a
+
 	// Create a string representation of our resource
 	r.setID()
 
 	if _, ok := m.resources[r.ResourceID]; ok {
-		log.Fatalf("resource already exists with attributes: %s", r.Attributes)
+		log.Fatalf("resource already exists with attributes: %s", attrJSON(a))
 	}
 
 	m.resources[r.ResourceID] = *r
@@ -74,27 +77,21 @@ func (m *Manifest) Create(a any, deps ...ResourceID) ResourceID {
 	switch a.(type) {
 	case Apt:
 		r.Kind = KindApt
-		r.Attributes = a
 	case File:
 		r.Kind = KindFile
-		r.Attributes = a
 	case Directory:
 		r.Kind = KindDirectory
-		r.Attributes = a
 	case Git:
 		r.Kind = KindGit
-		r.Attributes = a
 	case Link:
 		r.Kind = KindLink
-		r.Attributes = a
 	case Package:
 		r.Kind = KindPackage
-		r.Attributes = a
 	default:
 		log.Fatalf("Operation \"Create\" not supported for resource with attributes:\n%s", attrJSON(a))
 	}
 
-	m.addResource(r)
+	m.addResource(r, a)
 	return r.ResourceID
 }
 
@@ -104,46 +101,37 @@ func (m *Manifest) Delete(a any, deps ...ResourceID) ResourceID {
 	switch a.(type) {
 	case Apt:
 		r.Kind = KindApt
-		r.Attributes = a
 	case File:
 		r.Kind = KindFile
-		r.Attributes = a
 	case Directory:
 		r.Kind = KindDirectory
-		r.Attributes = a
 	case Git:
 		r.Kind = KindGit
-		r.Attributes = a
 	case Link:
 		r.Kind = KindLink
-		r.Attributes = a
 	case Package:
 		r.Kind = KindPackage
-		r.Attributes = a
 	default:
 		log.Fatalf("Operation \"Delete\" not supported for resource with attributes:\n%s", attrJSON(a))
 	}
 
-	m.addResource(r)
+	m.addResource(r, a)
 	return r.ResourceID
 }
 
 func (m *Manifest) Run(a Execute, deps ...ResourceID) ResourceID {
 	r := newResource(OperationRun, deps)
 	r.Kind = KindExecute
-	r.Attributes = a
 
-	m.addResource(r)
+	m.addResource(r, a)
 	return r.ResourceID
 }
 
 func (m *Manifest) Update(a Apt, deps ...ResourceID) (id ResourceID) {
 	r := newResource(OperationUpdate, deps)
-
 	r.Kind = KindApt
-	r.Attributes = a
 
-	m.addResource(r)
+	m.addResource(r, a)
 	return r.ResourceID
 }
 
