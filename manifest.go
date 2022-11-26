@@ -9,9 +9,9 @@ import (
 )
 
 type (
-	Kind      string
-	Operation string
-	Status    string
+	ResourceKind string
+	Operation    string
+	Status       string
 )
 
 const (
@@ -24,15 +24,6 @@ const (
 	// Statuses
 	StatusPending Status = "StatusPending"
 	StatusSuccess Status = "StatusSuccess"
-
-	// Kinds
-	KindApt       Kind = "KindApt"
-	KindDirectory Kind = "KindDirectory"
-	KindExecute   Kind = "KindExecute"
-	KindFile      Kind = "KindFile"
-	KindGit       Kind = "KindGit"
-	KindLink      Kind = "KindLink"
-	KindPackage   Kind = "KindPackage"
 )
 
 // Manifest is a map of resources to allow concurrent runs
@@ -73,23 +64,8 @@ func attrJSON(a any) string {
 
 func (m *Manifest) Create(a any, deps ...ResourceID) ResourceID {
 	r := newResource(OperationCreate, deps)
-
-	switch a.(type) {
-	case Apt:
-		r.Kind = KindApt
-	case File:
-		r.Kind = KindFile
-	case Directory:
-		r.Kind = KindDirectory
-	case Git:
-		r.Kind = KindGit
-	case Link:
-		r.Kind = KindLink
-	case Package:
-		r.Kind = KindPackage
-	default:
-		log.Fatalf("Operation \"Create\" not supported for resource with attributes:\n%s", attrJSON(a))
-	}
+	r.setKind(a)
+	r.checkAllowedOperation(OperationCreate)
 
 	m.addResource(r, a)
 	return r.ResourceID
@@ -97,23 +73,8 @@ func (m *Manifest) Create(a any, deps ...ResourceID) ResourceID {
 
 func (m *Manifest) Delete(a any, deps ...ResourceID) ResourceID {
 	r := newResource(OperationDelete, deps)
-
-	switch a.(type) {
-	case Apt:
-		r.Kind = KindApt
-	case File:
-		r.Kind = KindFile
-	case Directory:
-		r.Kind = KindDirectory
-	case Git:
-		r.Kind = KindGit
-	case Link:
-		r.Kind = KindLink
-	case Package:
-		r.Kind = KindPackage
-	default:
-		log.Fatalf("Operation \"Delete\" not supported for resource with attributes:\n%s", attrJSON(a))
-	}
+	r.setKind(a)
+	r.checkAllowedOperation(OperationDelete)
 
 	m.addResource(r, a)
 	return r.ResourceID
@@ -121,7 +82,8 @@ func (m *Manifest) Delete(a any, deps ...ResourceID) ResourceID {
 
 func (m *Manifest) Run(a Execute, deps ...ResourceID) ResourceID {
 	r := newResource(OperationRun, deps)
-	r.Kind = KindExecute
+	r.setKind(a)
+	r.checkAllowedOperation(OperationRun)
 
 	m.addResource(r, a)
 	return r.ResourceID
@@ -129,7 +91,8 @@ func (m *Manifest) Run(a Execute, deps ...ResourceID) ResourceID {
 
 func (m *Manifest) Update(a Apt, deps ...ResourceID) (id ResourceID) {
 	r := newResource(OperationUpdate, deps)
-	r.Kind = KindApt
+	r.setKind(a)
+	r.checkAllowedOperation(OperationUpdate)
 
 	m.addResource(r, a)
 	return r.ResourceID
