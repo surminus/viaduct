@@ -35,8 +35,22 @@ func (p *Package) satisfy(log *logger) {
 	// Set optional defaults here
 }
 
-// Install installs a packages
-func (p Package) Install() *Package {
+// P is shortcut for declaring a new Package resource
+func P(name string) Package {
+	return Package{
+		Name: name,
+	}
+}
+
+// Ps is a shortcut for declaring a new Package resource with multiple packages
+func Ps(names ...string) Package {
+	return Package{
+		Names: names,
+	}
+}
+
+// Create installs a package
+func (p Package) Create() *Package {
 	log := newLogger("Package", "install")
 	p.satisfy(log)
 
@@ -54,8 +68,8 @@ func (p Package) Install() *Package {
 	return &p
 }
 
-// Remove uninstalls a package
-func (p Package) Remove() *Package {
+// Delete uninstalls a package
+func (p Package) Delete() *Package {
 	log := newLogger("Package", "remove")
 	p.satisfy(log)
 

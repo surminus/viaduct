@@ -8,8 +8,8 @@ type Configs struct {
 	OutputAttributes bool
 }
 
-// InitConfigs loads configuration
-func InitConfigs(c *Configs) {
+// initConfigs loads configuration
+func initConfigs(c *Configs) {
 	var (
 		dryRun           bool
 		outputAttributes bool

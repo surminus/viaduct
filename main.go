@@ -14,8 +14,8 @@ var (
 )
 
 func init() {
-	InitAttributes(&Attribute)
-	InitConfigs(&Config)
+	initAttributes(&Attribute)
+	initConfigs(&Config)
 
 	if Config.OutputAttributes {
 		fmt.Println(Attribute.JSON())

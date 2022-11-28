@@ -9,51 +9,79 @@ This means that you don't need to bootstrap an instance with configuration
 files or a runtime environment (eg "install chef"): simply download the binary,
 and run it!
 
-### v2
-
-I'm currently working on adding concurrency support with resource dependency
-management, and hope to merge this in soon! It should however work alongside
-the scripted style syntax described here, so should not break anything.
+I'm using Viaduct to set up my personal development environment at
+[surminus/myduct](https://github.com/surminus/myduct).
 
 ## Getting started
 
-Create a project in `main.go` and import the framework:
+Create a project in `main.go` and create a new manifest:
 
 ```
 import (
         v "github.com/surminus/viaduct" // By convention we use "v"
 )
 
-func main() {}
-```
-
-Add resources as part of the `main()` function. To create a directory and file:
-
-```
 func main() {
-        dir := v.Directory{Path: "test"}.Create()
-        v.File{Path: fmt.Sprintf("%s/foo", dir.Path), Content: "bar"}.Create()
+        m := v.New()
 }
 ```
 
-Resources always return their resource object. In the example above, we use
-the `Directory` path as part of the file creation.
-
-This also means we can run whatever action we need to on that resource:
+Add resources:
 
 ```
 func main() {
-        dir := viaduct.Directory{Path: "test"}.Create()
-        v.File{Path: fmt.Sprintf("%s/foo", dir.Path), Content: "bar"}.Create()
+        m := v.New()
 
-        dir.Delete()
+        m.Create(v.Directory{"/tmp/test"})
+        m.Create(v.File{Path: "/tmp/test/foo"})
 }
 ```
 
-I'm using Viaduct to set up my personal development environment at
-[surminus/myduct](https://github.com/surminus/myduct).
+All resources will run concurrently, so in this example we will declare a
+dependency so that the directory is created before the file:
 
-### Embedded files and templates
+```
+func main() {
+        m := v.New()
+
+        dir := m.Create(v.Directory{"/tmp/test"})
+        m.Create(v.File{Path: "/tmp/test/foo"}, dir)
+}
+```
+
+When you've added all the resources you need, we can apply them:
+
+```
+func main() {
+        m := v.New()
+
+        dir := m.Create(v.Directory{"/tmp/test"})
+        m.Create(v.File{Path: "/tmp/test/foo"}, dir)
+
+        m.Start()
+}
+```
+
+Compile the package and run it:
+```
+go build -o viaduct
+./viaduct
+```
+
+## CLI
+
+The compiled binary comes with runtime flags:
+```
+./viaduct --help
+```
+
+## Operations and Resources
+
+The primary operations are the `Create()` and `Delete()` functions which
+perform creations (or updates) and deletions respectively, while the `Run()`
+operation is used for the `Execute` resource.
+
+## Embedded files and templates
 
 There are helper functions to allow us to use the
 [`embed`](https://pkg.go.dev/embed) package to flexibly work with files and
@@ -63,7 +91,7 @@ To create a template, first create a file in `templates/test.txt` using Go
 [`template`](https://pkg.go.dev/text/template) syntax:
 
 ```
-My name is {{ .Name }}
+My cat is called {{ .Name }}
 ```
 
 We can then generate the data to create our file:
@@ -79,19 +107,21 @@ import (
 var templates embed.FS
 
 func main() {
+        m := v.New()
+
         template := v.NewTemplate(
                 templates,
                 "templates/test.txt",
                 struct{ Name string }{Name: "Bella"},
         )
 
-        v.File{Path: "test/foo", Content: template}.Create()
+        m.Create(v.File{Path: "test/foo", Content: template})
 }
 ```
 
 The `EmbeddedFile` function works in a similar way, but without variables.
 
-### Attributes
+## Attributes
 
 Like any good configuration management tool, we also have access to node
 attributes under the `Attribute` variable:
@@ -104,28 +134,46 @@ import (
 )
 
 func main() {
-        fmt.Println(v.Attribute.User.HomeDir) // Prints my home directory
+        m := v.New()
+
+        // v.E is an alias for creating an Execute resource
+        m.Run(v.E(fmt.Sprintf("echo \"Hello %s!\"", v.Attribute.User.Username)))
 }
 ```
 
-### Sudo support
+## Sudo support
 
 If you require to perform actions that require sudo access, such as using the
 `Package` resource, or creating files using `File`, then you should run the
 executible using `sudo`.
 
 Otherwise, assigning permissions should be achieved by explicitly setting the
-user and group.
+user and group in the resource.
 
 Alternatively, you can set a default user attribute:
 ```
-v.Attribute.SetUser("laura")
-```
+func main() {
+        v.Attribute.SetUser("laura")
+        m := v.New()
 
-For resources that you wish to run as `root`, you can set the `Root` option:
-```
-v.File{
-    Path: "foo",
-    Root: true,
+        // Will print my home directory
+        m.Run(v.E(fmt.Sprintf("echo %s", v.Attribute.User.Homedir)))
 }
 ```
+
+## Scripting mode
+
+It's possible to use resources directly in scripting mode:
+
+```
+import (
+        v "github.com/surminus/viaduct"
+)
+
+func main() {
+        v.E("echo hello").Run()
+        v.E("echo world").Run()
+}
+```
+
+These will just run in order and without concurrency.

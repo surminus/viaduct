@@ -26,6 +26,11 @@ type Directory struct {
 	Root bool
 }
 
+// D is a shortcut for declaring a new Directory resource
+func D(path string) Directory {
+	return Directory{Path: path}
+}
+
 // satisfy sets default values for the parameters for a particular
 // resource
 func (d *Directory) satisfy(log *logger) {
@@ -59,21 +64,42 @@ func (d *Directory) satisfy(log *logger) {
 	}
 }
 
-// Create creates a directory
+// Create can be used in scripting mode to create or update a directory
 func (d Directory) Create() *Directory {
 	log := newLogger("Directory", "create")
+	err := d.createDirectory(log)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &d
+}
+
+// Delete can be used in scripting mode to delete a directory
+func (d Directory) Delete() *Directory {
+	log := newLogger("Directory", "delete")
+	err := d.deleteDirectory(log)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &d
+}
+
+// Create creates a directory
+func (d Directory) createDirectory(log *logger) error {
 	d.satisfy(log)
 
 	path := ExpandPath(d.Path)
 
 	if Config.DryRun {
 		log.Info(d.Path)
-		return &d
+		return nil
 	}
 
 	if !DirExists(path) {
 		if err := os.MkdirAll(ExpandPath(path), d.Mode); err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		log.Info(d.Path)
@@ -87,24 +113,24 @@ func (d Directory) Create() *Directory {
 	if d.User != "" {
 		u, err := user.Lookup(d.User)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		uid, err = strconv.Atoi(u.Uid)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
 
 	if d.Group != "" {
 		g, err := user.LookupGroup(d.Group)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		gid, err = strconv.Atoi(g.Gid)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
 
@@ -117,7 +143,7 @@ func (d Directory) Create() *Directory {
 	} else {
 		err := os.Chmod(path, d.Mode)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		permlog.Info(chmodmsg)
@@ -128,35 +154,34 @@ func (d Directory) Create() *Directory {
 	} else {
 		err := os.Chown(path, uid, gid)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		permlog.Info(chownmsg)
 	}
 
-	return &d
+	return nil
 }
 
 // Delete deletes a directory.
-func (d Directory) Delete() *Directory {
-	log := newLogger("Directory", "delete")
+func (d Directory) deleteDirectory(log *logger) error {
 	d.satisfy(log)
 
 	if Config.DryRun {
 		log.Info(d.Path)
-		return &d
+		return nil
 	}
 
 	path := ExpandPath(d.Path)
 
 	if DirExists(path) {
 		if err := os.RemoveAll(ExpandPath(d.Path)); err != nil {
-			log.Fatal(err)
+			return err
 		}
 		log.Info(d.Path)
 	} else {
 		log.Noop(d.Path)
 	}
 
-	return &d
+	return nil
 }
