@@ -7,8 +7,12 @@ import (
 func main() {
 	foo := v.New()
 
-	foo.Run(v.E("echo hello!"))
+	sleep := foo.Run(v.E("sleep 5"))
+	err := foo.Run(v.E("touch blah/boo"))
 	dir := foo.Create(v.D("test"))
+
+	foo.Run(v.E("echo hello"), err)
+	foo.WithLock(sleep)
 
 	foo.Create(v.P("cowsay"), dir)
 
@@ -17,7 +21,7 @@ func main() {
 		Content: "bar",
 	}, dir)
 
-	foo.Delete(v.P("cowsay"))
+	foo.Delete(v.P("cowsay"), sleep)
 
 	foo.Start()
 }

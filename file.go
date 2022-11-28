@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/user"
@@ -94,14 +93,35 @@ func NewTemplate(files embed.FS, path string, variables interface{}) string {
 	return b.String()
 }
 
-// Create creates or updates a file
+// Create can be used in scripting mode to create or update a file
 func (f File) Create() *File {
 	log := newLogger("File", "create")
+	err := f.createFile(log)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &f
+}
+
+// Delete can be used in scripting mode to delete a file
+func (f File) Delete() *File {
+	log := newLogger("File", "delete")
+	err := f.deleteFile(log)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &f
+}
+
+// Create creates or updates a file
+func (f File) createFile(log *logger) error {
 	f.satisfy(log)
 
 	if Config.DryRun {
 		log.Info(f.Path)
-		return &f
+		return nil
 	}
 
 	path := ExpandPath(f.Path)
@@ -113,7 +133,7 @@ func (f File) Create() *File {
 				shouldWriteFile = true
 			}
 		} else {
-			log.Fatal(err)
+			return err
 		}
 	} else {
 		shouldWriteFile = true
@@ -122,9 +142,9 @@ func (f File) Create() *File {
 	// If we want to run it as sudo, then we create a temporary file, write
 	// the content, and then copy the file into place.
 	if shouldWriteFile {
-		err := ioutil.WriteFile(path, []byte(f.Content), f.Mode)
+		err := os.WriteFile(path, []byte(f.Content), f.Mode)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		log.Info(path)
 	} else {
@@ -137,24 +157,24 @@ func (f File) Create() *File {
 	if f.User != "" {
 		u, err := user.Lookup(f.User)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		uid, err = strconv.Atoi(u.Uid)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
 
 	if f.Group != "" {
 		g, err := user.LookupGroup(f.Group)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		gid, err = strconv.Atoi(g.Gid)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
 
@@ -166,7 +186,7 @@ func (f File) Create() *File {
 		permlog.Noop(chownmsg)
 	} else {
 		if err := os.Chown(path, uid, gid); err != nil {
-			log.Fatal(err)
+			return err
 		}
 		permlog.Info(chownmsg)
 	}
@@ -175,22 +195,21 @@ func (f File) Create() *File {
 		permlog.Noop(chmodmsg)
 	} else {
 		if err := os.Chown(path, uid, gid); err != nil {
-			log.Fatal(err)
+			return err
 		}
 		permlog.Info(chownmsg)
 	}
 
-	return &f
+	return nil
 }
 
 // Delete deletes a file
-func (f File) Delete() *File {
-	log := newLogger("File", "delete")
+func (f File) deleteFile(log *logger) error {
 	f.satisfy(log)
 
 	if Config.DryRun {
 		log.Info(f.Path)
-		return &f
+		return nil
 	}
 
 	path := ExpandPath(f.Path)
@@ -198,14 +217,14 @@ func (f File) Delete() *File {
 	// If the file does not exist, return early
 	if !FileExists(path) {
 		log.Noop(f.Path)
-		return &f
+		return nil
 	}
 
 	if err := os.Remove(path); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	log.Info(f.Path)
 
-	return &f
+	return nil
 }

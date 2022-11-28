@@ -58,18 +58,53 @@ func (a *Apt) satisfy(log *logger) {
 	a.path = filepath.Join("/etc", "apt", "sources.list.d", fmt.Sprintf("%s.list", a.Name))
 }
 
-// AptUpdate is a helper function to perform "apt-get update"
-// Should be converted to a proper resource
+func NewAptUpdate() Apt {
+	return Apt{}
+}
+
+// Update can be used in scripting mode to perform "apt-get update"
 func (a Apt) Update() *Apt {
 	log := newLogger("Apt", "update")
+	err := a.updateApt(log)
+	if err != nil {
+		log.Fatal(err)
+	}
 
+	return &a
+}
+
+// Create can be used in scripting mode to create an apt repository
+func (a Apt) Create() *Apt {
+	log := newLogger("Apt", "create")
+	err := a.createApt(log)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &a
+}
+
+// Delete can be used in scripting mode to delete an apt repository
+func (a Apt) Delete() *Apt {
+	log := newLogger("Apt", "delete")
+	err := a.deleteApt(log)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &a
+}
+
+// AptUpdate is a helper function to perform "apt-get update"
+// Should be converted to a proper resource
+func (a Apt) updateApt(log *logger) error {
 	if Config.DryRun {
 		log.Info()
-		return &a
+		return nil
 	}
 
 	if !isRoot() {
-		log.Fatal("Must be run as root")
+		return fmt.Errorf("must be run as root")
 	}
 
 	log.Info()
@@ -80,20 +115,19 @@ func (a Apt) Update() *Apt {
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	return &a
+	return nil
 }
 
 // Create adds a new apt repository
-func (a Apt) Create() *Apt {
-	log := newLogger("Apt", "add")
+func (a Apt) createApt(log *logger) error {
 	a.satisfy(log)
 
 	if Config.DryRun {
 		log.Info(a.Name)
-		return &a
+		return nil
 	}
 
 	content := []string{
@@ -121,42 +155,41 @@ func (a Apt) Create() *Apt {
 		if con, err := os.ReadFile(a.path); err == nil {
 			if string(con) == strings.Join(content, " ") {
 				log.Noop(a.Name)
-				return &a
+				return nil
 			}
 		} else {
-			log.Fatal(err)
+			return err
 		}
 	}
 
 	if err := os.WriteFile(a.path, []byte(strings.Join(content, " ")), 0o644); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	log.Info(a.Name)
 
-	return &a
+	return nil
 }
 
 // Delete removes an apt repository
-func (a Apt) Delete() *Apt {
-	log := newLogger("Apt", "remove")
+func (a Apt) deleteApt(log *logger) error {
 	a.satisfy(log)
 
 	if Config.DryRun {
 		log.Info(a.Name)
-		return &a
+		return nil
 	}
 
 	if !FileExists(a.path) {
 		log.Noop(a.Name)
-		return &a
+		return nil
 	}
 
 	if err := os.Remove(a.path); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	log.Info(a.Name)
 
-	return &a
+	return nil
 }

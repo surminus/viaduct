@@ -1,6 +1,7 @@
 package viaduct
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -35,9 +36,19 @@ func (e *Execute) satisfy(log *logger) {
 	// Set optional defaults here
 }
 
-// Run runs the given command
+// Run can be used in scripting mode to run a command
 func (e Execute) Run() *Execute {
 	log := newLogger("Execute", "run")
+	err := e.runExecute(log)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &e
+}
+
+// Run runs the given command
+func (e Execute) runExecute(log *logger) error {
 	e.satisfy(log)
 
 	if e.Unless != "" {
@@ -50,13 +61,13 @@ func (e Execute) Run() *Execute {
 
 		if err := ucmd.Run(); err == nil {
 			log.Noop(e.Command)
-			return &e
+			return nil
 		}
 	}
 
-	log.Info(e.Command)
+	log.Info(e.Command, " -> started")
 	if Config.DryRun {
-		return &e
+		return nil
 	}
 
 	command := strings.Split(e.Command, " ")
@@ -70,8 +81,9 @@ func (e Execute) Run() *Execute {
 	cmd.Dir = e.WorkingDirectory
 
 	if err := cmd.Run(); err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("command failed: %s", e.Command)
 	}
+	log.Info(e.Command, " -> finished")
 
-	return &e
+	return nil
 }
