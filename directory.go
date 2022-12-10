@@ -33,10 +33,10 @@ func D(path string) Directory {
 
 // satisfy sets default values for the parameters for a particular
 // resource
-func (d *Directory) satisfy(log *logger) {
+func (d *Directory) satisfy(log *logger) error {
 	// Set required values here, and error if they are not set
 	if d.Path == "" {
-		log.Fatal("Required parameter: Path")
+		return fmt.Errorf("Required parameter: Path")
 	}
 
 	// Set optional defaults here
@@ -49,7 +49,7 @@ func (d *Directory) satisfy(log *logger) {
 
 	if d.User == "" && d.UID == 0 && !d.Root {
 		if uid, err := strconv.Atoi(Attribute.User.Uid); err != nil {
-			log.Fatal(err)
+			return err
 		} else {
 			d.UID = uid
 		}
@@ -57,11 +57,13 @@ func (d *Directory) satisfy(log *logger) {
 
 	if d.Group == "" && d.GID == 0 && !d.Root {
 		if gid, err := strconv.Atoi(Attribute.User.Gid); err != nil {
-			log.Fatal(err)
+			return err
 		} else {
 			d.GID = gid
 		}
 	}
+
+	return nil
 }
 
 // Create can be used in scripting mode to create or update a directory
@@ -88,7 +90,9 @@ func (d Directory) Delete() *Directory {
 
 // Create creates a directory
 func (d Directory) createDirectory(log *logger) error {
-	d.satisfy(log)
+	if err := d.satisfy(log); err != nil {
+		return err
+	}
 
 	path := ExpandPath(d.Path)
 
@@ -107,11 +111,24 @@ func (d Directory) createDirectory(log *logger) error {
 		log.Noop(d.Path)
 	}
 
-	uid := d.UID
-	gid := d.GID
+	return setDirectoryPermissions(
+		newLogger("Directory", "permissions"),
+		path,
+		d.UID, d.GID,
+		d.User, d.Group,
+		d.Mode,
+	)
+}
 
-	if d.User != "" {
-		u, err := user.Lookup(d.User)
+func setDirectoryPermissions(
+	log *logger,
+	path string,
+	uid, gid int,
+	username, group string,
+	mode os.FileMode,
+) error {
+	if username != "" {
+		u, err := user.Lookup(username)
 		if err != nil {
 			return err
 		}
@@ -122,8 +139,8 @@ func (d Directory) createDirectory(log *logger) error {
 		}
 	}
 
-	if d.Group != "" {
-		g, err := user.LookupGroup(d.Group)
+	if group != "" {
+		g, err := user.LookupGroup(group)
 		if err != nil {
 			return err
 		}
@@ -134,30 +151,29 @@ func (d Directory) createDirectory(log *logger) error {
 		}
 	}
 
-	permlog := newLogger("Directory", "permissions")
-	chmodmsg := fmt.Sprintf("%s -> %s", path, d.Mode)
+	chmodmsg := fmt.Sprintf("%s -> %s", path, mode)
 	chownmsg := fmt.Sprintf("%s -> %d:%d", path, uid, gid)
 
-	if MatchChmod(path, d.Mode) {
-		permlog.Noop(chmodmsg)
+	if MatchChmod(path, mode) {
+		log.Noop(chmodmsg)
 	} else {
-		err := os.Chmod(path, d.Mode)
+		err := os.Chmod(path, mode)
 		if err != nil {
 			return err
 		}
 
-		permlog.Info(chmodmsg)
+		log.Info(chmodmsg)
 	}
 
 	if MatchChown(path, uid, gid) {
-		permlog.Noop(chownmsg)
+		log.Noop(chownmsg)
 	} else {
 		err := os.Chown(path, uid, gid)
 		if err != nil {
 			return err
 		}
 
-		permlog.Info(chownmsg)
+		log.Info(chownmsg)
 	}
 
 	return nil
@@ -165,7 +181,9 @@ func (d Directory) createDirectory(log *logger) error {
 
 // Delete deletes a directory.
 func (d Directory) deleteDirectory(log *logger) error {
-	d.satisfy(log)
+	if err := d.satisfy(log); err != nil {
+		return err
+	}
 
 	if Config.DryRun {
 		log.Info(d.Path)

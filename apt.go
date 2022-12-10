@@ -32,14 +32,14 @@ type Apt struct {
 
 // satisfy sets default values for the parameters for a particular
 // resource
-func (a *Apt) satisfy(log *logger) {
+func (a *Apt) satisfy(log *logger) error {
 	// Set required values here, and error if they are not set
 	if a.Name == "" {
-		log.Fatal("Required parameter: Name")
+		return fmt.Errorf("Required parameter: Name")
 	}
 
 	if a.URI == "" {
-		log.Fatal("Required parameter: URI")
+		return fmt.Errorf("Required parameter: URI")
 	}
 
 	if !isRoot() {
@@ -56,6 +56,8 @@ func (a *Apt) satisfy(log *logger) {
 	}
 
 	a.path = filepath.Join("/etc", "apt", "sources.list.d", fmt.Sprintf("%s.list", a.Name))
+
+	return nil
 }
 
 func NewAptUpdate() Apt {
@@ -123,7 +125,9 @@ func (a Apt) updateApt(log *logger) error {
 
 // Create adds a new apt repository
 func (a Apt) createApt(log *logger) error {
-	a.satisfy(log)
+	if err := a.satisfy(log); err != nil {
+		return err
+	}
 
 	if Config.DryRun {
 		log.Info(a.Name)
@@ -173,7 +177,9 @@ func (a Apt) createApt(log *logger) error {
 
 // Delete removes an apt repository
 func (a Apt) deleteApt(log *logger) error {
-	a.satisfy(log)
+	if err := a.satisfy(log); err != nil {
+		return err
+	}
 
 	if Config.DryRun {
 		log.Info(a.Name)

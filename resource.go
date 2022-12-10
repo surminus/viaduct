@@ -202,9 +202,11 @@ func (r Resource) run() error {
 
 		switch r.Operation {
 		case OperationCreate:
-			attr.Create()
+			log := newLogger("Git", "create")
+			return attr.createGit(log)
 		case OperationDelete:
-			attr.Delete()
+			log := newLogger("Git", "delete")
+			return attr.deleteGit(log)
 		default:
 			return fmt.Errorf("unknown operation for %s: %s", r.ResourceKind, r.Operation)
 		}
@@ -213,9 +215,11 @@ func (r Resource) run() error {
 
 		switch r.Operation {
 		case OperationCreate:
-			attr.Create()
+			log := newLogger("Link", "create")
+			return attr.createLink(log)
 		case OperationDelete:
-			attr.Delete()
+			log := newLogger("Link", "delete")
+			return attr.deleteLink(log)
 		default:
 			return fmt.Errorf("unknown operation for %s: %s", r.ResourceKind, r.Operation)
 		}
@@ -224,9 +228,11 @@ func (r Resource) run() error {
 
 		switch r.Operation {
 		case OperationCreate:
-			attr.Create()
+			log := newLogger("Package", "create")
+			return attr.createPackage(log)
 		case OperationDelete:
-			attr.Delete()
+			log := newLogger("Package", "delete")
+			return attr.deletePackage(log)
 		default:
 			return fmt.Errorf("unknown operation for %s: %s", r.ResourceKind, r.Operation)
 		}

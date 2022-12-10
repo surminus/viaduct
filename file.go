@@ -22,7 +22,6 @@ type File struct {
 	Mode os.FileMode
 	// Root enforces using the root user
 	Root bool
-
 	// User sets the user permissions by user name
 	User string
 	// Group sets the group permissions by group name
@@ -35,10 +34,10 @@ type File struct {
 
 // satisfy sets default values for the parameters for a particular
 // resource
-func (f *File) satisfy(log *logger) {
+func (f *File) satisfy(log *logger) error {
 	// Set required values here, and error if they are not set
 	if f.Path == "" {
-		log.Fatal("Required parameter: Path")
+		return fmt.Errorf("required parameter: Path")
 	}
 
 	// Set optional defaults here
@@ -48,7 +47,7 @@ func (f *File) satisfy(log *logger) {
 
 	if f.User == "" && f.UID == 0 && !f.Root {
 		if uid, err := strconv.Atoi(Attribute.User.Uid); err != nil {
-			log.Fatal(err)
+			return err
 		} else {
 			f.UID = uid
 		}
@@ -56,11 +55,13 @@ func (f *File) satisfy(log *logger) {
 
 	if f.Group == "" && f.GID == 0 && !f.Root {
 		if gid, err := strconv.Atoi(Attribute.User.Gid); err != nil {
-			log.Fatal(err)
+			return err
 		} else {
 			f.GID = gid
 		}
 	}
+
+	return nil
 }
 
 // EmbeddedFile is a small helper function to helper reading
@@ -117,7 +118,9 @@ func (f File) Delete() *File {
 
 // Create creates or updates a file
 func (f File) createFile(log *logger) error {
-	f.satisfy(log)
+	if err := f.satisfy(log); err != nil {
+		return err
+	}
 
 	if Config.DryRun {
 		log.Info(f.Path)
@@ -205,7 +208,9 @@ func (f File) createFile(log *logger) error {
 
 // Delete deletes a file
 func (f File) deleteFile(log *logger) error {
-	f.satisfy(log)
+	if err := f.satisfy(log); err != nil {
+		return err
+	}
 
 	if Config.DryRun {
 		log.Info(f.Path)

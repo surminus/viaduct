@@ -3,12 +3,13 @@ package viaduct
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 )
 
-// Git manages a git repository
+// Git manages a Git repository
 type Git struct {
 	// Path specifies where to clone the repository to. Required.
 	Path string
@@ -21,18 +22,30 @@ type Git struct {
 	RemoteName string
 	// Ensure will continue to pull the latest changes. Optional.
 	Ensure bool
+	// Mode is the permissions set of the directory
+	Mode os.FileMode
+	// Root enforces using the root user
+	Root bool
+	// User sets the user permissions by user name
+	User string
+	// Group sets the group permissions by group name
+	Group string
+	// UID sets the user permissions by UID
+	UID int
+	// GID sets the group permissions by GID
+	GID int
 }
 
 // satisfy sets default values for the parameters for a particular
 // resource
-func (g *Git) satisfy(log *logger) {
+func (g *Git) satisfy(log *logger) error {
 	// Set required values here, and error if they are not set
 	if g.Path == "" {
-		log.Fatal("Required parameter: Path")
+		return fmt.Errorf("required parameter: Path")
 	}
 
 	if g.URL == "" {
-		log.Fatal("Required parameter: URL")
+		return fmt.Errorf("required parameter: URL")
 	}
 
 	// Optional settings
@@ -43,26 +56,73 @@ func (g *Git) satisfy(log *logger) {
 	if g.RemoteName == "" {
 		g.RemoteName = "origin"
 	}
+
+	if g.Mode == 0 {
+		g.Mode = os.ModeDir | 0755
+	} else {
+		// Explicity set modedir to avoid diffs
+		g.Mode = os.ModeDir | g.Mode
+	}
+
+	if g.User == "" && g.UID == 0 && !g.Root {
+		if uid, err := strconv.Atoi(Attribute.User.Uid); err != nil {
+			return err
+		} else {
+			g.UID = uid
+		}
+	}
+
+	if g.Group == "" && g.GID == 0 && !g.Root {
+		if gid, err := strconv.Atoi(Attribute.User.Gid); err != nil {
+			return err
+		} else {
+			g.GID = gid
+		}
+	}
+
+	return nil
 }
 
-// Create creates or updates a file
+// Create can be used in scripting mode to create or update a Git repository
 func (g Git) Create() *Git {
 	log := newLogger("Git", "create")
-	g.satisfy(log)
+	err := g.createGit(log)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &g
+}
+
+// Delete can be used in scripting mode to delete a Git repository
+func (g Git) Delete() *Git {
+	log := newLogger("Git", "delete")
+	err := g.deleteGit(log)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &g
+}
+
+func (g Git) createGit(log *logger) error {
+	if err := g.satisfy(log); err != nil {
+		return err
+	}
 
 	path := ExpandPath(g.Path)
 	logmsg := fmt.Sprintf("%s -> %s", g.URL, path)
 
 	if Config.DryRun {
 		log.Info(logmsg)
-		return &g
+		return nil
 	}
 
 	var pathExists bool
 	if FileExists(path) {
 		if !g.Ensure {
 			log.Noop(logmsg)
-			return &g
+			return nil
 		}
 
 		pathExists = true
@@ -71,18 +131,18 @@ func (g Git) Create() *Git {
 	if pathExists {
 		r, err := git.PlainOpen(path)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		w, err := r.Worktree()
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		if Attribute.User.Username != "root" {
 			err = os.Setenv("SSH_KNOWN_HOSTS", ExpandPath("~/.ssh/known_hosts"))
 			if err != nil {
-				log.Fatal(err)
+				return err
 			}
 		}
 
@@ -97,7 +157,7 @@ func (g Git) Create() *Git {
 			if err == git.NoErrAlreadyUpToDate {
 				log.Noop(logmsg)
 			} else {
-				log.Fatal(err)
+				return err
 			}
 		} else {
 			log.Info(logmsg)
@@ -113,30 +173,36 @@ func (g Git) Create() *Git {
 			URL:           g.URL,
 		})
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		log.Info(logmsg)
 	}
 
-	return &g
+	return setDirectoryPermissions(
+		newLogger("Git", "permissions"),
+		path,
+		g.UID, g.GID,
+		g.User, g.Group,
+		g.Mode,
+	)
 }
 
-// Delete deletes the git directory
-func (g Git) Delete() *Git {
-	log := newLogger("Git", "delete")
-	g.satisfy(log)
+func (g Git) deleteGit(log *logger) error {
+	if err := g.satisfy(log); err != nil {
+		return err
+	}
 
 	path := ExpandPath(g.Path)
 
 	if Config.DryRun {
 		log.Info(path)
-		return &g
+		return nil
 	}
 
 	if DirExists(path) {
 		if err := os.RemoveAll(path); err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		log.Info(path)
@@ -144,5 +210,5 @@ func (g Git) Delete() *Git {
 		log.Noop(path)
 	}
 
-	return &g
+	return nil
 }

@@ -27,13 +27,14 @@ func E(command string) Execute {
 	return Execute{Command: command}
 }
 
-func (e *Execute) satisfy(log *logger) {
+func (e *Execute) satisfy(log *logger) error {
 	// Set required values here, and error if they are not set
 	if e.Command == "" {
-		log.Fatal("Required parameter: Command")
+		return fmt.Errorf("Required parameter: Command")
 	}
 
 	// Set optional defaults here
+	return nil
 }
 
 // Run can be used in scripting mode to run a command
@@ -49,7 +50,9 @@ func (e Execute) Run() *Execute {
 
 // Run runs the given command
 func (e Execute) runExecute(log *logger) error {
-	e.satisfy(log)
+	if err := e.satisfy(log); err != nil {
+		return err
+	}
 
 	if e.Unless != "" {
 		unless := strings.Split(e.Unless, " ")
