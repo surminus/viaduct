@@ -26,14 +26,22 @@ func (l *logger) Fatal(v ...interface{}) {
 	log.Fatalln(loggerOutput(fatal(l.Resource), fatal(l.Action), v...))
 }
 
+// Critical is like Fatal, but without exiting
+func (l *logger) Critical(v ...interface{}) {
+	log.Println(loggerOutput(critical(l.Resource), critical(l.Action), v...))
+}
+
+// Info outputs informational messages
 func (l *logger) Info(v ...interface{}) {
 	log.Println(loggerOutput(info(l.Resource), info(l.Action), v...))
 }
 
+// Warn prints warning messages
 func (l *logger) Warn(v ...interface{}) {
 	log.Println(loggerOutput(warn(l.Resource), warn(l.Action), v...))
 }
 
+// Noop prints no operation messages
 func (l *logger) Noop(v ...interface{}) {
 	log.Println(loggerOutput(noop(l.Resource), noop(fmt.Sprintf("%s (%s)", l.Action, "up-to-date")), v...))
 }
@@ -42,6 +50,7 @@ func loggerOutput(resource, action string, v ...interface{}) string {
 	return fmt.Sprintf("==> %s [%s] %s", resource, action, fmt.Sprint(v...))
 }
 
+var critical = color.New(color.FgRed).SprintFunc()
 var fatal = color.New(color.FgRed).SprintFunc()
 var info = color.New(color.FgGreen).SprintFunc()
 var noop = color.New(color.FgBlue, color.Faint).SprintFunc()

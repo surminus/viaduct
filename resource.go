@@ -9,13 +9,13 @@ import (
 
 const (
 	// Resource Kinds
-	KindApt       ResourceKind = "KindApt"
-	KindDirectory ResourceKind = "KindDirectory"
-	KindExecute   ResourceKind = "KindExecute"
-	KindFile      ResourceKind = "KindFile"
-	KindGit       ResourceKind = "KindGit"
-	KindLink      ResourceKind = "KindLink"
-	KindPackage   ResourceKind = "KindPackage"
+	KindApt       ResourceKind = "Apt"
+	KindDirectory ResourceKind = "Directory"
+	KindExecute   ResourceKind = "Execute"
+	KindFile      ResourceKind = "File"
+	KindGit       ResourceKind = "Git"
+	KindLink      ResourceKind = "Link"
+	KindPackage   ResourceKind = "Package"
 )
 
 // Resource specifies how a new resource should be run

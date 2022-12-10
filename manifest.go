@@ -18,22 +18,22 @@ type (
 
 const (
 	// Operations
-	OperationCreate Operation = "OperationCreate"
-	OperationDelete Operation = "OperationDelete"
-	OperationRun    Operation = "OperationRun"
-	OperationUpdate Operation = "OperationUpdate"
+	OperationCreate Operation = "Create"
+	OperationDelete Operation = "Delete"
+	OperationRun    Operation = "Run"
+	OperationUpdate Operation = "Update"
 
 	// Statuses
-	StatusDependencyFailed Status = "StatusDependencyFailed"
-	StatusFailed           Status = "StatusFailed"
-	StatusPending          Status = "StatusPending"
-	StatusSuccess          Status = "StatusSuccess"
+	StatusDependencyFailed Status = "DependencyFailed"
+	StatusFailed           Status = "Failed"
+	StatusPending          Status = "Pending"
+	StatusSuccess          Status = "Success"
 )
 
 // Manifest is a map of resources to allow concurrent runs
 type Manifest struct {
 	resources map[ResourceID]Resource
-	errors    chan error
+	errors    chan map[*Resource]error
 }
 
 func New() *Manifest {
@@ -223,7 +223,7 @@ func (m *Manifest) Start() {
 	// var g errgroup.Group
 	var lock, globalLock sync.RWMutex
 	var wg sync.WaitGroup
-	m.errors = make(chan error, len(m.resources))
+	m.errors = make(chan map[*Resource]error, len(m.resources))
 
 	wg.Add(len(m.resources))
 
@@ -238,6 +238,25 @@ func (m *Manifest) Start() {
 		timeTaken := time.Since(start).Round(time.Second).String()
 		log.Warn(fmt.Sprintf("Completed with errors in %s:", timeTaken))
 
+		for diag := range m.errors {
+			for r, err := range diag {
+				attributes, _ := json.MarshalIndent(r.Attributes, "", "  ")
+
+				log.Critical(
+					fmt.Sprintf(
+						"%s error: \"%s\"\nAttributes:\n%s",
+						r.ResourceKind, err, attributes,
+					),
+				)
+			}
+		}
+
+	} else {
+		timeTaken := time.Since(start).Round(time.Second).String()
+		log.Info(fmt.Sprintf("Completed without errors in %s", timeTaken))
+	}
+
+	if Config.DumpManifest {
 		tmpName := fmt.Sprintf("/tmp/viaduct-%d.json", time.Now().Unix())
 
 		out, err := json.MarshalIndent(m.resources, "", "    ")
@@ -250,10 +269,7 @@ func (m *Manifest) Start() {
 			log.Fatal(err)
 		}
 
-		log.Warn(fmt.Sprintf("Manifest written to: %s", tmpName))
-	} else {
-		timeTaken := time.Since(start).Round(time.Second).String()
-		log.Info(fmt.Sprintf("Completed without errors in %s", timeTaken))
+		log.Info(fmt.Sprintf("Manifest written to: %s", tmpName))
 	}
 }
 
@@ -262,7 +278,7 @@ func (m *Manifest) apply(id ResourceID, r Resource, wg *sync.WaitGroup, lock *sy
 
 	err := m.dependencyCheck(&r, lock)
 	if err != nil {
-		m.errors <- err
+		m.errors <- map[*Resource]error{&r: err}
 		return
 	}
 
@@ -274,7 +290,7 @@ func (m *Manifest) apply(id ResourceID, r Resource, wg *sync.WaitGroup, lock *sy
 	err = r.run()
 	if err != nil {
 		m.setStatus(&r, StatusFailed, lock)
-		m.errors <- err
+		m.errors <- map[*Resource]error{&r: err}
 		return
 	}
 
