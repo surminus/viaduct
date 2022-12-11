@@ -33,7 +33,6 @@ const (
 // Manifest is a map of resources to allow concurrent runs
 type Manifest struct {
 	resources map[ResourceID]Resource
-	errors    chan map[*Resource]error
 }
 
 func New() *Manifest {
@@ -220,10 +219,8 @@ func (m *Manifest) Start() {
 	start := time.Now()
 	log.Info("Start")
 
-	// var g errgroup.Group
 	var lock, globalLock sync.RWMutex
 	var wg sync.WaitGroup
-	m.errors = make(chan map[*Resource]error, len(m.resources))
 
 	wg.Add(len(m.resources))
 
@@ -232,28 +229,36 @@ func (m *Manifest) Start() {
 	}
 
 	wg.Wait()
-	close(m.errors)
 
-	if len(m.errors) > 0 {
-		timeTaken := time.Since(start).Round(time.Second).String()
+	timeTaken := time.Since(start).Round(time.Second).String()
+
+	var withErrors bool
+	for _, resource := range m.resources {
+		if resource.Error != "" {
+			withErrors = true
+			break
+		}
+	}
+
+	if withErrors {
 		log.Warn(fmt.Sprintf("Completed with errors in %s:", timeTaken))
+	} else {
+		log.Info(fmt.Sprintf("Completed without errors in %s:", timeTaken))
+	}
 
-		for diag := range m.errors {
-			for r, err := range diag {
-				attributes, _ := json.MarshalIndent(r.Attributes, "", "  ")
+	if withErrors {
+		for _, resource := range m.resources {
+			if resource.Error != "" {
+				attr, _ := json.MarshalIndent(resource.Attributes, "", "  ")
 
 				log.Critical(
 					fmt.Sprintf(
-						"%s error: \"%s\"\nAttributes:\n%s",
-						r.ResourceKind, err, attributes,
+						"Resource type %s with operation %s had error: \"%s\"\nAttributes:\n%s",
+						warn(resource.ResourceKind), warn(resource.Operation), resource.Error, attr,
 					),
 				)
 			}
 		}
-
-	} else {
-		timeTaken := time.Since(start).Round(time.Second).String()
-		log.Info(fmt.Sprintf("Completed without errors in %s", timeTaken))
 	}
 
 	if Config.DumpManifest {
@@ -271,6 +276,13 @@ func (m *Manifest) Start() {
 
 		log.Info(fmt.Sprintf("Manifest written to: %s", tmpName))
 	}
+
+	if withErrors {
+		if !Config.DumpManifest {
+			log.Info("To see all resources, run with --dump-manifest")
+		}
+		os.Exit(1)
+	}
 }
 
 func (m *Manifest) apply(id ResourceID, r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, globalLock *sync.RWMutex) {
@@ -278,7 +290,7 @@ func (m *Manifest) apply(id ResourceID, r Resource, wg *sync.WaitGroup, lock *sy
 
 	err := m.dependencyCheck(&r, lock)
 	if err != nil {
-		m.errors <- map[*Resource]error{&r: err}
+		m.setError(&r, lock, err)
 		return
 	}
 
@@ -289,12 +301,12 @@ func (m *Manifest) apply(id ResourceID, r Resource, wg *sync.WaitGroup, lock *sy
 	// Run the resource operation
 	err = r.run()
 	if err != nil {
-		m.setStatus(&r, StatusFailed, lock)
-		m.errors <- map[*Resource]error{&r: err}
+		m.setStatus(&r, lock, StatusFailed)
+		m.setError(&r, lock, err)
 		return
 	}
 
-	m.setStatus(&r, StatusSuccess, lock)
+	m.setStatus(&r, lock, StatusSuccess)
 
 	if r.GlobalLock {
 		globalLock.Unlock()
@@ -316,7 +328,7 @@ func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
 				if d, ok := m.resources[dep]; ok {
 					if d.Status == StatusFailed {
 						lock.RUnlock()
-						m.setStatus(r, StatusDependencyFailed, lock)
+						m.setStatus(r, lock, StatusDependencyFailed)
 
 						// Unlock and return error
 						return fmt.Errorf("dependency failed, refusing to run")
@@ -345,10 +357,19 @@ func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
 	return nil
 }
 
-func (m *Manifest) setStatus(r *Resource, s Status, lock *sync.RWMutex) {
+func (m *Manifest) setStatus(r *Resource, lock *sync.RWMutex, s Status) {
 	lock.Lock()
 	if re, ok := m.resources[r.ResourceID]; ok {
 		re.Status = s
+		m.resources[r.ResourceID] = re
+	}
+	lock.Unlock()
+}
+
+func (m *Manifest) setError(r *Resource, lock *sync.RWMutex, err error) {
+	lock.Lock()
+	if re, ok := m.resources[r.ResourceID]; ok {
+		re.Error = err.Error()
 		m.resources[r.ResourceID] = re
 	}
 	lock.Unlock()

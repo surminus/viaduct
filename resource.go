@@ -34,6 +34,8 @@ type Resource struct {
 	// GlobalLock will mean the resource will not run at the same time
 	// as other resources that have this set to true
 	GlobalLock bool
+	// Error contains any errors raised during a run
+	Error string
 }
 
 var allowedKindOperations = map[Operation][]ResourceKind{

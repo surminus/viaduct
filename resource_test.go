@@ -97,7 +97,7 @@ func TestSetID(t *testing.T) {
 	err := r.setID()
 	assert.NoError(t, err)
 
-	assert.Equal(t, ResourceID("7f15fd974e5fa5682684d6cb54d56291e2299230"), r.ResourceID)
+	assert.Equal(t, ResourceID("d90befccb3c3a00c6f168f1b44037cd091d9e522"), r.ResourceID)
 }
 
 func TestNewReso(t *testing.T) {
