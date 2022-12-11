@@ -91,13 +91,15 @@ func TestCheckAllowedOperations(t *testing.T) {
 func TestSetID(t *testing.T) {
 	t.Parallel()
 
-	// Just use an empty resource
-	r := Resource{}
+	r := Resource{
+		Operation:    OperationCreate,
+		ResourceKind: KindFile,
+	}
 
 	err := r.setID()
 	assert.NoError(t, err)
 
-	assert.Equal(t, ResourceID("d90befccb3c3a00c6f168f1b44037cd091d9e522"), r.ResourceID)
+	assert.Equal(t, ResourceID("FileCreate2be88ca4"), r.ResourceID)
 }
 
 func TestNewReso(t *testing.T) {

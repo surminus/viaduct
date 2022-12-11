@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 const (
@@ -134,14 +135,15 @@ func (r *Resource) checkAllowedOperation() error {
 }
 
 func (r *Resource) setID() error {
-	j, err := json.Marshal(r)
+	j, err := json.Marshal(r.Attributes)
 	if err != nil {
 		return err
 	}
 
 	h := sha1.New()
 	h.Write(j)
-	r.ResourceID = ResourceID(hex.EncodeToString(h.Sum(nil)))
+	sha := hex.EncodeToString(h.Sum(nil))
+	r.ResourceID = ResourceID(strings.Join([]string{string(r.ResourceKind), string(r.Operation), sha[0:8]}, ""))
 	return nil
 }
 
