@@ -88,7 +88,7 @@ func (m *Manifest) addResource(r *Resource, a any) (err error) {
 	}
 
 	if _, ok := m.resources[r.ResourceID]; ok {
-		return fmt.Errorf("resource already exists with attributes: %s", a)
+		return fmt.Errorf("resource already exists:\n%s", attrJSON(r))
 	}
 
 	m.resources[r.ResourceID] = *r

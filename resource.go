@@ -135,7 +135,7 @@ func (r *Resource) checkAllowedOperation() error {
 }
 
 func (r *Resource) setID() error {
-	j, err := json.Marshal(r.Attributes)
+	j, err := json.Marshal(r)
 	if err != nil {
 		return err
 	}
@@ -143,7 +143,9 @@ func (r *Resource) setID() error {
 	h := sha1.New()
 	h.Write(j)
 	sha := hex.EncodeToString(h.Sum(nil))
-	r.ResourceID = ResourceID(strings.Join([]string{string(r.ResourceKind), string(r.Operation), sha[0:8]}, ""))
+
+	idstr := strings.Join([]string{"id", sha[0:8]}, "-")
+	r.ResourceID = ResourceID(strings.Join([]string{string(r.ResourceKind), string(r.Operation), idstr}, "_"))
 	return nil
 }
 
