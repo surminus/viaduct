@@ -40,7 +40,7 @@ type Resource struct {
 }
 
 var allowedKindOperations = map[Operation][]ResourceKind{
-	OperationCreate: {
+	Create: {
 		KindApt,
 		KindFile,
 		KindDirectory,
@@ -48,7 +48,7 @@ var allowedKindOperations = map[Operation][]ResourceKind{
 		KindLink,
 		KindPackage,
 	},
-	OperationDelete: {
+	Delete: {
 		KindApt,
 		KindFile,
 		KindDirectory,
@@ -56,10 +56,10 @@ var allowedKindOperations = map[Operation][]ResourceKind{
 		KindLink,
 		KindPackage,
 	},
-	OperationRun: {
+	Run: {
 		KindExecute,
 	},
-	OperationUpdate: {
+	Update: {
 		KindApt,
 	},
 }
@@ -79,7 +79,7 @@ func newResource(o Operation, deps []*Resource) (*Resource, error) {
 	return &Resource{
 		Operation: o,
 		DependsOn: dependsOn,
-		Status:    StatusPending,
+		Status:    Pending,
 	}, nil
 }
 
@@ -155,13 +155,13 @@ func (r Resource) run() error {
 		attr := r.Attributes.(Apt)
 
 		switch r.Operation {
-		case OperationCreate:
+		case Create:
 			log := newLogger("Apt", "create")
 			return attr.createApt(log)
-		case OperationDelete:
+		case Delete:
 			log := newLogger("Apt", "delete")
 			return attr.deleteApt(log)
-		case OperationUpdate:
+		case Update:
 			log := newLogger("Apt", "update")
 			return attr.updateApt(log)
 		default:
@@ -171,10 +171,10 @@ func (r Resource) run() error {
 		attr := r.Attributes.(File)
 
 		switch r.Operation {
-		case OperationCreate:
+		case Create:
 			log := newLogger("File", "create")
 			return attr.createFile(log)
-		case OperationDelete:
+		case Delete:
 			log := newLogger("File", "delete")
 			return attr.deleteFile(log)
 		default:
@@ -184,10 +184,10 @@ func (r Resource) run() error {
 		attr := r.Attributes.(Directory)
 
 		switch r.Operation {
-		case OperationCreate:
+		case Create:
 			log := newLogger("Directory", "create")
 			return attr.createDirectory(log)
-		case OperationDelete:
+		case Delete:
 			log := newLogger("Directory", "delete")
 			return attr.deleteDirectory(log)
 		default:
@@ -197,7 +197,7 @@ func (r Resource) run() error {
 		attr := r.Attributes.(Execute)
 
 		switch r.Operation {
-		case OperationRun:
+		case Run:
 			log := newLogger("Execute", "run")
 			return attr.runExecute(log)
 		default:
@@ -207,10 +207,10 @@ func (r Resource) run() error {
 		attr := r.Attributes.(Git)
 
 		switch r.Operation {
-		case OperationCreate:
+		case Create:
 			log := newLogger("Git", "create")
 			return attr.createGit(log)
-		case OperationDelete:
+		case Delete:
 			log := newLogger("Git", "delete")
 			return attr.deleteGit(log)
 		default:
@@ -220,10 +220,10 @@ func (r Resource) run() error {
 		attr := r.Attributes.(Link)
 
 		switch r.Operation {
-		case OperationCreate:
+		case Create:
 			log := newLogger("Link", "create")
 			return attr.createLink(log)
-		case OperationDelete:
+		case Delete:
 			log := newLogger("Link", "delete")
 			return attr.deleteLink(log)
 		default:
@@ -233,10 +233,10 @@ func (r Resource) run() error {
 		attr := r.Attributes.(Package)
 
 		switch r.Operation {
-		case OperationCreate:
+		case Create:
 			log := newLogger("Package", "create")
 			return attr.createPackage(log)
-		case OperationDelete:
+		case Delete:
 			log := newLogger("Package", "delete")
 			return attr.deletePackage(log)
 		default:

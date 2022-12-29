@@ -5,23 +5,23 @@ import (
 )
 
 func main() {
-	foo := v.New()
+	m := v.New()
 
-	sleep := foo.Run(v.E("sleep 5"))
-	err := foo.Run(v.E("touch blah/boo"))
-	dir := foo.Create(v.D("test"))
+	sleep := m.Add(v.Run, v.E("sleep 5"))
+	err := m.Add(v.Run, v.E("touch blah/boo"))
+	dir := m.Add(v.Create, v.D("test"))
 
-	foo.Run(v.E("echo hello"), err)
-	foo.WithLock(sleep)
+	m.Add(v.Run, v.E("echo hello"), err)
+	m.WithLock(sleep)
 
-	foo.Create(v.P("cowsay"), dir)
+	m.Add(v.Create, v.P("cowsay"), dir)
 
-	foo.Create(v.File{
+	m.Add(v.Create, v.File{
 		Path:    "test/foo",
 		Content: "bar",
 	}, dir)
 
-	foo.Delete(v.P("cowsay"), sleep)
+	m.Add(v.Delete, v.P("cowsay"), sleep)
 
-	foo.Start()
+	m.Run()
 }

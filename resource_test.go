@@ -58,7 +58,7 @@ func TestCheckAllowedOperations(t *testing.T) {
 		t.Parallel()
 
 		r := Resource{
-			Operation:    OperationCreate,
+			Operation:    Create,
 			ResourceKind: KindFile,
 		}
 
@@ -69,7 +69,7 @@ func TestCheckAllowedOperations(t *testing.T) {
 		t.Parallel()
 
 		r := Resource{
-			Operation:    OperationCreate,
+			Operation:    Create,
 			ResourceKind: KindExecute,
 		}
 
@@ -80,7 +80,7 @@ func TestCheckAllowedOperations(t *testing.T) {
 		t.Parallel()
 
 		r := Resource{
-			Operation:    OperationDelete,
+			Operation:    Delete,
 			ResourceKind: KindExecute,
 		}
 
@@ -92,7 +92,7 @@ func TestSetID(t *testing.T) {
 	t.Parallel()
 
 	r := Resource{
-		Operation:    OperationCreate,
+		Operation:    Create,
 		ResourceKind: KindFile,
 	}
 
@@ -108,7 +108,7 @@ func TestNewReso(t *testing.T) {
 	t.Run("error if invalid dependency", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := newResource(OperationCreate, []*Resource{{}})
+		_, err := newResource(Create, []*Resource{{}})
 		assert.Error(t, err)
 	})
 

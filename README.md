@@ -22,6 +22,7 @@ import (
 )
 
 func main() {
+        // m is our manifest object
         m := v.New()
 }
 ```
@@ -32,8 +33,11 @@ Add resources:
 func main() {
         m := v.New()
 
-        m.Create(v.Directory{"/tmp/test"})
-        m.Create(v.File{Path: "/tmp/test/foo"})
+        // The first argument is what operation to perform, such as
+        // creating or deleting a file, and the second argument are
+        // the attributes of the resource
+        m.Add(v.Create, v.Directory{"/tmp/test"})
+        m.Add(v.Create, v.File{Path: "/tmp/test/foo"})
 }
 ```
 
@@ -44,8 +48,8 @@ dependency so that the directory is created before the file:
 func main() {
         m := v.New()
 
-        dir := m.Create(v.Directory{"/tmp/test"})
-        m.Create(v.File{Path: "/tmp/test/foo"}, dir)
+        dir := m.Add(v.Create, v.Directory{"/tmp/test"})
+        m.Add(v.Create, v.File{Path: "/tmp/test/foo"}, dir)
 }
 ```
 
@@ -55,10 +59,10 @@ When you've added all the resources you need, we can apply them:
 func main() {
         m := v.New()
 
-        dir := m.Create(v.Directory{"/tmp/test"})
-        m.Create(v.File{Path: "/tmp/test/foo"}, dir)
+        dir := m.Add(v.Create, v.Directory{"/tmp/test"})
+        m.Add(v.Create, v.File{Path: "/tmp/test/foo"}, dir)
 
-        m.Start()
+        m.Run()
 }
 ```
 
@@ -77,9 +81,10 @@ The compiled binary comes with runtime flags:
 
 ## Operations and Resources
 
-The primary operations are the `Create()` and `Delete()` functions which
-perform creations (or updates) and deletions respectively, while the `Run()`
-operation is used for the `Execute` resource.
+The primary operations are `Create` and `Delete` which
+perform creations & updates and deletions respectively.
+
+The `Run` operation is used with the `Execute` resource type.
 
 ## Embedded files and templates
 
@@ -115,7 +120,7 @@ func main() {
                 struct{ Name string }{Name: "Bella"},
         )
 
-        m.Create(v.File{Path: "test/foo", Content: template})
+        m.Add(v.Create, v.File{Path: "test/foo", Content: template})
 }
 ```
 
@@ -137,7 +142,7 @@ func main() {
         m := v.New()
 
         // v.E is an alias for creating an Execute resource
-        m.Run(v.E(fmt.Sprintf("echo \"Hello %s!\"", v.Attribute.User.Username)))
+        m.Add(v.Run, v.E(fmt.Sprintf("echo \"Hello %s!\"", v.Attribute.User.Username)))
 }
 ```
 
@@ -157,7 +162,7 @@ func main() {
         m := v.New()
 
         // Will print my home directory
-        m.Run(v.E(fmt.Sprintf("echo %s", v.Attribute.User.Homedir)))
+        m.Add(v.Run, v.E(fmt.Sprintf("echo %s", v.Attribute.User.Homedir)))
 }
 ```
 

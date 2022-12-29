@@ -18,16 +18,16 @@ type (
 
 const (
 	// Operations
-	OperationCreate Operation = "Create"
-	OperationDelete Operation = "Delete"
-	OperationRun    Operation = "Run"
-	OperationUpdate Operation = "Update"
+	Create Operation = "Create"
+	Delete Operation = "Delete"
+	Run    Operation = "Run"
+	Update Operation = "Update"
 
 	// Statuses
-	StatusDependencyFailed Status = "DependencyFailed"
-	StatusFailed           Status = "Failed"
-	StatusPending          Status = "Pending"
-	StatusSuccess          Status = "Success"
+	DependencyFailed Status = "DependencyFailed"
+	Failed           Status = "Failed"
+	Pending          Status = "Pending"
+	Success          Status = "Success"
 )
 
 // Manifest is a map of resources to allow concurrent runs
@@ -78,7 +78,7 @@ func (m *Manifest) addResource(r *Resource, a any) (err error) {
 
 	// Package resources should never run at the same time, and
 	// the AptUpdate operation should also take a global lock.
-	if r.ResourceKind == KindPackage || r.Operation == OperationUpdate {
+	if r.ResourceKind == KindPackage || r.Operation == Update {
 		r.GlobalLock = true
 	}
 
@@ -96,6 +96,25 @@ func (m *Manifest) addResource(r *Resource, a any) (err error) {
 	return err
 }
 
+func (m *Manifest) Add(operation Operation, attributes any, deps ...*Resource) *Resource {
+	log := newLogger("Viaduct", string(operation))
+
+	r, err := newResource(operation, deps)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := r.init(attributes); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := m.addResource(r, attributes); err != nil {
+		log.Fatal(err)
+	}
+
+	return r
+}
+
 func attrJSON(a any) string {
 	str, err := json.MarshalIndent(a, "", "  ")
 	if err != nil {
@@ -105,119 +124,12 @@ func attrJSON(a any) string {
 	return string(str)
 }
 
-// createResource is internally used for testing
-func (m *Manifest) createResource(a any, deps ...*Resource) (*Resource, error) {
-	r, err := newResource(OperationCreate, deps)
-	if err != nil {
-		return r, err
-	}
-
-	if err := r.init(a); err != nil {
-		return r, err
-	}
-
-	err = m.addResource(r, a)
-	return r, err
-}
-
-// Create adds a creation resource to the manifest
-func (m *Manifest) Create(a any, deps ...*Resource) *Resource {
-	log := newLogger("Viaduct", "create")
-
-	r, err := m.createResource(a, deps...)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return r
-}
-
-// deleteResource is internally used for testing
-func (m *Manifest) deleteResource(a any, deps ...*Resource) (*Resource, error) {
-	r, err := newResource(OperationDelete, deps)
-	if err != nil {
-		return r, err
-	}
-
-	if err := r.init(a); err != nil {
-		return r, err
-	}
-
-	err = m.addResource(r, a)
-	return r, err
-}
-
-// Delete adds a deletion resource to the manifest
-func (m *Manifest) Delete(a any, deps ...*Resource) *Resource {
-	log := newLogger("Viaduct", "delete")
-
-	r, err := m.deleteResource(a, deps...)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return r
-}
-
-// runResource is internally used for testing
-func (m *Manifest) runResource(a Execute, deps ...*Resource) (*Resource, error) {
-	r, err := newResource(OperationRun, deps)
-	if err != nil {
-		return r, err
-	}
-
-	if err := r.init(a); err != nil {
-		return r, err
-	}
-
-	err = m.addResource(r, a)
-	return r, err
-}
-
-// Run adds an execution run to the manifest
-func (m *Manifest) Run(a Execute, deps ...*Resource) *Resource {
-	log := newLogger("Viaduct", "run")
-
-	r, err := m.runResource(a, deps...)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return r
-}
-
-// updateResource is used internally for testing
-func (m *Manifest) updateResource(a Apt, deps ...*Resource) (*Resource, error) {
-	r, err := newResource(OperationUpdate, deps)
-	if err != nil {
-		return r, err
-	}
-
-	if err := r.init(a); err != nil {
-		return r, err
-	}
-
-	err = m.addResource(r, a)
-	return r, err
-}
-
-func (m *Manifest) Update(a Apt, deps ...*Resource) *Resource {
-	log := newLogger("Viaduct", "update")
-
-	r, err := m.updateResource(a, deps...)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return r
-}
-
-// Start will run the specified resources concurrently, taking into account
+// Run will run the specified resources concurrently, taking into account
 // any dependencies that have been declared
-func (m *Manifest) Start() {
+func (m *Manifest) Run() {
 	log := newLogger("Viaduct", "run")
 	start := time.Now()
-	log.Info("Start")
+	log.Info("Run")
 
 	var lock, globalLock sync.RWMutex
 	var wg sync.WaitGroup
@@ -301,12 +213,12 @@ func (m *Manifest) apply(id ResourceID, r Resource, wg *sync.WaitGroup, lock *sy
 	// Run the resource operation
 	err = r.run()
 	if err != nil {
-		m.setStatus(&r, lock, StatusFailed)
+		m.setStatus(&r, lock, Failed)
 		m.setError(&r, lock, err)
 		return
 	}
 
-	m.setStatus(&r, lock, StatusSuccess)
+	m.setStatus(&r, lock, Success)
 
 	if r.GlobalLock {
 		globalLock.Unlock()
@@ -326,15 +238,15 @@ func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
 			for _, dep := range r.DependsOn {
 				lock.RLock()
 				if d, ok := m.resources[dep]; ok {
-					if d.Status == StatusFailed {
+					if d.Status == Failed {
 						lock.RUnlock()
-						m.setStatus(r, lock, StatusDependencyFailed)
+						m.setStatus(r, lock, DependencyFailed)
 
 						// Unlock and return error
 						return fmt.Errorf("dependency failed, refusing to run")
 					}
 
-					if d.Status != StatusSuccess {
+					if d.Status != Success {
 						depsSuccess = false
 					}
 				}
