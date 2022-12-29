@@ -25,7 +25,7 @@ type Resource struct {
 	// The kind of resource, such as "file" or "package"
 	ResourceKind
 	// What the resource is doing, such as "create" or "delete"
-	Operation
+	// Operation
 	// A list of resource dependencies
 	DependsOn []ResourceID
 	// Status denotes the current status of the resource
@@ -77,7 +77,7 @@ func newResource(o Operation, deps []*Resource) (*Resource, error) {
 	}
 
 	return &Resource{
-		Operation: o,
+		// Operation: o,
 		DependsOn: dependsOn,
 		Status:    Pending,
 	}, nil
@@ -88,7 +88,7 @@ func (r *Resource) init(a any) error {
 		return err
 	}
 
-	if r.Operation == "" {
+	if r.Attributes.Operation == "" {
 		return fmt.Errorf("operation missing")
 	}
 
@@ -120,6 +120,14 @@ func (r *Resource) setKind(a any) error {
 	}
 
 	return nil
+}
+
+func (r *Resource) setOperation(a any) error {
+	switch r.ResourceKind {
+	case KindApt:
+		r.Operation = a.(Apt).Operation
+	}
+
 }
 
 func (r *Resource) checkAllowedOperation() error {
@@ -168,18 +176,7 @@ func (r Resource) run() error {
 			return fmt.Errorf("unknown operation for %s: %s", r.ResourceKind, r.Operation)
 		}
 	case KindFile:
-		attr := r.Attributes.(File)
-
-		switch r.Operation {
-		case Create:
-			log := newLogger("File", "create")
-			return attr.createFile(log)
-		case Delete:
-			log := newLogger("File", "delete")
-			return attr.deleteFile(log)
-		default:
-			return fmt.Errorf("unknown operation for %s: %s", r.ResourceKind, r.Operation)
-		}
+		return r.Attributes.(File).run()
 	case KindDirectory:
 		attr := r.Attributes.(Directory)
 

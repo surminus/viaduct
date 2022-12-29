@@ -14,6 +14,10 @@ import (
 
 // File manages files on the filesystem
 type File struct {
+	// Operation is what operation the resource will perform. Default is
+	// Create.
+	Operation
+
 	// Path is the path of the file
 	Path string
 	// Content is the content of the file
@@ -41,6 +45,10 @@ func (f *File) satisfy(log *logger) error {
 	}
 
 	// Set optional defaults here
+	if f.Operation == "" {
+		f.Operation = Create
+	}
+
 	if f.Mode == 0 {
 		f.Mode = 0o644
 	}
@@ -116,12 +124,25 @@ func (f File) Delete() *File {
 	return &f
 }
 
-// Create creates or updates a file
-func (f File) createFile(log *logger) error {
+func (f File) run() error {
+	log := newLogger("File", string(f.Operation))
+
 	if err := f.satisfy(log); err != nil {
 		return err
 	}
 
+	switch f.Operation {
+	case Create:
+		return f.createFile(log)
+	case Delete:
+		return f.deleteFile(log)
+	default:
+		return fmt.Errorf("invalid operation for File: %s", f.Operation)
+	}
+}
+
+// Create creates or updates a file
+func (f File) createFile(log *logger) error {
 	if Config.DryRun {
 		log.Info(f.Path)
 		return nil
@@ -208,10 +229,6 @@ func (f File) createFile(log *logger) error {
 
 // Delete deletes a file
 func (f File) deleteFile(log *logger) error {
-	if err := f.satisfy(log); err != nil {
-		return err
-	}
-
 	if Config.DryRun {
 		log.Info(f.Path)
 		return nil

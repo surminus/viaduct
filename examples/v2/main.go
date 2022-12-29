@@ -17,8 +17,9 @@ func main() {
 	m.Add(v.Create, v.P("cowsay"), dir)
 
 	m.Add(v.Create, v.File{
-		Path:    "test/foo",
-		Content: "bar",
+		Operation: v.Create,
+		Path:      "test/foo",
+		Content:   "bar",
 	}, dir)
 
 	m.Add(v.Delete, v.P("cowsay"), sleep)

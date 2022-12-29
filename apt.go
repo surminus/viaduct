@@ -11,6 +11,10 @@ import (
 // Apt configures Ubuntu apt repositories. It will automatically use sudo
 // if the user is not root.
 type Apt struct {
+	// Operation is what operation the resource will perform. Default is
+	// Create.
+	Operation
+
 	// Name is the name of the resource, and is what the file written to
 	// disk will be based on
 	Name string
@@ -30,6 +34,20 @@ type Apt struct {
 	path string
 }
 
+var aptAllowedOps = map[Operation]bool{
+	Create: true,
+	Delete: true,
+	Update: true,
+}
+
+func isValidOperation(k ResourceKind, o Operation, allowedOps map[Operation]bool) error {
+	if _, ok := allowedOps[o]; !ok {
+		return fmt.Errorf(fmt.Sprintf("operation %s not allowed for resource type", string(o), string(k)))
+	}
+
+	return nil
+}
+
 // satisfy sets default values for the parameters for a particular
 // resource
 func (a *Apt) satisfy(log *logger) error {
@@ -43,10 +61,18 @@ func (a *Apt) satisfy(log *logger) error {
 	}
 
 	if !isRoot() {
-		log.Fatal("Apt resource must be run as root")
+		return fmt.Errorf("Apt resource must be run as root")
 	}
 
 	// Set optional defaults here
+	if a.Operation == "" {
+		a.Operation = Create
+	} else {
+		if err := isValidOperation(KindApt, a.Operation, aptAllowedOps); err != nil {
+			return err
+		}
+	}
+
 	if a.Distribution == "" {
 		a.Distribution = Attribute.Platform.UbuntuCodename
 	}
@@ -61,7 +87,7 @@ func (a *Apt) satisfy(log *logger) error {
 }
 
 func NewAptUpdate() Apt {
-	return Apt{}
+	return Apt{Operation: Update}
 }
 
 // Update can be used in scripting mode to perform "apt-get update"
