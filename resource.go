@@ -39,45 +39,19 @@ type Resource struct {
 	Error string
 }
 
-var allowedKindOperations = map[Operation][]ResourceKind{
-	Create: {
-		KindApt,
-		KindFile,
-		KindDirectory,
-		KindGit,
-		KindLink,
-		KindPackage,
-	},
-	Delete: {
-		KindApt,
-		KindFile,
-		KindDirectory,
-		KindGit,
-		KindLink,
-		KindPackage,
-	},
-	Run: {
-		KindExecute,
-	},
-	Update: {
-		KindApt,
-	},
-}
-
 // ResourceID is an id of a resource
 type ResourceID string
 
-func newResource(o Operation, deps []*Resource) (*Resource, error) {
+func newResource(deps []*Resource) (*Resource, error) {
 	var dependsOn []ResourceID
 	for _, d := range deps {
 		if d.ResourceID == "" {
-			return &Resource{}, fmt.Errorf("dependency is not a valid resource for %s", o)
+			return &Resource{}, fmt.Errorf("dependency is not a valid resource: %s", attrJSON(d))
 		}
 		dependsOn = append(dependsOn, d.ResourceID)
 	}
 
 	return &Resource{
-		// Operation: o,
 		DependsOn: dependsOn,
 		Status:    Pending,
 	}, nil
@@ -85,14 +59,6 @@ func newResource(o Operation, deps []*Resource) (*Resource, error) {
 
 func (r *Resource) init(a any) error {
 	if err := r.setKind(a); err != nil {
-		return err
-	}
-
-	if r.Attributes.Operation == "" {
-		return fmt.Errorf("operation missing")
-	}
-
-	if err := r.checkAllowedOperation(); err != nil {
 		return err
 	}
 
@@ -122,26 +88,6 @@ func (r *Resource) setKind(a any) error {
 	return nil
 }
 
-func (r *Resource) setOperation(a any) error {
-	switch r.ResourceKind {
-	case KindApt:
-		r.Operation = a.(Apt).Operation
-	}
-
-}
-
-func (r *Resource) checkAllowedOperation() error {
-	if v, ok := allowedKindOperations[r.Operation]; ok {
-		for _, k := range v {
-			if k == r.ResourceKind {
-				return nil
-			}
-		}
-	}
-
-	return fmt.Errorf("operation \"%s\" is not allowed for kind \"%s\"", r.Operation, r.ResourceKind)
-}
-
 func (r *Resource) setID() error {
 	j, err := json.Marshal(r)
 	if err != nil {
@@ -153,92 +99,26 @@ func (r *Resource) setID() error {
 	sha := hex.EncodeToString(h.Sum(nil))
 
 	idstr := strings.Join([]string{"id", sha[0:8]}, "-")
-	r.ResourceID = ResourceID(strings.Join([]string{string(r.ResourceKind), string(r.Operation), idstr}, "_"))
+	r.ResourceID = ResourceID(strings.Join([]string{string(r.ResourceKind), idstr}, "_"))
 	return nil
 }
 
 func (r Resource) run() error {
 	switch r.ResourceKind {
 	case KindApt:
-		attr := r.Attributes.(Apt)
-
-		switch r.Operation {
-		case Create:
-			log := newLogger("Apt", "create")
-			return attr.createApt(log)
-		case Delete:
-			log := newLogger("Apt", "delete")
-			return attr.deleteApt(log)
-		case Update:
-			log := newLogger("Apt", "update")
-			return attr.updateApt(log)
-		default:
-			return fmt.Errorf("unknown operation for %s: %s", r.ResourceKind, r.Operation)
-		}
+		return r.Attributes.(Apt).run()
 	case KindFile:
 		return r.Attributes.(File).run()
 	case KindDirectory:
-		attr := r.Attributes.(Directory)
-
-		switch r.Operation {
-		case Create:
-			log := newLogger("Directory", "create")
-			return attr.createDirectory(log)
-		case Delete:
-			log := newLogger("Directory", "delete")
-			return attr.deleteDirectory(log)
-		default:
-			return fmt.Errorf("unknown operation for %s: %s", r.ResourceKind, r.Operation)
-		}
+		return r.Attributes.(Directory).run()
 	case KindExecute:
-		attr := r.Attributes.(Execute)
-
-		switch r.Operation {
-		case Run:
-			log := newLogger("Execute", "run")
-			return attr.runExecute(log)
-		default:
-			return fmt.Errorf("unknown operation for %s: %s", r.ResourceKind, r.Operation)
-		}
+		return r.Attributes.(Execute).run()
 	case KindGit:
-		attr := r.Attributes.(Git)
-
-		switch r.Operation {
-		case Create:
-			log := newLogger("Git", "create")
-			return attr.createGit(log)
-		case Delete:
-			log := newLogger("Git", "delete")
-			return attr.deleteGit(log)
-		default:
-			return fmt.Errorf("unknown operation for %s: %s", r.ResourceKind, r.Operation)
-		}
+		return r.Attributes.(Git).run()
 	case KindLink:
-		attr := r.Attributes.(Link)
-
-		switch r.Operation {
-		case Create:
-			log := newLogger("Link", "create")
-			return attr.createLink(log)
-		case Delete:
-			log := newLogger("Link", "delete")
-			return attr.deleteLink(log)
-		default:
-			return fmt.Errorf("unknown operation for %s: %s", r.ResourceKind, r.Operation)
-		}
+		return r.Attributes.(Link).run()
 	case KindPackage:
-		attr := r.Attributes.(Package)
-
-		switch r.Operation {
-		case Create:
-			log := newLogger("Package", "create")
-			return attr.createPackage(log)
-		case Delete:
-			log := newLogger("Package", "delete")
-			return attr.deletePackage(log)
-		default:
-			return fmt.Errorf("unknown operation for %s: %s", r.ResourceKind, r.Operation)
-		}
+		return r.Attributes.(Package).run()
 	}
 
 	return nil

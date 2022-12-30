@@ -11,10 +11,6 @@ import (
 // Apt configures Ubuntu apt repositories. It will automatically use sudo
 // if the user is not root.
 type Apt struct {
-	// Operation is what operation the resource will perform. Default is
-	// Create.
-	Operation
-
 	// Name is the name of the resource, and is what the file written to
 	// disk will be based on
 	Name string
@@ -30,28 +26,25 @@ type Apt struct {
 	// value pairs, eg "[arch=amd64]"
 	Parameters map[string]string
 
+	// Delete will remove the apt repository if set to true.
+	Delete bool
+	// Update will perform an apt update after adding the repository.
+	Update bool
+	// UpdateOnly will only perform an apt update.
+	UpdateOnly bool
+
 	// path is a private attribute for where to write the apt file
 	path string
-}
-
-var aptAllowedOps = map[Operation]bool{
-	Create: true,
-	Delete: true,
-	Update: true,
-}
-
-func isValidOperation(k ResourceKind, o Operation, allowedOps map[Operation]bool) error {
-	if _, ok := allowedOps[o]; !ok {
-		return fmt.Errorf(fmt.Sprintf("operation %s not allowed for resource type", string(o), string(k)))
-	}
-
-	return nil
 }
 
 // satisfy sets default values for the parameters for a particular
 // resource
 func (a *Apt) satisfy(log *logger) error {
 	// Set required values here, and error if they are not set
+	if a.UpdateOnly {
+		return nil
+	}
+
 	if a.Name == "" {
 		return fmt.Errorf("Required parameter: Name")
 	}
@@ -65,14 +58,6 @@ func (a *Apt) satisfy(log *logger) error {
 	}
 
 	// Set optional defaults here
-	if a.Operation == "" {
-		a.Operation = Create
-	} else {
-		if err := isValidOperation(KindApt, a.Operation, aptAllowedOps); err != nil {
-			return err
-		}
-	}
-
 	if a.Distribution == "" {
 		a.Distribution = Attribute.Platform.UbuntuCodename
 	}
@@ -86,41 +71,38 @@ func (a *Apt) satisfy(log *logger) error {
 	return nil
 }
 
-func NewAptUpdate() Apt {
-	return Apt{Operation: Update}
+func AptUpdate() Apt {
+	return Apt{UpdateOnly: true}
 }
 
-// Update can be used in scripting mode to perform "apt-get update"
-func (a Apt) Update() *Apt {
-	log := newLogger("Apt", "update")
-	err := a.updateApt(log)
-	if err != nil {
-		log.Fatal(err)
+func (a Apt) operationName() string {
+	if a.Delete {
+		return "Delete"
 	}
 
-	return &a
+	if a.UpdateOnly {
+		return "Update"
+	}
+
+	return "Create"
 }
 
-// Create can be used in scripting mode to create an apt repository
-func (a Apt) Create() *Apt {
-	log := newLogger("Apt", "create")
-	err := a.createApt(log)
-	if err != nil {
-		log.Fatal(err)
+func (a Apt) run() error {
+	log := newLogger("Apt", a.operationName())
+
+	if err := a.satisfy(log); err != nil {
+		return err
 	}
 
-	return &a
-}
-
-// Delete can be used in scripting mode to delete an apt repository
-func (a Apt) Delete() *Apt {
-	log := newLogger("Apt", "delete")
-	err := a.deleteApt(log)
-	if err != nil {
-		log.Fatal(err)
+	if a.UpdateOnly {
+		return a.updateApt(log)
 	}
 
-	return &a
+	if a.Delete {
+		return a.deleteApt(log)
+	} else {
+		return a.createApt(log)
+	}
 }
 
 // AptUpdate is a helper function to perform "apt-get update"
@@ -151,10 +133,6 @@ func (a Apt) updateApt(log *logger) error {
 
 // Create adds a new apt repository
 func (a Apt) createApt(log *logger) error {
-	if err := a.satisfy(log); err != nil {
-		return err
-	}
-
 	if Config.DryRun {
 		log.Info(a.Name)
 		return nil
@@ -198,15 +176,15 @@ func (a Apt) createApt(log *logger) error {
 
 	log.Info(a.Name)
 
+	if a.Update {
+		return a.updateApt(log)
+	}
+
 	return nil
 }
 
 // Delete removes an apt repository
 func (a Apt) deleteApt(log *logger) error {
-	if err := a.satisfy(log); err != nil {
-		return err
-	}
-
 	if Config.DryRun {
 		log.Info(a.Name)
 		return nil
@@ -222,6 +200,10 @@ func (a Apt) deleteApt(log *logger) error {
 	}
 
 	log.Info(a.Name)
+
+	if a.Update {
+		return a.updateApt(log)
+	}
 
 	return nil
 }

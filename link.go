@@ -14,6 +14,8 @@ type Link struct {
 	Path string
 	// Source is the original file/directory we are linking to
 	Source string
+	// Delete will delete the symlink.
+	Delete bool
 }
 
 // satisfy sets default values for the parameters for a particular
@@ -28,34 +30,30 @@ func (l *Link) satisfy(log *logger) error {
 	return nil
 }
 
-// Create can be used in scripting mode to create a symlink from Source to Path
-func (l Link) Create() *Link {
-	log := newLogger("Link", "create")
-	err := l.createLink(log)
-	if err != nil {
-		log.Fatal(err)
+func (l Link) operationName() string {
+	if l.Delete {
+		return "Delete"
 	}
 
-	return &l
+	return "Create"
 }
 
-// Delete can be used in scripting mode to delete a symlink
-func (l Link) Delete() *Link {
-	log := newLogger("Link", "delete")
-	err := l.deleteLink(log)
-	if err != nil {
-		log.Fatal(err)
-	}
+func (l Link) run() error {
+	log := newLogger("Link", l.operationName())
 
-	return &l
-}
-
-// Create can be used in scripting mode to create a symlink from Source to Path
-func (l Link) createLink(log *logger) error {
 	if err := l.satisfy(log); err != nil {
 		return err
 	}
 
+	if l.Delete {
+		return l.deleteLink(log)
+	} else {
+		return l.createLink(log)
+	}
+}
+
+// Create can be used in scripting mode to create a symlink from Source to Path
+func (l Link) createLink(log *logger) error {
 	// If creating a link, a source is required, but not if we're deleting.
 	if l.Source == "" {
 		return fmt.Errorf("Required parameter: Source")
@@ -110,10 +108,6 @@ func (l Link) createLink(log *logger) error {
 
 // Delete deletes the symlink from the Path
 func (l Link) deleteLink(log *logger) error {
-	if err := l.satisfy(log); err != nil {
-		return err
-	}
-
 	path := ExpandPath(l.Path)
 
 	if Config.DryRun {

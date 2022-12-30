@@ -34,6 +34,8 @@ type Git struct {
 	UID int
 	// GID sets the group permissions by GID
 	GID int
+	// Delete will remove the Git directory.
+	Delete bool
 }
 
 // satisfy sets default values for the parameters for a particular
@@ -83,33 +85,29 @@ func (g *Git) satisfy(log *logger) error {
 	return nil
 }
 
-// Create can be used in scripting mode to create or update a Git repository
-func (g Git) Create() *Git {
-	log := newLogger("Git", "create")
-	err := g.createGit(log)
-	if err != nil {
-		log.Fatal(err)
+func (g Git) operationName() string {
+	if g.Delete {
+		return "Delete"
 	}
 
-	return &g
+	return "Create"
 }
 
-// Delete can be used in scripting mode to delete a Git repository
-func (g Git) Delete() *Git {
-	log := newLogger("Git", "delete")
-	err := g.deleteGit(log)
-	if err != nil {
-		log.Fatal(err)
-	}
+func (g Git) run() error {
+	log := newLogger("Git", g.operationName())
 
-	return &g
-}
-
-func (g Git) createGit(log *logger) error {
 	if err := g.satisfy(log); err != nil {
 		return err
 	}
 
+	if g.Delete {
+		return g.deleteGit(log)
+	} else {
+		return g.createGit(log)
+	}
+}
+
+func (g Git) createGit(log *logger) error {
 	path := ExpandPath(g.Path)
 	logmsg := fmt.Sprintf("%s -> %s", g.URL, path)
 
@@ -189,10 +187,6 @@ func (g Git) createGit(log *logger) error {
 }
 
 func (g Git) deleteGit(log *logger) error {
-	if err := g.satisfy(log); err != nil {
-		return err
-	}
-
 	path := ExpandPath(g.Path)
 
 	if Config.DryRun {

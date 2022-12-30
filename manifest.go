@@ -12,17 +12,10 @@ import (
 
 type (
 	ResourceKind string
-	Operation    string
 	Status       string
 )
 
 const (
-	// Operations
-	Create Operation = "Create"
-	Delete Operation = "Delete"
-	Run    Operation = "Run"
-	Update Operation = "Update"
-
 	// Statuses
 	DependencyFailed Status = "DependencyFailed"
 	Failed           Status = "Failed"
@@ -81,9 +74,9 @@ func (m *Manifest) addResource(r *Resource, a any) (err error) {
 		r.GlobalLock = true
 	}
 
-	// the AptUpdate operation should take a global lock.
+	// the Apt Update operations should take a global lock.
 	if r.ResourceKind == KindApt {
-		if r.Attributes.(Apt).Operation == Update {
+		if attr := r.Attributes.(Apt); attr.Update || attr.UpdateOnly {
 			r.GlobalLock = true
 		}
 	}
@@ -102,10 +95,10 @@ func (m *Manifest) addResource(r *Resource, a any) (err error) {
 	return err
 }
 
-func (m *Manifest) Add(operation Operation, attributes any, deps ...*Resource) *Resource {
-	log := newLogger("Viaduct", string(operation))
+func (m *Manifest) Add(attributes any, deps ...*Resource) *Resource {
+	log := newLogger("Viaduct", "Compile")
 
-	r, err := newResource(operation, deps)
+	r, err := newResource(deps)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -133,9 +126,9 @@ func attrJSON(a any) string {
 // Run will run the specified resources concurrently, taking into account
 // any dependencies that have been declared
 func (m *Manifest) Run() {
-	log := newLogger("Viaduct", "run")
+	log := newLogger("Viaduct", "Run")
 	start := time.Now()
-	log.Info("Run")
+	log.Info("Started")
 
 	var lock, globalLock sync.RWMutex
 	var wg sync.WaitGroup
@@ -171,8 +164,8 @@ func (m *Manifest) Run() {
 
 				log.Critical(
 					fmt.Sprintf(
-						"Resource type %s with operation %s had error: \"%s\"\nAttributes:\n%s",
-						warn(resource.ResourceKind), warn(resource.Operation), resource.Error, attr,
+						"Resource type %s had error: \"%s\"\nAttributes:\n%s",
+						warn(resource.ResourceKind), resource.Error, attr,
 					),
 				)
 			}

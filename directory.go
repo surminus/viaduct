@@ -24,6 +24,8 @@ type Directory struct {
 	GID int
 	// Root enforces the use of the root user
 	Root bool
+	// Delete removes the directory if set to true.
+	Delete bool
 }
 
 // D is a shortcut for declaring a new Directory resource
@@ -66,34 +68,30 @@ func (d *Directory) satisfy(log *logger) error {
 	return nil
 }
 
-// Create can be used in scripting mode to create or update a directory
-func (d Directory) Create() *Directory {
-	log := newLogger("Directory", "create")
-	err := d.createDirectory(log)
-	if err != nil {
-		log.Fatal(err)
+func (d Directory) operationName() string {
+	if d.Delete {
+		return "Delete"
 	}
 
-	return &d
+	return "Create"
 }
 
-// Delete can be used in scripting mode to delete a directory
-func (d Directory) Delete() *Directory {
-	log := newLogger("Directory", "delete")
-	err := d.deleteDirectory(log)
-	if err != nil {
-		log.Fatal(err)
-	}
+func (d Directory) run() error {
+	log := newLogger("Directory", d.operationName())
 
-	return &d
-}
-
-// Create creates a directory
-func (d Directory) createDirectory(log *logger) error {
 	if err := d.satisfy(log); err != nil {
 		return err
 	}
 
+	if d.Delete {
+		return d.deleteDirectory(log)
+	} else {
+		return d.createDirectory(log)
+	}
+}
+
+// Create creates a directory
+func (d Directory) createDirectory(log *logger) error {
 	path := ExpandPath(d.Path)
 
 	if Config.DryRun {
@@ -181,10 +179,6 @@ func setDirectoryPermissions(
 
 // Delete deletes a directory.
 func (d Directory) deleteDirectory(log *logger) error {
-	if err := d.satisfy(log); err != nil {
-		return err
-	}
-
 	if Config.DryRun {
 		log.Info(d.Path)
 		return nil

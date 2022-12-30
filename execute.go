@@ -37,23 +37,18 @@ func (e *Execute) satisfy(log *logger) error {
 	return nil
 }
 
-// Run can be used in scripting mode to run a command
-func (e Execute) Run() *Execute {
-	log := newLogger("Execute", "run")
-	err := e.runExecute(log)
-	if err != nil {
-		log.Fatal(err)
-	}
+func (e Execute) run() error {
+	log := newLogger("Execute", "Run")
 
-	return &e
-}
-
-// Run runs the given command
-func (e Execute) runExecute(log *logger) error {
 	if err := e.satisfy(log); err != nil {
 		return err
 	}
 
+	return e.runExecute(log)
+}
+
+// Run runs the given command
+func (e Execute) runExecute(log *logger) error {
 	if e.Unless != "" {
 		unless := strings.Split(e.Unless, " ")
 

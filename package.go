@@ -7,25 +7,24 @@ import (
 	"strings"
 )
 
-// Package installs one or more packages. Use Name for a single package
-// install, or Names for multi-package install.
+// Package installs one or more packages. Specify the package names.
 type Package struct {
-	// Name is the package name
-	Name string
-
 	// Names are the package names
 	Names []string
 
 	// Verbose displays output from STDOUT. Optional.
 	Verbose bool
+
+	// Uninstall will uninstall the specified packages.
+	Uninstall bool
 }
 
 // satisfy sets default values for the parameters for a particular
 // resource
 func (p *Package) satisfy(log *logger) error {
 	// Set required values here, and error if they are not set
-	if p.Name == "" && len(p.Names) < 1 {
-		return fmt.Errorf("Required parameter: Name / Names")
+	if len(p.Names) < 1 {
+		return fmt.Errorf("Required parameter: Names")
 	}
 
 	if !isRoot() {
@@ -37,50 +36,42 @@ func (p *Package) satisfy(log *logger) error {
 }
 
 // P is shortcut for declaring a new Package resource
-func P(name string) Package {
+func Pkg(name string) Package {
 	return Package{
-		Name: name,
+		Names: []string{name},
 	}
 }
 
 // Ps is a shortcut for declaring a new Package resource with multiple packages
-func Ps(names ...string) Package {
+func Pkgs(names ...string) Package {
 	return Package{
 		Names: names,
 	}
 }
 
-// Create can be used in scripting mode to install a package
-func (p Package) Create() *Package {
-	log := newLogger("Package", "install")
-	err := p.createPackage(log)
-	if err != nil {
-		log.Fatal(err)
+func (p Package) operationName() string {
+	if p.Uninstall {
+		return "Uninstall"
 	}
 
-	return &p
+	return "Install"
 }
 
-// Delete can be used in scripting mode to delete a package
-func (p Package) Delete() *Package {
-	log := newLogger("Package", "delete")
-	err := p.deletePackage(log)
-	if err != nil {
-		log.Fatal(err)
-	}
+func (p Package) run() error {
+	log := newLogger("Package", p.operationName())
 
-	return &p
-}
-
-func (p Package) createPackage(log *logger) error {
 	if err := p.satisfy(log); err != nil {
 		return err
 	}
 
-	if p.Name != "" {
-		p.Names = append(p.Names, p.Name)
+	if p.Uninstall {
+		return p.uninstall(log)
+	} else {
+		return p.install(log)
 	}
+}
 
+func (p Package) install(log *logger) error {
 	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
 	if Config.DryRun {
 		return nil
@@ -89,20 +80,13 @@ func (p Package) createPackage(log *logger) error {
 	return installPkg(Attribute.Platform.ID, p.Names, p.Verbose)
 }
 
-// Delete uninstalls a package
-func (p Package) deletePackage(log *logger) error {
-	if err := p.satisfy(log); err != nil {
-		return err
-	}
-
-	p.Names = append(p.Names, p.Name)
-
+func (p Package) uninstall(log *logger) error {
 	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
 	if Config.DryRun {
 		return nil
 	}
 
-	return removePkg(Attribute.Platform.ID, []string{p.Name}, p.Verbose)
+	return removePkg(Attribute.Platform.ID, p.Names, p.Verbose)
 }
 
 func installPkg(platform string, pkgs []string, verbose bool) error {

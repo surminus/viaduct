@@ -11,13 +11,12 @@ func TestSetName(t *testing.T) {
 
 	m := New()
 	d := D("test")
-	r := m.Add(Create, d)
+	r := m.Add(d)
 	m.SetName(r, "test-name")
 
 	expected := map[ResourceID]Resource{
 		ResourceID("test-name"): {
 			Attributes:   d,
-			Operation:    Create,
 			ResourceID:   "test-name",
 			ResourceKind: KindDirectory,
 			Status:       Pending,
@@ -32,14 +31,13 @@ func TestSetDep(t *testing.T) {
 
 	m := New()
 	d := D("test")
-	r := m.Add(Create, d)
+	r := m.Add(d)
 	m.SetDep(r, "test-dep")
 
 	expected := map[ResourceID]Resource{
 		r.ResourceID: {
 			Attributes:   d,
 			DependsOn:    []ResourceID{"test-dep"},
-			Operation:    Create,
 			ResourceID:   r.ResourceID,
 			ResourceKind: KindDirectory,
 			Status:       Pending,
@@ -54,14 +52,13 @@ func TestWithLock(t *testing.T) {
 
 	m := New()
 	d := D("test")
-	r := m.Add(Create, d)
+	r := m.Add(d)
 	m.WithLock(r)
 
 	expected := map[ResourceID]Resource{
 		r.ResourceID: {
 			Attributes:   d,
 			GlobalLock:   true,
-			Operation:    Create,
 			ResourceID:   r.ResourceID,
 			ResourceKind: KindDirectory,
 			Status:       Pending,
@@ -79,7 +76,7 @@ func TestAddResource(t *testing.T) {
 
 		m := New()
 		d := D("test")
-		r, err := newResource(Create, []*Resource{{ResourceID: "test"}})
+		r, err := newResource([]*Resource{{ResourceID: "test"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -95,7 +92,6 @@ func TestAddResource(t *testing.T) {
 			expected := Resource{
 				Attributes: d,
 				DependsOn:  []ResourceID{ResourceID("test")},
-				Operation:  Create,
 				ResourceID: id,
 				Status:     Pending,
 			}
@@ -109,7 +105,7 @@ func TestAddResource(t *testing.T) {
 
 		m := New()
 		d := D("test")
-		r, err := newResource(Create, []*Resource{{ResourceID: "test"}})
+		r, err := newResource([]*Resource{{ResourceID: "test"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -118,7 +114,7 @@ func TestAddResource(t *testing.T) {
 		assert.NoError(t, err)
 
 		d2 := D("test")
-		r2, err := newResource(Create, []*Resource{{ResourceID: "test"}})
+		r2, err := newResource([]*Resource{{ResourceID: "test"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -131,8 +127,8 @@ func TestAddResource(t *testing.T) {
 		t.Parallel()
 
 		m := New()
-		p := P("test")
-		r, err := newResource(Create, []*Resource{{ResourceID: "test"}})
+		p := Pkg("test")
+		r, err := newResource([]*Resource{{ResourceID: "test"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -148,7 +144,6 @@ func TestAddResource(t *testing.T) {
 				Attributes:   p,
 				DependsOn:    []ResourceID{ResourceID("test")},
 				GlobalLock:   true,
-				Operation:    Create,
 				ResourceID:   id,
 				ResourceKind: KindPackage,
 				Status:       Pending,

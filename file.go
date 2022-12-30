@@ -14,10 +14,6 @@ import (
 
 // File manages files on the filesystem
 type File struct {
-	// Operation is what operation the resource will perform. Default is
-	// Create.
-	Operation
-
 	// Path is the path of the file
 	Path string
 	// Content is the content of the file
@@ -34,6 +30,8 @@ type File struct {
 	UID int
 	// GID sets the group permissions by GID
 	GID int
+	// Delete will delete the file rather than create it if set to true.
+	Delete bool
 }
 
 // satisfy sets default values for the parameters for a particular
@@ -42,11 +40,6 @@ func (f *File) satisfy(log *logger) error {
 	// Set required values here, and error if they are not set
 	if f.Path == "" {
 		return fmt.Errorf("required parameter: Path")
-	}
-
-	// Set optional defaults here
-	if f.Operation == "" {
-		f.Operation = Create
 	}
 
 	if f.Mode == 0 {
@@ -102,42 +95,25 @@ func NewTemplate(files embed.FS, path string, variables interface{}) string {
 	return b.String()
 }
 
-// Create can be used in scripting mode to create or update a file
-func (f File) Create() *File {
-	log := newLogger("File", "create")
-	err := f.createFile(log)
-	if err != nil {
-		log.Fatal(err)
+func (f File) operationName() string {
+	if f.Delete {
+		return "Delete"
 	}
 
-	return &f
-}
-
-// Delete can be used in scripting mode to delete a file
-func (f File) Delete() *File {
-	log := newLogger("File", "delete")
-	err := f.deleteFile(log)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return &f
+	return "Create"
 }
 
 func (f File) run() error {
-	log := newLogger("File", string(f.Operation))
+	log := newLogger("File", f.operationName())
 
 	if err := f.satisfy(log); err != nil {
 		return err
 	}
 
-	switch f.Operation {
-	case Create:
-		return f.createFile(log)
-	case Delete:
+	if f.Delete {
 		return f.deleteFile(log)
-	default:
-		return fmt.Errorf("invalid operation for File: %s", f.Operation)
+	} else {
+		return f.createFile(log)
 	}
 }
 
