@@ -7,6 +7,7 @@ import (
 	"github.com/fatih/color"
 )
 
+// Logger provides Viaduct log output.
 type Logger struct {
 	// This is the resource type, such as git, file and directory
 	Resource string
