@@ -85,7 +85,7 @@ func (l *Link) createLink(log *viaduct.Logger) error {
 	}
 
 	// If the file exists and is a symlink, let's check the source is correct
-	if _, err := os.Lstat(path); err == nil {
+	if viaduct.LinkExists(path) {
 		src, err := os.Readlink(path)
 		if err == nil {
 			// If the source is not correct, let's delete the symlink
@@ -125,7 +125,7 @@ func (l *Link) deleteLink(log *viaduct.Logger) error {
 		return nil
 	}
 
-	if !viaduct.FileExists(path) {
+	if !viaduct.LinkExists(path) {
 		log.Noop(path)
 		return nil
 	}

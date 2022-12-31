@@ -77,6 +77,15 @@ func FileContents(path string) string {
 	return string(c)
 }
 
+// LinkExists returns true if the symlink exists
+func LinkExists(path string) bool {
+	if _, err := os.Lstat(path); err == nil {
+		return true
+	}
+
+	return false
+}
+
 // DirExists returns true if the file exists, and is a directory
 func DirExists(path string) bool {
 	if info, err := os.Stat(path); err == nil {

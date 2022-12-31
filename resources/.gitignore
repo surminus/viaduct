@@ -1,2 +1,4 @@
 test/acceptance/file/*.txt
 test/acceptance/directory/*_directory
+!test/acceptance/link/source.txt
+test/acceptance/link/*.txt

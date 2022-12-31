@@ -8,8 +8,6 @@ import (
 	"github.com/surminus/viaduct"
 )
 
-var testLogger = viaduct.NewSilentLogger()
-
 func newTestFile(t *testing.T, path string) *File {
 	f := &File{
 		Path:    path,
