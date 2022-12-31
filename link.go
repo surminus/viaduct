@@ -18,6 +18,10 @@ type Link struct {
 	Delete bool
 }
 
+func (l *Link) opts() *ResourceOptions {
+	return NewResourceOptions()
+}
+
 // satisfy sets default values for the parameters for a particular
 // resource
 func (l *Link) satisfy(log *logger) error {

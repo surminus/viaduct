@@ -16,12 +16,15 @@ func main() {
 
 	m.Add(v.Pkg("cowsay"), dir)
 
-	m.Add(&v.File{
+	foo := m.Add(&v.File{
 		Path:    "test/foo",
 		Content: "bar",
 	}, dir)
 
 	m.Add(v.Pkg("cowsay"), sleep)
+
+	deletefoo := m.Add(&v.File{Path: "test/foo", Delete: true}, foo)
+	m.Add(&v.Directory{Path: "test", Delete: true}, dir, deletefoo)
 
 	m.Run()
 }

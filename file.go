@@ -44,6 +44,10 @@ func Content(path, content string) *File {
 	return &File{Path: path, Content: content}
 }
 
+func (f *File) opts() *ResourceOptions {
+	return NewResourceOptions()
+}
+
 // satisfy sets default values for the parameters for a particular
 // resource
 func (f *File) satisfy(log *logger) error {

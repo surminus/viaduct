@@ -27,6 +27,10 @@ func E(command string) *Execute {
 	return &Execute{Command: command}
 }
 
+func (e *Execute) opts() *ResourceOptions {
+	return NewResourceOptions()
+}
+
 func (e *Execute) satisfy(log *logger) error {
 	// Set required values here, and error if they are not set
 	if e.Command == "" {

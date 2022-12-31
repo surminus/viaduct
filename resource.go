@@ -39,11 +39,26 @@ type Resource struct {
 	Error string
 }
 
+// ResourceOptions are a set of options that each resource can set
+// depending on their logic
+type ResourceOptions struct {
+	GlobalLock bool
+}
+
+func NewResourceOptions() *ResourceOptions {
+	return &ResourceOptions{}
+}
+
+func NewResourceOptionsWithLock() *ResourceOptions {
+	return &ResourceOptions{GlobalLock: true}
+}
+
 // ResourceAttributes implement resource types.
 type ResourceAttributes interface {
+	opts() *ResourceOptions
+	operationName() string
 	run(log *logger) error
 	satisfy(log *logger) error
-	operationName() string
 }
 
 // ResourceID is an id of a resource

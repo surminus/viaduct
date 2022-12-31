@@ -42,6 +42,10 @@ func Repo(path, url string) *Git {
 	return &Git{Path: path, URL: url}
 }
 
+func (g *Git) opts() *ResourceOptions {
+	return NewResourceOptions()
+}
+
 // satisfy sets default values for the parameters for a particular
 // resource
 func (g *Git) satisfy(log *logger) error {

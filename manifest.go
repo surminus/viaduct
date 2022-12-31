@@ -69,19 +69,8 @@ func (m *Manifest) addResource(r *Resource, a ResourceAttributes) (err error) {
 	// Set attributes
 	r.Attributes = a
 
-	// Package resources should never run at the same time
-	if r.ResourceKind == KindPackage {
+	if a.opts().GlobalLock {
 		r.GlobalLock = true
-	}
-
-	// the Apt Update operations should take a global lock.
-	if r.ResourceKind == KindApt {
-		// TODO: this needs fixing! Ideally each resource should be able to
-		// independently specify that they require a global lock via a method.
-		//
-		// if attr := r.Attributes.(Apt); attr.Update || attr.UpdateOnly {
-		r.GlobalLock = true
-		// }
 	}
 
 	// Create a string representation of our resource

@@ -19,6 +19,10 @@ type Package struct {
 	Uninstall bool
 }
 
+func (p *Package) opts() *ResourceOptions {
+	return NewResourceOptionsWithLock()
+}
+
 // satisfy sets default values for the parameters for a particular
 // resource
 func (p *Package) satisfy(log *logger) error {

@@ -33,6 +33,10 @@ func Dir(path string) *Directory {
 	return &Directory{Path: path}
 }
 
+func (d *Directory) opts() *ResourceOptions {
+	return NewResourceOptions()
+}
+
 // satisfy sets default values for the parameters for a particular
 // resource
 func (d *Directory) satisfy(log *logger) error {
