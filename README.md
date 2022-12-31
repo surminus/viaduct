@@ -28,7 +28,7 @@ func main() {
 ```
 
 A standard set of resources are found in the
-[https://pkg.go.dev/github.com/surminus/viaduct/resources](resources) package.
+[resources](https://pkg.go.dev/github.com/surminus/viaduct/resources) package.
 
 To add them:
 
