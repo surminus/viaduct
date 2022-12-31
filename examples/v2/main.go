@@ -28,5 +28,7 @@ func main() {
 
 	m.Add(v.Echo("test"))
 
+	m.Add(&v.Example{})
+
 	m.Run()
 }

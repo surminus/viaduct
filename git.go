@@ -38,8 +38,9 @@ type Git struct {
 	Delete bool
 }
 
+// Repo will add a new repository, and ensure that it stays up to date.
 func Repo(path, url string) *Git {
-	return &Git{Path: path, URL: url}
+	return &Git{Path: path, URL: url, Ensure: true}
 }
 
 func (g *Git) opts() *ResourceOptions {
