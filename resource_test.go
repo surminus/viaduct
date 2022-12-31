@@ -6,110 +6,72 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type testResourceType struct {
+	Value    string
+	WithLock bool
+}
+
+func (t *testResourceType) OperationName() string {
+	return "Test"
+}
+
+func (t *testResourceType) Params() *ResourceParams {
+	if t.WithLock {
+		return NewResourceParamsWithLock()
+	}
+
+	return NewResourceParams()
+}
+
+func (t *testResourceType) PreflightChecks(log *Logger) error {
+	return nil
+}
+
+func (t *testResourceType) Run(log *Logger) error {
+	return nil
+}
+
+func newTestResource(value string) *testResourceType {
+	return &testResourceType{Value: value}
+}
+
+func newTestResourceWithLock(value string) *testResourceType {
+	return &testResourceType{Value: value, WithLock: true}
+}
+
+var testResource = newTestResource("test")
+
 func TestSetKind(t *testing.T) {
 	t.Parallel()
 
-	for _, test := range []struct {
-		attr     any
-		expected ResourceKind
-	}{
-		{
-			attr:     Apt{},
-			expected: KindApt,
-		},
-		{
-			attr:     Directory{},
-			expected: KindDirectory,
-		},
-		{
-			attr:     Execute{},
-			expected: KindExecute,
-		},
-		{
-			attr:     File{},
-			expected: KindFile,
-		},
-		{
-			attr:     Git{},
-			expected: KindGit,
-		},
-		{
-			attr:     Link{},
-			expected: KindLink,
-		},
-		{
-			attr:     Package{},
-			expected: KindPackage,
-		},
-	} {
-		var r Resource
-		err := r.setKind(test.attr)
-		assert.NoError(t, err)
+	var r Resource
+	err := r.setKind(testResource)
+	assert.NoError(t, err)
 
-		assert.Equal(t, test.expected, r.ResourceKind)
-	}
-
-}
-
-func TestCheckAllowedOperations(t *testing.T) {
-	t.Parallel()
-
-	t.Run("allowed operations", func(t *testing.T) {
-		t.Parallel()
-
-		r := Resource{
-			Operation:    OperationCreate,
-			ResourceKind: KindFile,
-		}
-
-		assert.NoError(t, r.checkAllowedOperation())
-	})
-
-	t.Run("execute for create not allowed", func(t *testing.T) {
-		t.Parallel()
-
-		r := Resource{
-			Operation:    OperationCreate,
-			ResourceKind: KindExecute,
-		}
-
-		assert.Error(t, r.checkAllowedOperation())
-	})
-
-	t.Run("execute for delete not allowed", func(t *testing.T) {
-		t.Parallel()
-
-		r := Resource{
-			Operation:    OperationDelete,
-			ResourceKind: KindExecute,
-		}
-
-		assert.Error(t, r.checkAllowedOperation())
-	})
+	assert.Equal(t, ResourceKind("testResourceType"), r.ResourceKind)
 }
 
 func TestSetID(t *testing.T) {
 	t.Parallel()
 
-	r := Resource{
-		Operation:    OperationCreate,
-		ResourceKind: KindFile,
-	}
+	r := Resource{}
 
-	err := r.setID()
+	err := r.setKind(testResource)
 	assert.NoError(t, err)
 
-	assert.Equal(t, ResourceID("File_Create_id-d3241be4"), r.ResourceID)
+	err = r.setID()
+	assert.NoError(t, err)
+
+	assert.Equal(t, ResourceID("testResourceType_id-274da5a8"), r.ResourceID)
 }
 
-func TestNewReso(t *testing.T) {
+func TestNewResource(t *testing.T) {
 	t.Parallel()
 
 	t.Run("error if invalid dependency", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := newResource(OperationCreate, []*Resource{{}})
+		_, err := newResource([]*Resource{{}})
 		assert.Error(t, err)
 	})
-
 }

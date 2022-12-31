@@ -1,10 +1,12 @@
-package viaduct
+package resources
 
 import (
 	"fmt"
 	"os"
 	"os/user"
 	"strconv"
+
+	"github.com/surminus/viaduct"
 )
 
 // Directory manages a directory on the filesystem
@@ -24,16 +26,22 @@ type Directory struct {
 	GID int
 	// Root enforces the use of the root user
 	Root bool
+	// Delete removes the directory if set to true.
+	Delete bool
 }
 
-// D is a shortcut for declaring a new Directory resource
-func D(path string) Directory {
-	return Directory{Path: path}
+// Dir creates a new directory
+func Dir(path string) *Directory {
+	return &Directory{Path: path}
 }
 
-// satisfy sets default values for the parameters for a particular
+func (d *Directory) Params() *viaduct.ResourceParams {
+	return viaduct.NewResourceParams()
+}
+
+// PreflightChecks sets default values for the parameters for a particular
 // resource
-func (d *Directory) satisfy(log *logger) error {
+func (d *Directory) PreflightChecks(log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if d.Path == "" {
 		return fmt.Errorf("Required parameter: Path")
@@ -48,7 +56,7 @@ func (d *Directory) satisfy(log *logger) error {
 	}
 
 	if d.User == "" && d.UID == 0 && !d.Root {
-		if uid, err := strconv.Atoi(Attribute.User.Uid); err != nil {
+		if uid, err := strconv.Atoi(viaduct.Attribute.User.Uid); err != nil {
 			return err
 		} else {
 			d.UID = uid
@@ -56,7 +64,7 @@ func (d *Directory) satisfy(log *logger) error {
 	}
 
 	if d.Group == "" && d.GID == 0 && !d.Root {
-		if gid, err := strconv.Atoi(Attribute.User.Gid); err != nil {
+		if gid, err := strconv.Atoi(viaduct.Attribute.User.Gid); err != nil {
 			return err
 		} else {
 			d.GID = gid
@@ -66,43 +74,33 @@ func (d *Directory) satisfy(log *logger) error {
 	return nil
 }
 
-// Create can be used in scripting mode to create or update a directory
-func (d Directory) Create() *Directory {
-	log := newLogger("Directory", "create")
-	err := d.createDirectory(log)
-	if err != nil {
-		log.Fatal(err)
+func (d *Directory) OperationName() string {
+	if d.Delete {
+		return "Delete"
 	}
 
-	return &d
+	return "Create"
 }
 
-// Delete can be used in scripting mode to delete a directory
-func (d Directory) Delete() *Directory {
-	log := newLogger("Directory", "delete")
-	err := d.deleteDirectory(log)
-	if err != nil {
-		log.Fatal(err)
+func (d *Directory) Run(log *viaduct.Logger) error {
+	if d.Delete {
+		return d.deleteDirectory(log)
+	} else {
+		return d.createDirectory(log)
 	}
-
-	return &d
 }
 
 // Create creates a directory
-func (d Directory) createDirectory(log *logger) error {
-	if err := d.satisfy(log); err != nil {
-		return err
-	}
+func (d *Directory) createDirectory(log *viaduct.Logger) error {
+	path := viaduct.ExpandPath(d.Path)
 
-	path := ExpandPath(d.Path)
-
-	if Config.DryRun {
+	if viaduct.Config.DryRun {
 		log.Info(d.Path)
 		return nil
 	}
 
-	if !DirExists(path) {
-		if err := os.MkdirAll(ExpandPath(path), d.Mode); err != nil {
+	if !viaduct.DirExists(path) {
+		if err := os.MkdirAll(viaduct.ExpandPath(path), d.Mode); err != nil {
 			return err
 		}
 
@@ -112,7 +110,7 @@ func (d Directory) createDirectory(log *logger) error {
 	}
 
 	return setDirectoryPermissions(
-		newLogger("Directory", "permissions"),
+		log,
 		path,
 		d.UID, d.GID,
 		d.User, d.Group,
@@ -121,7 +119,7 @@ func (d Directory) createDirectory(log *logger) error {
 }
 
 func setDirectoryPermissions(
-	log *logger,
+	log *viaduct.Logger,
 	path string,
 	uid, gid int,
 	username, group string,
@@ -151,10 +149,10 @@ func setDirectoryPermissions(
 		}
 	}
 
-	chmodmsg := fmt.Sprintf("%s -> %s", path, mode)
-	chownmsg := fmt.Sprintf("%s -> %d:%d", path, uid, gid)
+	chmodmsg := fmt.Sprintf("Permissions: %s -> %s", path, mode)
+	chownmsg := fmt.Sprintf("Permissions: %s -> %d:%d", path, uid, gid)
 
-	if MatchChmod(path, mode) {
+	if viaduct.MatchChmod(path, mode) {
 		log.Noop(chmodmsg)
 	} else {
 		err := os.Chmod(path, mode)
@@ -165,7 +163,7 @@ func setDirectoryPermissions(
 		log.Info(chmodmsg)
 	}
 
-	if MatchChown(path, uid, gid) {
+	if viaduct.MatchChown(path, uid, gid) {
 		log.Noop(chownmsg)
 	} else {
 		err := os.Chown(path, uid, gid)
@@ -180,20 +178,16 @@ func setDirectoryPermissions(
 }
 
 // Delete deletes a directory.
-func (d Directory) deleteDirectory(log *logger) error {
-	if err := d.satisfy(log); err != nil {
-		return err
-	}
-
-	if Config.DryRun {
+func (d *Directory) deleteDirectory(log *viaduct.Logger) error {
+	if viaduct.Config.DryRun {
 		log.Info(d.Path)
 		return nil
 	}
 
-	path := ExpandPath(d.Path)
+	path := viaduct.ExpandPath(d.Path)
 
-	if DirExists(path) {
-		if err := os.RemoveAll(ExpandPath(d.Path)); err != nil {
+	if viaduct.DirExists(path) {
+		if err := os.RemoveAll(viaduct.ExpandPath(d.Path)); err != nil {
 			return err
 		}
 		log.Info(d.Path)

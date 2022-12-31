@@ -1,4 +1,4 @@
-package viaduct
+package resources
 
 import (
 	"fmt"
@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/surminus/viaduct"
 )
 
 // Apt configures Ubuntu apt repositories. It will automatically use sudo
@@ -26,14 +28,31 @@ type Apt struct {
 	// value pairs, eg "[arch=amd64]"
 	Parameters map[string]string
 
+	// Delete will remove the apt repository if set to true.
+	Delete bool
+	// Update will perform an apt update after adding the repository.
+	Update bool
+	// UpdateOnly will only perform an apt update.
+	UpdateOnly bool
+
 	// path is a private attribute for where to write the apt file
 	path string
 }
 
-// satisfy sets default values for the parameters for a particular
+// Params allows the resource to dynamically set options that will be passed
+// at compile time
+func (a *Apt) Params() *viaduct.ResourceParams {
+	return &viaduct.ResourceParams{GlobalLock: a.Update || a.UpdateOnly}
+}
+
+// PreflightChecks sets default values for the parameters for a particular
 // resource
-func (a *Apt) satisfy(log *logger) error {
+func (a *Apt) PreflightChecks(log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
+	if a.UpdateOnly {
+		return nil
+	}
+
 	if a.Name == "" {
 		return fmt.Errorf("Required parameter: Name")
 	}
@@ -42,13 +61,13 @@ func (a *Apt) satisfy(log *logger) error {
 		return fmt.Errorf("Required parameter: URI")
 	}
 
-	if !isRoot() {
-		log.Fatal("Apt resource must be run as root")
+	if !viaduct.IsRoot() {
+		return fmt.Errorf("Apt resource must be run as root")
 	}
 
 	// Set optional defaults here
 	if a.Distribution == "" {
-		a.Distribution = Attribute.Platform.UbuntuCodename
+		a.Distribution = viaduct.Attribute.Platform.UbuntuCodename
 	}
 
 	if a.Source == "" {
@@ -60,52 +79,43 @@ func (a *Apt) satisfy(log *logger) error {
 	return nil
 }
 
-func NewAptUpdate() Apt {
-	return Apt{}
+func AptUpdate() *Apt {
+	return &Apt{UpdateOnly: true}
 }
 
-// Update can be used in scripting mode to perform "apt-get update"
-func (a Apt) Update() *Apt {
-	log := newLogger("Apt", "update")
-	err := a.updateApt(log)
-	if err != nil {
-		log.Fatal(err)
+func (a *Apt) OperationName() string {
+	if a.Delete {
+		return "Delete"
 	}
 
-	return &a
+	if a.UpdateOnly {
+		return "Update"
+	}
+
+	return "Create"
 }
 
-// Create can be used in scripting mode to create an apt repository
-func (a Apt) Create() *Apt {
-	log := newLogger("Apt", "create")
-	err := a.createApt(log)
-	if err != nil {
-		log.Fatal(err)
+func (a *Apt) Run(log *viaduct.Logger) error {
+	if a.UpdateOnly {
+		return a.updateApt(log)
 	}
 
-	return &a
-}
-
-// Delete can be used in scripting mode to delete an apt repository
-func (a Apt) Delete() *Apt {
-	log := newLogger("Apt", "delete")
-	err := a.deleteApt(log)
-	if err != nil {
-		log.Fatal(err)
+	if a.Delete {
+		return a.deleteApt(log)
+	} else {
+		return a.createApt(log)
 	}
-
-	return &a
 }
 
 // AptUpdate is a helper function to perform "apt-get update"
 // Should be converted to a proper resource
-func (a Apt) updateApt(log *logger) error {
-	if Config.DryRun {
+func (a *Apt) updateApt(log *viaduct.Logger) error {
+	if viaduct.Config.DryRun {
 		log.Info()
 		return nil
 	}
 
-	if !isRoot() {
+	if !viaduct.IsRoot() {
 		return fmt.Errorf("must be run as root")
 	}
 
@@ -124,12 +134,8 @@ func (a Apt) updateApt(log *logger) error {
 }
 
 // Create adds a new apt repository
-func (a Apt) createApt(log *logger) error {
-	if err := a.satisfy(log); err != nil {
-		return err
-	}
-
-	if Config.DryRun {
+func (a *Apt) createApt(log *viaduct.Logger) error {
+	if viaduct.Config.DryRun {
 		log.Info(a.Name)
 		return nil
 	}
@@ -155,7 +161,7 @@ func (a Apt) createApt(log *logger) error {
 		"\n",
 	}...)
 
-	if FileExists(a.path) {
+	if viaduct.FileExists(a.path) {
 		if con, err := os.ReadFile(a.path); err == nil {
 			if string(con) == strings.Join(content, " ") {
 				log.Noop(a.Name)
@@ -172,21 +178,21 @@ func (a Apt) createApt(log *logger) error {
 
 	log.Info(a.Name)
 
+	if a.Update {
+		return a.updateApt(log)
+	}
+
 	return nil
 }
 
 // Delete removes an apt repository
-func (a Apt) deleteApt(log *logger) error {
-	if err := a.satisfy(log); err != nil {
-		return err
-	}
-
-	if Config.DryRun {
+func (a *Apt) deleteApt(log *viaduct.Logger) error {
+	if viaduct.Config.DryRun {
 		log.Info(a.Name)
 		return nil
 	}
 
-	if !FileExists(a.path) {
+	if !viaduct.FileExists(a.path) {
 		log.Noop(a.Name)
 		return nil
 	}
@@ -196,6 +202,10 @@ func (a Apt) deleteApt(log *logger) error {
 	}
 
 	log.Info(a.Name)
+
+	if a.Update {
+		return a.updateApt(log)
+	}
 
 	return nil
 }

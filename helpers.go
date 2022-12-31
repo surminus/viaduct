@@ -67,6 +67,25 @@ func FileExists(path string) bool {
 	return false
 }
 
+// FileContents simply returns the file contents as a string
+func FileContents(path string) string {
+	c, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return string(c)
+}
+
+// LinkExists returns true if the symlink exists
+func LinkExists(path string) bool {
+	if _, err := os.Lstat(path); err == nil {
+		return true
+	}
+
+	return false
+}
+
 // DirExists returns true if the file exists, and is a directory
 func DirExists(path string) bool {
 	if info, err := os.Stat(path); err == nil {
@@ -111,6 +130,6 @@ func MatchChown(path string, user, group int) bool {
 	return false
 }
 
-func isRoot() bool {
+func IsRoot() bool {
 	return Attribute.runuser.Username == "root"
 }

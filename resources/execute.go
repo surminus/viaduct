@@ -1,10 +1,12 @@
-package viaduct
+package resources
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/surminus/viaduct"
 )
 
 type Execute struct {
@@ -22,12 +24,25 @@ type Execute struct {
 	Quiet bool
 }
 
-// E is a shortcut for declaring a new Execute resource
-func E(command string) Execute {
-	return Execute{Command: command}
+// Exec is a shortcut for running a command
+func Exec(command string) *Execute {
+	return &Execute{Command: command}
 }
 
-func (e *Execute) satisfy(log *logger) error {
+// ExecUnless is like Exec, but will only run conditionally
+func ExecUnless(command, unless string) *Execute {
+	return &Execute{Command: command, Unless: unless}
+}
+
+func Echo(message string) *Execute {
+	return &Execute{Command: fmt.Sprintf("echo \"%s\"", message)}
+}
+
+func (e *Execute) Params() *viaduct.ResourceParams {
+	return viaduct.NewResourceParams()
+}
+
+func (e *Execute) PreflightChecks(log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if e.Command == "" {
 		return fmt.Errorf("Required parameter: Command")
@@ -37,23 +52,16 @@ func (e *Execute) satisfy(log *logger) error {
 	return nil
 }
 
-// Run can be used in scripting mode to run a command
-func (e Execute) Run() *Execute {
-	log := newLogger("Execute", "run")
-	err := e.runExecute(log)
-	if err != nil {
-		log.Fatal(err)
-	}
+func (e *Execute) OperationName() string {
+	return "Run"
+}
 
-	return &e
+func (e *Execute) Run(log *viaduct.Logger) error {
+	return e.runExecute(log)
 }
 
 // Run runs the given command
-func (e Execute) runExecute(log *logger) error {
-	if err := e.satisfy(log); err != nil {
-		return err
-	}
-
+func (e *Execute) runExecute(log *viaduct.Logger) error {
 	if e.Unless != "" {
 		unless := strings.Split(e.Unless, " ")
 
@@ -69,7 +77,7 @@ func (e Execute) runExecute(log *logger) error {
 	}
 
 	log.Info(e.Command, " -> started")
-	if Config.DryRun {
+	if viaduct.Config.DryRun {
 		return nil
 	}
 

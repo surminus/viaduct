@@ -16,54 +16,66 @@ I'm using Viaduct to set up my personal development environment at
 
 Create a project in `main.go` and create a new manifest:
 
-```
+```go
 import (
-        v "github.com/surminus/viaduct" // By convention we use "v"
+        "github.com/surminus/viaduct"
 )
 
 func main() {
-        m := v.New()
+        // m is our manifest object
+        m := viaduct.New()
 }
 ```
 
-Add resources:
+A standard set of resources are found in the
+[https://pkg.go.dev/github.com/surminus/viaduct/resources](resources) package.
 
-```
+To add them:
+
+```go
+import (
+        "github.com/surminus/viaduct"
+        "github.com/surminus/viaduct/resources"
+)
+
 func main() {
-        m := v.New()
+        m := viaduct.New()
 
-        m.Create(v.Directory{"/tmp/test"})
-        m.Create(v.File{Path: "/tmp/test/foo"})
+        // The first argument is what operation to perform, such as
+        // creating or deleting a file, and the second argument are
+        // the attributes of the resource
+        m.Add(&resources.Directory{"/tmp/test"})
+        m.Add(&resources.File{Path: "/tmp/test/foo"})
 }
 ```
 
 All resources will run concurrently, so in this example we will declare a
 dependency so that the directory is created before the file:
 
-```
+```go
 func main() {
-        m := v.New()
+        m := viaduct.New()
 
-        dir := m.Create(v.Directory{"/tmp/test"})
-        m.Create(v.File{Path: "/tmp/test/foo"}, dir)
+        dir := m.Add(&resources.Directory{"/tmp/test"})
+        m.Add(&resources.File{Path: "/tmp/test/foo"}, dir)
 }
 ```
 
 When you've added all the resources you need, we can apply them:
 
-```
+```go
 func main() {
-        m := v.New()
+        m := viaduct.New()
 
-        dir := m.Create(v.Directory{"/tmp/test"})
-        m.Create(v.File{Path: "/tmp/test/foo"}, dir)
+        dir := m.Add(&resources.Directory{"/tmp/test"})
+        m.Add(&resources.File{Path: "/tmp/test/foo"}, dir)
 
-        m.Start()
+        m.Run()
 }
 ```
 
 Compile the package and run it:
-```
+```bash
 go build -o viaduct
 ./viaduct
 ```
@@ -71,15 +83,9 @@ go build -o viaduct
 ## CLI
 
 The compiled binary comes with runtime flags:
-```
+```bash
 ./viaduct --help
 ```
-
-## Operations and Resources
-
-The primary operations are the `Create()` and `Delete()` functions which
-perform creations (or updates) and deletions respectively, while the `Run()`
-operation is used for the `Execute` resource.
 
 ## Embedded files and templates
 
@@ -90,32 +96,34 @@ templates.
 To create a template, first create a file in `templates/test.txt` using Go
 [`template`](https://pkg.go.dev/text/template) syntax:
 
-```
+```bash
 My cat is called {{ .Name }}
 ```
 
 We can then generate the data to create our file:
 
-```
+```go
 import (
         "embed"
 
-        v "github.com/surminus/viaduct"
+        "github.com/surminus/viaduct"
+        "github.com/surminus/viaduct/resources"
 )
 
 //go:embed templates
 var templates embed.FS
 
 func main() {
-        m := v.New()
+        m := viaduct.New()
 
-        template := v.NewTemplate(
+        template := resources.NewTemplate(
                 templates,
                 "templates/test.txt",
                 struct{ Name string }{Name: "Bella"},
         )
 
-        m.Create(v.File{Path: "test/foo", Content: template})
+        // CreateFile is a helper function that takes two arguments
+        m.Add(resources.CreateFile("test/foo", template))
 }
 ```
 
@@ -126,18 +134,19 @@ The `EmbeddedFile` function works in a similar way, but without variables.
 Like any good configuration management tool, we also have access to node
 attributes under the `Attribute` variable:
 
-```
+```go
 import (
         "fmt"
 
-        v "github.com/surminus/viaduct"
+        "github.com/surminus/viaduct"
+        "github.com/surminus/viaduct/resources"
 )
 
 func main() {
-        m := v.New()
+        m := viaduct.New()
 
-        // v.E is an alias for creating an Execute resource
-        m.Run(v.E(fmt.Sprintf("echo \"Hello %s!\"", v.Attribute.User.Username)))
+        // E is an alias for creating an Execute resource
+        m.Add(resources.Exec(fmt.Sprintf("echo \"Hello %s!\"", viaduct.Attribute.User.Username)))
 }
 ```
 
@@ -151,29 +160,14 @@ Otherwise, assigning permissions should be achieved by explicitly setting the
 user and group in the resource.
 
 Alternatively, you can set a default user attribute:
-```
+```go
 func main() {
-        v.Attribute.SetUser("laura")
-        m := v.New()
+        viaduct.Attribute.SetUser("laura")
+        m := viaduct.New()
 
         // Will print my home directory
-        m.Run(v.E(fmt.Sprintf("echo %s", v.Attribute.User.Homedir)))
+        m.Add(resources.Echo(viaduct.Attribute.User.Homedir))
+
+        m.Run()
 }
 ```
-
-## Scripting mode
-
-It's possible to use resources directly in scripting mode:
-
-```
-import (
-        v "github.com/surminus/viaduct"
-)
-
-func main() {
-        v.E("echo hello").Run()
-        v.E("echo world").Run()
-}
-```
-
-These will just run in order and without concurrency.
