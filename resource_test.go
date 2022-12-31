@@ -15,31 +15,31 @@ func TestSetKind(t *testing.T) {
 	}{
 		{
 			attr:     &Apt{},
-			expected: KindApt,
+			expected: "Apt",
 		},
 		{
 			attr:     &Directory{},
-			expected: KindDirectory,
+			expected: "Directory",
 		},
 		{
 			attr:     &Execute{},
-			expected: KindExecute,
+			expected: "Execute",
 		},
 		{
 			attr:     &File{},
-			expected: KindFile,
+			expected: "File",
 		},
 		{
 			attr:     &Git{},
-			expected: KindGit,
+			expected: "Git",
 		},
 		{
 			attr:     &Link{},
-			expected: KindLink,
+			expected: "Link",
 		},
 		{
 			attr:     &Package{},
-			expected: KindPackage,
+			expected: "Package",
 		},
 	} {
 		var r Resource
@@ -54,11 +54,12 @@ func TestSetKind(t *testing.T) {
 func TestSetID(t *testing.T) {
 	t.Parallel()
 
-	r := Resource{
-		ResourceKind: KindFile,
-	}
+	r := Resource{}
 
-	err := r.setID()
+	err := r.setKind(&File{})
+	assert.NoError(t, err)
+
+	err = r.setID()
 	assert.NoError(t, err)
 
 	assert.Equal(t, ResourceID("File_id-3d542aff"), r.ResourceID)

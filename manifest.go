@@ -10,10 +10,7 @@ import (
 	"time"
 )
 
-type (
-	ResourceKind string
-	Status       string
-)
+type Status string
 
 const (
 	// Statuses

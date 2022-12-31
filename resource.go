@@ -5,19 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 )
 
-const (
-	// Resource Kinds
-	KindApt       ResourceKind = "Apt"
-	KindDirectory ResourceKind = "Directory"
-	KindExecute   ResourceKind = "Execute"
-	KindFile      ResourceKind = "File"
-	KindGit       ResourceKind = "Git"
-	KindLink      ResourceKind = "Link"
-	KindPackage   ResourceKind = "Package"
-)
+type ResourceKind string
 
 // Resource specifies how a new resource should be run
 type Resource struct {
@@ -42,6 +34,8 @@ type Resource struct {
 // ResourceOptions are a set of options that each resource can set
 // depending on their logic
 type ResourceOptions struct {
+	// GlobalLock can be set to ensure that the resource uses a global
+	// lock during operations
 	GlobalLock bool
 }
 
@@ -55,8 +49,8 @@ func NewResourceOptionsWithLock() *ResourceOptions {
 
 // ResourceAttributes implement resource types.
 type ResourceAttributes interface {
-	opts() *ResourceOptions
 	operationName() string
+	opts() *ResourceOptions
 	run(log *logger) error
 	satisfy(log *logger) error
 }
@@ -88,29 +82,23 @@ func (r *Resource) init(a ResourceAttributes) error {
 }
 
 func (r *Resource) setKind(a ResourceAttributes) error {
-	switch a.(type) {
-	case *Apt:
-		r.ResourceKind = KindApt
-	case *Directory:
-		r.ResourceKind = KindDirectory
-	case *Execute:
-		r.ResourceKind = KindExecute
-	case *File:
-		r.ResourceKind = KindFile
-	case *Git:
-		r.ResourceKind = KindGit
-	case *Link:
-		r.ResourceKind = KindLink
-	case *Package:
-		r.ResourceKind = KindPackage
-	default:
-		return fmt.Errorf("unknown resource kind")
+	t := reflect.TypeOf(a)
+	if t.Kind() != reflect.Pointer {
+		return fmt.Errorf("cannot determine resource type")
 	}
+
+	k := t.Elem().Name()
+
+	r.ResourceKind = ResourceKind(k)
 
 	return nil
 }
 
 func (r *Resource) setID() error {
+	if r.ResourceKind == "" {
+		return fmt.Errorf("resource kind has not been set")
+	}
+
 	j, err := json.Marshal(r)
 	if err != nil {
 		return err

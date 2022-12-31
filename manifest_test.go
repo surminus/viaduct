@@ -18,8 +18,8 @@ func TestSetName(t *testing.T) {
 		ResourceID("test-name"): {
 			Attributes:   d,
 			ResourceID:   "test-name",
-			ResourceKind: KindDirectory,
 			Status:       Pending,
+			ResourceKind: ResourceKind("Directory"),
 		},
 	}
 
@@ -39,8 +39,8 @@ func TestSetDep(t *testing.T) {
 			Attributes:   d,
 			DependsOn:    []ResourceID{"test-dep"},
 			ResourceID:   r.ResourceID,
-			ResourceKind: KindDirectory,
 			Status:       Pending,
+			ResourceKind: ResourceKind("Directory"),
 		},
 	}
 
@@ -60,8 +60,8 @@ func TestWithLock(t *testing.T) {
 			Attributes:   d,
 			GlobalLock:   true,
 			ResourceID:   r.ResourceID,
-			ResourceKind: KindDirectory,
 			Status:       Pending,
+			ResourceKind: ResourceKind("Directory"),
 		},
 	}
 
@@ -81,6 +81,9 @@ func TestAddResource(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		err = r.setKind(d)
+		assert.NoError(t, err)
+
 		err = m.addResource(r, d)
 		assert.NoError(t, err)
 
@@ -90,10 +93,11 @@ func TestAddResource(t *testing.T) {
 			// Set ResourceKind happens separately to this function,
 			// but should it?
 			expected := Resource{
-				Attributes: d,
-				DependsOn:  []ResourceID{ResourceID("test")},
-				ResourceID: id,
-				Status:     Pending,
+				Attributes:   d,
+				DependsOn:    []ResourceID{ResourceID("test")},
+				ResourceID:   id,
+				Status:       Pending,
+				ResourceKind: "Directory",
 			}
 
 			assert.Equal(t, expected, res)
@@ -109,6 +113,9 @@ func TestAddResource(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		err = r.setKind(d)
+		assert.NoError(t, err)
 
 		err = m.addResource(r, d)
 		assert.NoError(t, err)
@@ -145,8 +152,8 @@ func TestAddResource(t *testing.T) {
 				DependsOn:    []ResourceID{ResourceID("test")},
 				GlobalLock:   true,
 				ResourceID:   id,
-				ResourceKind: KindPackage,
 				Status:       Pending,
+				ResourceKind: ResourceKind("Package"),
 			}
 
 			assert.Equal(t, expected, res)
