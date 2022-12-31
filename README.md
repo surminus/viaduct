@@ -16,7 +16,7 @@ I'm using Viaduct to set up my personal development environment at
 
 Create a project in `main.go` and create a new manifest:
 
-```
+```go
 import (
         v "github.com/surminus/viaduct" // By convention we use "v"
 )
@@ -29,7 +29,7 @@ func main() {
 
 Add resources:
 
-```
+```go
 func main() {
         m := v.New()
 
@@ -44,7 +44,7 @@ func main() {
 All resources will run concurrently, so in this example we will declare a
 dependency so that the directory is created before the file:
 
-```
+```go
 func main() {
         m := v.New()
 
@@ -55,7 +55,7 @@ func main() {
 
 When you've added all the resources you need, we can apply them:
 
-```
+```go
 func main() {
         m := v.New()
 
@@ -67,7 +67,7 @@ func main() {
 ```
 
 Compile the package and run it:
-```
+```bash
 go build -o viaduct
 ./viaduct
 ```
@@ -75,7 +75,7 @@ go build -o viaduct
 ## CLI
 
 The compiled binary comes with runtime flags:
-```
+```bash
 ./viaduct --help
 ```
 
@@ -88,13 +88,13 @@ templates.
 To create a template, first create a file in `templates/test.txt` using Go
 [`template`](https://pkg.go.dev/text/template) syntax:
 
-```
+```bash
 My cat is called {{ .Name }}
 ```
 
 We can then generate the data to create our file:
 
-```
+```go
 import (
         "embed"
 
@@ -125,7 +125,7 @@ The `EmbeddedFile` function works in a similar way, but without variables.
 Like any good configuration management tool, we also have access to node
 attributes under the `Attribute` variable:
 
-```
+```go
 import (
         "fmt"
 
@@ -150,7 +150,7 @@ Otherwise, assigning permissions should be achieved by explicitly setting the
 user and group in the resource.
 
 Alternatively, you can set a default user attribute:
-```
+```go
 func main() {
         v.Attribute.SetUser("laura")
         m := v.New()
