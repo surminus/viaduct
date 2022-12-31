@@ -10,35 +10,35 @@ func TestSetKind(t *testing.T) {
 	t.Parallel()
 
 	for _, test := range []struct {
-		attr     any
+		attr     ResourceAttributes
 		expected ResourceKind
 	}{
 		{
-			attr:     Apt{},
+			attr:     &Apt{},
 			expected: KindApt,
 		},
 		{
-			attr:     Directory{},
+			attr:     &Directory{},
 			expected: KindDirectory,
 		},
 		{
-			attr:     Execute{},
+			attr:     &Execute{},
 			expected: KindExecute,
 		},
 		{
-			attr:     File{},
+			attr:     &File{},
 			expected: KindFile,
 		},
 		{
-			attr:     Git{},
+			attr:     &Git{},
 			expected: KindGit,
 		},
 		{
-			attr:     Link{},
+			attr:     &Link{},
 			expected: KindLink,
 		},
 		{
-			attr:     Package{},
+			attr:     &Package{},
 			expected: KindPackage,
 		},
 	} {

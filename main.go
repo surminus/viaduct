@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	Attribute Attributes
+	Attribute SystemAttributes
 	Config    Configs
 
 	tmpDirPath string

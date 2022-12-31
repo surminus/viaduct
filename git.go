@@ -38,6 +38,10 @@ type Git struct {
 	Delete bool
 }
 
+func Repo(path, url string) *Git {
+	return &Git{Path: path, URL: url}
+}
+
 // satisfy sets default values for the parameters for a particular
 // resource
 func (g *Git) satisfy(log *logger) error {
@@ -85,7 +89,7 @@ func (g *Git) satisfy(log *logger) error {
 	return nil
 }
 
-func (g Git) operationName() string {
+func (g *Git) operationName() string {
 	if g.Delete {
 		return "Delete"
 	}
@@ -93,13 +97,7 @@ func (g Git) operationName() string {
 	return "Create"
 }
 
-func (g Git) run() error {
-	log := newLogger("Git", g.operationName())
-
-	if err := g.satisfy(log); err != nil {
-		return err
-	}
-
+func (g *Git) run(log *logger) error {
 	if g.Delete {
 		return g.deleteGit(log)
 	} else {
@@ -107,7 +105,7 @@ func (g Git) run() error {
 	}
 }
 
-func (g Git) createGit(log *logger) error {
+func (g *Git) createGit(log *logger) error {
 	path := ExpandPath(g.Path)
 	logmsg := fmt.Sprintf("%s -> %s", g.URL, path)
 
@@ -186,7 +184,7 @@ func (g Git) createGit(log *logger) error {
 	)
 }
 
-func (g Git) deleteGit(log *logger) error {
+func (g *Git) deleteGit(log *logger) error {
 	path := ExpandPath(g.Path)
 
 	if Config.DryRun {

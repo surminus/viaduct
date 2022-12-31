@@ -13,7 +13,7 @@ import (
 )
 
 // Attributes represents all possible attributes of a system
-type Attributes struct {
+type SystemAttributes struct {
 	User     user.User          `json:"user"`
 	OS       string             `json:"os"`
 	Arch     string             `json:"arch"`
@@ -44,7 +44,7 @@ type PlatformAttributes struct {
 }
 
 // SetUser allows us to assign a default username
-func (a *Attributes) SetUser(username string) {
+func (a *SystemAttributes) SetUser(username string) {
 	newLogger("Attribute", "set").Info(fmt.Sprintf("User -> %s", username))
 
 	u, err := user.Lookup(username)
@@ -56,7 +56,7 @@ func (a *Attributes) SetUser(username string) {
 }
 
 // initAttributes populates the attributes
-func initAttributes(a *Attributes) {
+func initAttributes(a *SystemAttributes) {
 	user, err := user.Current()
 	if err != nil {
 		log.Fatal(err)
@@ -101,7 +101,7 @@ func initAttributes(a *Attributes) {
 }
 
 // JSON returns a string representation of the loaded attributes
-func (a Attributes) JSON() string {
+func (a *SystemAttributes) JSON() string {
 	output, err := json.MarshalIndent(a, "", "    ")
 	if err != nil {
 		log.Fatal(err)
@@ -111,12 +111,12 @@ func (a Attributes) JSON() string {
 }
 
 // AddCustom allows us to add custom attributes during a run
-func (a *Attributes) AddCustom(key, value string) {
+func (a *SystemAttributes) AddCustom(key, value string) {
 	a.Custom[key] = value
 }
 
 // GetCustom returns the value of a custom attribute
-func (a *Attributes) GetCustom(key string) string {
+func (a *SystemAttributes) GetCustom(key string) string {
 	return a.Custom[key]
 }
 

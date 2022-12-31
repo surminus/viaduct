@@ -28,9 +28,9 @@ type Directory struct {
 	Delete bool
 }
 
-// D is a shortcut for declaring a new Directory resource
-func D(path string) Directory {
-	return Directory{Path: path}
+// Dir creates a new directory
+func Dir(path string) *Directory {
+	return &Directory{Path: path}
 }
 
 // satisfy sets default values for the parameters for a particular
@@ -68,7 +68,7 @@ func (d *Directory) satisfy(log *logger) error {
 	return nil
 }
 
-func (d Directory) operationName() string {
+func (d *Directory) operationName() string {
 	if d.Delete {
 		return "Delete"
 	}
@@ -76,13 +76,7 @@ func (d Directory) operationName() string {
 	return "Create"
 }
 
-func (d Directory) run() error {
-	log := newLogger("Directory", d.operationName())
-
-	if err := d.satisfy(log); err != nil {
-		return err
-	}
-
+func (d *Directory) run(log *logger) error {
 	if d.Delete {
 		return d.deleteDirectory(log)
 	} else {
@@ -91,7 +85,7 @@ func (d Directory) run() error {
 }
 
 // Create creates a directory
-func (d Directory) createDirectory(log *logger) error {
+func (d *Directory) createDirectory(log *logger) error {
 	path := ExpandPath(d.Path)
 
 	if Config.DryRun {
@@ -178,7 +172,7 @@ func setDirectoryPermissions(
 }
 
 // Delete deletes a directory.
-func (d Directory) deleteDirectory(log *logger) error {
+func (d *Directory) deleteDirectory(log *logger) error {
 	if Config.DryRun {
 		log.Info(d.Path)
 		return nil

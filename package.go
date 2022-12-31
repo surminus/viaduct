@@ -36,20 +36,20 @@ func (p *Package) satisfy(log *logger) error {
 }
 
 // P is shortcut for declaring a new Package resource
-func Pkg(name string) Package {
-	return Package{
+func Pkg(name string) *Package {
+	return &Package{
 		Names: []string{name},
 	}
 }
 
 // Ps is a shortcut for declaring a new Package resource with multiple packages
-func Pkgs(names ...string) Package {
-	return Package{
+func Pkgs(names ...string) *Package {
+	return &Package{
 		Names: names,
 	}
 }
 
-func (p Package) operationName() string {
+func (p *Package) operationName() string {
 	if p.Uninstall {
 		return "Uninstall"
 	}
@@ -57,13 +57,7 @@ func (p Package) operationName() string {
 	return "Install"
 }
 
-func (p Package) run() error {
-	log := newLogger("Package", p.operationName())
-
-	if err := p.satisfy(log); err != nil {
-		return err
-	}
-
+func (p *Package) run(log *logger) error {
 	if p.Uninstall {
 		return p.uninstall(log)
 	} else {
@@ -71,7 +65,7 @@ func (p Package) run() error {
 	}
 }
 
-func (p Package) install(log *logger) error {
+func (p *Package) install(log *logger) error {
 	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
 	if Config.DryRun {
 		return nil
@@ -80,7 +74,7 @@ func (p Package) install(log *logger) error {
 	return installPkg(Attribute.Platform.ID, p.Names, p.Verbose)
 }
 
-func (p Package) uninstall(log *logger) error {
+func (p *Package) uninstall(log *logger) error {
 	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
 	if Config.DryRun {
 		return nil

@@ -21,7 +21,7 @@ const (
 
 // Resource specifies how a new resource should be run
 type Resource struct {
-	Attributes any
+	Attributes ResourceAttributes
 	// The kind of resource, such as "file" or "package"
 	ResourceKind
 	// What the resource is doing, such as "create" or "delete"
@@ -37,6 +37,13 @@ type Resource struct {
 	GlobalLock bool
 	// Error contains any errors raised during a run
 	Error string
+}
+
+// ResourceAttributes implement resource types.
+type ResourceAttributes interface {
+	run(log *logger) error
+	satisfy(log *logger) error
+	operationName() string
 }
 
 // ResourceID is an id of a resource
@@ -57,7 +64,7 @@ func newResource(deps []*Resource) (*Resource, error) {
 	}, nil
 }
 
-func (r *Resource) init(a any) error {
+func (r *Resource) init(a ResourceAttributes) error {
 	if err := r.setKind(a); err != nil {
 		return err
 	}
@@ -65,21 +72,21 @@ func (r *Resource) init(a any) error {
 	return nil
 }
 
-func (r *Resource) setKind(a any) error {
+func (r *Resource) setKind(a ResourceAttributes) error {
 	switch a.(type) {
-	case Apt:
+	case *Apt:
 		r.ResourceKind = KindApt
-	case Directory:
+	case *Directory:
 		r.ResourceKind = KindDirectory
-	case Execute:
+	case *Execute:
 		r.ResourceKind = KindExecute
-	case File:
+	case *File:
 		r.ResourceKind = KindFile
-	case Git:
+	case *Git:
 		r.ResourceKind = KindGit
-	case Link:
+	case *Link:
 		r.ResourceKind = KindLink
-	case Package:
+	case *Package:
 		r.ResourceKind = KindPackage
 	default:
 		return fmt.Errorf("unknown resource kind")
@@ -103,23 +110,12 @@ func (r *Resource) setID() error {
 	return nil
 }
 
-func (r Resource) run() error {
-	switch r.ResourceKind {
-	case KindApt:
-		return r.Attributes.(Apt).run()
-	case KindFile:
-		return r.Attributes.(File).run()
-	case KindDirectory:
-		return r.Attributes.(Directory).run()
-	case KindExecute:
-		return r.Attributes.(Execute).run()
-	case KindGit:
-		return r.Attributes.(Git).run()
-	case KindLink:
-		return r.Attributes.(Link).run()
-	case KindPackage:
-		return r.Attributes.(Package).run()
+func (r *Resource) run() error {
+	log := newLogger(string(r.ResourceKind), r.Attributes.operationName())
+
+	if err := r.Attributes.satisfy(log); err != nil {
+		return err
 	}
 
-	return nil
+	return r.Attributes.run(log)
 }

@@ -10,7 +10,7 @@ func TestSetName(t *testing.T) {
 	t.Parallel()
 
 	m := New()
-	d := D("test")
+	d := Dir("test")
 	r := m.Add(d)
 	m.SetName(r, "test-name")
 
@@ -30,7 +30,7 @@ func TestSetDep(t *testing.T) {
 	t.Parallel()
 
 	m := New()
-	d := D("test")
+	d := Dir("test")
 	r := m.Add(d)
 	m.SetDep(r, "test-dep")
 
@@ -51,7 +51,7 @@ func TestWithLock(t *testing.T) {
 	t.Parallel()
 
 	m := New()
-	d := D("test")
+	d := Dir("test")
 	r := m.Add(d)
 	m.WithLock(r)
 
@@ -75,7 +75,7 @@ func TestAddResource(t *testing.T) {
 		t.Parallel()
 
 		m := New()
-		d := D("test")
+		d := Dir("test")
 		r, err := newResource([]*Resource{{ResourceID: "test"}})
 		if err != nil {
 			t.Fatal(err)
@@ -104,7 +104,7 @@ func TestAddResource(t *testing.T) {
 		t.Parallel()
 
 		m := New()
-		d := D("test")
+		d := Dir("test")
 		r, err := newResource([]*Resource{{ResourceID: "test"}})
 		if err != nil {
 			t.Fatal(err)
@@ -113,7 +113,7 @@ func TestAddResource(t *testing.T) {
 		err = m.addResource(r, d)
 		assert.NoError(t, err)
 
-		d2 := D("test")
+		d2 := Dir("test")
 		r2, err := newResource([]*Resource{{ResourceID: "test"}})
 		if err != nil {
 			t.Fatal(err)

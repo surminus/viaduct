@@ -34,6 +34,16 @@ type File struct {
 	Delete bool
 }
 
+// Touch simply touches an empty file to disk
+func Touch(path string) *File {
+	return &File{Path: path}
+}
+
+// Content writes content to the specified path
+func Content(path, content string) *File {
+	return &File{Path: path, Content: content}
+}
+
 // satisfy sets default values for the parameters for a particular
 // resource
 func (f *File) satisfy(log *logger) error {
@@ -95,7 +105,7 @@ func NewTemplate(files embed.FS, path string, variables interface{}) string {
 	return b.String()
 }
 
-func (f File) operationName() string {
+func (f *File) operationName() string {
 	if f.Delete {
 		return "Delete"
 	}
@@ -103,13 +113,7 @@ func (f File) operationName() string {
 	return "Create"
 }
 
-func (f File) run() error {
-	log := newLogger("File", f.operationName())
-
-	if err := f.satisfy(log); err != nil {
-		return err
-	}
-
+func (f *File) run(log *logger) error {
 	if f.Delete {
 		return f.deleteFile(log)
 	} else {
@@ -118,7 +122,7 @@ func (f File) run() error {
 }
 
 // Create creates or updates a file
-func (f File) createFile(log *logger) error {
+func (f *File) createFile(log *logger) error {
 	if Config.DryRun {
 		log.Info(f.Path)
 		return nil
@@ -204,7 +208,7 @@ func (f File) createFile(log *logger) error {
 }
 
 // Delete deletes a file
-func (f File) deleteFile(log *logger) error {
+func (f *File) deleteFile(log *logger) error {
 	if Config.DryRun {
 		log.Info(f.Path)
 		return nil

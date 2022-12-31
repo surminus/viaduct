@@ -23,8 +23,8 @@ type Execute struct {
 }
 
 // E is a shortcut for declaring a new Execute resource
-func E(command string) Execute {
-	return Execute{Command: command}
+func E(command string) *Execute {
+	return &Execute{Command: command}
 }
 
 func (e *Execute) satisfy(log *logger) error {
@@ -37,18 +37,16 @@ func (e *Execute) satisfy(log *logger) error {
 	return nil
 }
 
-func (e Execute) run() error {
-	log := newLogger("Execute", "Run")
+func (e *Execute) operationName() string {
+	return "Run"
+}
 
-	if err := e.satisfy(log); err != nil {
-		return err
-	}
-
+func (e *Execute) run(log *logger) error {
 	return e.runExecute(log)
 }
 
 // Run runs the given command
-func (e Execute) runExecute(log *logger) error {
+func (e *Execute) runExecute(log *logger) error {
 	if e.Unless != "" {
 		unless := strings.Split(e.Unless, " ")
 

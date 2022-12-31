@@ -30,7 +30,7 @@ func (l *Link) satisfy(log *logger) error {
 	return nil
 }
 
-func (l Link) operationName() string {
+func (l *Link) operationName() string {
 	if l.Delete {
 		return "Delete"
 	}
@@ -38,13 +38,7 @@ func (l Link) operationName() string {
 	return "Create"
 }
 
-func (l Link) run() error {
-	log := newLogger("Link", l.operationName())
-
-	if err := l.satisfy(log); err != nil {
-		return err
-	}
-
+func (l *Link) run(log *logger) error {
 	if l.Delete {
 		return l.deleteLink(log)
 	} else {
@@ -53,7 +47,7 @@ func (l Link) run() error {
 }
 
 // Create can be used in scripting mode to create a symlink from Source to Path
-func (l Link) createLink(log *logger) error {
+func (l *Link) createLink(log *logger) error {
 	// If creating a link, a source is required, but not if we're deleting.
 	if l.Source == "" {
 		return fmt.Errorf("Required parameter: Source")
@@ -107,7 +101,7 @@ func (l Link) createLink(log *logger) error {
 }
 
 // Delete deletes the symlink from the Path
-func (l Link) deleteLink(log *logger) error {
+func (l *Link) deleteLink(log *logger) error {
 	path := ExpandPath(l.Path)
 
 	if Config.DryRun {

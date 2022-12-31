@@ -65,7 +65,7 @@ func (m *Manifest) WithLock(r *Resource) {
 	}
 }
 
-func (m *Manifest) addResource(r *Resource, a any) (err error) {
+func (m *Manifest) addResource(r *Resource, a ResourceAttributes) (err error) {
 	// Set attributes
 	r.Attributes = a
 
@@ -76,9 +76,12 @@ func (m *Manifest) addResource(r *Resource, a any) (err error) {
 
 	// the Apt Update operations should take a global lock.
 	if r.ResourceKind == KindApt {
-		if attr := r.Attributes.(Apt); attr.Update || attr.UpdateOnly {
-			r.GlobalLock = true
-		}
+		// TODO: this needs fixing! Ideally each resource should be able to
+		// independently specify that they require a global lock via a method.
+		//
+		// if attr := r.Attributes.(Apt); attr.Update || attr.UpdateOnly {
+		r.GlobalLock = true
+		// }
 	}
 
 	// Create a string representation of our resource
@@ -95,7 +98,7 @@ func (m *Manifest) addResource(r *Resource, a any) (err error) {
 	return err
 }
 
-func (m *Manifest) Add(attributes any, deps ...*Resource) *Resource {
+func (m *Manifest) Add(attributes ResourceAttributes, deps ...*Resource) *Resource {
 	log := newLogger("Viaduct", "Compile")
 
 	r, err := newResource(deps)

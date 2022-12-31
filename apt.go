@@ -71,11 +71,11 @@ func (a *Apt) satisfy(log *logger) error {
 	return nil
 }
 
-func AptUpdate() Apt {
-	return Apt{UpdateOnly: true}
+func AptUpdate() *Apt {
+	return &Apt{UpdateOnly: true}
 }
 
-func (a Apt) operationName() string {
+func (a *Apt) operationName() string {
 	if a.Delete {
 		return "Delete"
 	}
@@ -87,13 +87,7 @@ func (a Apt) operationName() string {
 	return "Create"
 }
 
-func (a Apt) run() error {
-	log := newLogger("Apt", a.operationName())
-
-	if err := a.satisfy(log); err != nil {
-		return err
-	}
-
+func (a *Apt) run(log *logger) error {
 	if a.UpdateOnly {
 		return a.updateApt(log)
 	}
@@ -107,7 +101,7 @@ func (a Apt) run() error {
 
 // AptUpdate is a helper function to perform "apt-get update"
 // Should be converted to a proper resource
-func (a Apt) updateApt(log *logger) error {
+func (a *Apt) updateApt(log *logger) error {
 	if Config.DryRun {
 		log.Info()
 		return nil
@@ -132,7 +126,7 @@ func (a Apt) updateApt(log *logger) error {
 }
 
 // Create adds a new apt repository
-func (a Apt) createApt(log *logger) error {
+func (a *Apt) createApt(log *logger) error {
 	if Config.DryRun {
 		log.Info(a.Name)
 		return nil
@@ -184,7 +178,7 @@ func (a Apt) createApt(log *logger) error {
 }
 
 // Delete removes an apt repository
-func (a Apt) deleteApt(log *logger) error {
+func (a *Apt) deleteApt(log *logger) error {
 	if Config.DryRun {
 		log.Info(a.Name)
 		return nil
