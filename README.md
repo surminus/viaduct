@@ -18,26 +18,34 @@ Create a project in `main.go` and create a new manifest:
 
 ```go
 import (
-        v "github.com/surminus/viaduct" // By convention we use "v"
+        "github.com/surminus/viaduct"
 )
 
 func main() {
         // m is our manifest object
-        m := v.New()
+        m := viaduct.New()
 }
 ```
 
-Add resources:
+A standard set of resources are found in the
+[https://pkg.go.dev/github.com/surminus/viaduct/resources](resources) package.
+
+To add them:
 
 ```go
+import (
+        "github.com/surminus/viaduct"
+        "github.com/surminus/viaduct/resources"
+)
+
 func main() {
-        m := v.New()
+        m := viaduct.New()
 
         // The first argument is what operation to perform, such as
         // creating or deleting a file, and the second argument are
         // the attributes of the resource
-        m.Add(&v.Directory{"/tmp/test"})
-        m.Add(&v.File{Path: "/tmp/test/foo"})
+        m.Add(&resources.Directory{"/tmp/test"})
+        m.Add(&resources.File{Path: "/tmp/test/foo"})
 }
 ```
 
@@ -46,10 +54,10 @@ dependency so that the directory is created before the file:
 
 ```go
 func main() {
-        m := v.New()
+        m := viaduct.New()
 
-        dir := m.Add(&v.Directory{"/tmp/test"})
-        m.Add(&v.File{Path: "/tmp/test/foo"}, dir)
+        dir := m.Add(&resources.Directory{"/tmp/test"})
+        m.Add(&resources.File{Path: "/tmp/test/foo"}, dir)
 }
 ```
 
@@ -57,10 +65,10 @@ When you've added all the resources you need, we can apply them:
 
 ```go
 func main() {
-        m := v.New()
+        m := viaduct.New()
 
-        dir := m.Add(&v.Directory{"/tmp/test"})
-        m.Add(&v.File{Path: "/tmp/test/foo"}, dir)
+        dir := m.Add(&resources.Directory{"/tmp/test"})
+        m.Add(&resources.File{Path: "/tmp/test/foo"}, dir)
 
         m.Run()
 }
@@ -98,23 +106,24 @@ We can then generate the data to create our file:
 import (
         "embed"
 
-        v "github.com/surminus/viaduct"
+        "github.com/surminus/viaduct"
+        "github.com/surminus/viaduct/resources"
 )
 
 //go:embed templates
 var templates embed.FS
 
 func main() {
-        m := v.New()
+        m := viaduct.New()
 
-        template := v.NewTemplate(
+        template := resources.NewTemplate(
                 templates,
                 "templates/test.txt",
                 struct{ Name string }{Name: "Bella"},
         )
 
         // CreateFile is a helper function that takes two arguments
-        m.Add(v.CreateFile("test/foo", template))
+        m.Add(resources.CreateFile("test/foo", template))
 }
 ```
 
@@ -129,14 +138,15 @@ attributes under the `Attribute` variable:
 import (
         "fmt"
 
-        v "github.com/surminus/viaduct"
+        "github.com/surminus/viaduct"
+        "github.com/surminus/viaduct/resources"
 )
 
 func main() {
-        m := v.New()
+        m := viaduct.New()
 
-        // v.E is an alias for creating an Execute resource
-        m.Add(v.Exec(fmt.Sprintf("echo \"Hello %s!\"", v.Attribute.User.Username)))
+        // E is an alias for creating an Execute resource
+        m.Add(resources.Exec(fmt.Sprintf("echo \"Hello %s!\"", viaduct.Attribute.User.Username)))
 }
 ```
 
@@ -152,11 +162,11 @@ user and group in the resource.
 Alternatively, you can set a default user attribute:
 ```go
 func main() {
-        v.Attribute.SetUser("laura")
-        m := v.New()
+        viaduct.Attribute.SetUser("laura")
+        m := viaduct.New()
 
         // Will print my home directory
-        m.Add(v.Echo(v.Attribute.User.Homedir))
+        m.Add(resources.Echo(viaduct.Attribute.User.Homedir))
 
         m.Run()
 }
