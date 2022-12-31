@@ -21,3 +21,5 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
     - run: go test -race
+    - run: go test -race
+      working-directory: ./resources
