@@ -31,6 +31,11 @@ func TestDirectory(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.DirExists(d.Path))
+
+		err = os.RemoveAll(d.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
 	})
 
 	t.Run("delete", func(t *testing.T) {

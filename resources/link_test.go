@@ -31,6 +31,11 @@ func TestLink(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.LinkExists(l.Path))
+
+		err = os.Remove(l.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
 	})
 
 	t.Run("delete", func(t *testing.T) {

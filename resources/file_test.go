@@ -35,6 +35,11 @@ func TestFile(t *testing.T) {
 
 		assert.Equal(t, true, viaduct.FileExists(f.Path))
 		assert.Equal(t, f.Content, viaduct.FileContents(f.Path))
+
+		err = os.Remove(f.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
 	})
 
 	t.Run("delete", func(t *testing.T) {
