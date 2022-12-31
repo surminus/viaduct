@@ -182,7 +182,7 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 	}
 
 	return setDirectoryPermissions(
-		viaduct.NewLogger("Git", "permissions"),
+		log,
 		path,
 		g.UID, g.GID,
 		g.User, g.Group,

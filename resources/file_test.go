@@ -8,46 +8,51 @@ import (
 	"github.com/surminus/viaduct"
 )
 
-var testFilePath = "test/acceptance/file/test_file.txt"
-var testFileContent = "Test Content"
+var testLogger = viaduct.NewSilentLogger()
 
-var testFile = &File{
-	Path:    testFilePath,
-	Content: testFileContent,
+func newTestFile(t *testing.T, path string) *File {
+	f := &File{
+		Path:    path,
+		Content: "Test Content",
+	}
+
+	err := f.PreflightChecks(testLogger)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return f
 }
-
-var testLogger = viaduct.NewSilentLogger("Test", "Testing")
 
 func TestFile(t *testing.T) {
 	t.Parallel()
 
-	err := testFile.PreflightChecks(testLogger)
-	assert.NoError(t, err)
-
 	t.Run("create", func(t *testing.T) {
 		t.Parallel()
 
-		err := testFile.Run(testLogger)
+		f := newTestFile(t, "test/acceptance/file/create.txt")
+
+		err := f.Run(testLogger)
 		assert.NoError(t, err)
 
-		assert.Equal(t, true, viaduct.FileExists(testFilePath))
-		assert.Equal(t, testFileContent, viaduct.FileContents(testFilePath))
+		assert.Equal(t, true, viaduct.FileExists(f.Path))
+		assert.Equal(t, f.Content, viaduct.FileContents(f.Path))
 	})
 
 	t.Run("delete", func(t *testing.T) {
 		t.Parallel()
 
-		testFile.Delete = true
-		testFile.Path = "test/acceptance/file/test_delete.txt"
+		f := newTestFile(t, "test/acceptance/file/delete.txt")
+		f.Delete = true
 
-		_, err := os.Create(testFile.Path)
+		_, err := os.Create(f.Path)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = testFile.Run(testLogger)
+		err = f.Run(testLogger)
 		assert.NoError(t, err)
 
-		assert.Equal(t, false, viaduct.FileExists(testFile.Path))
+		assert.Equal(t, false, viaduct.FileExists(f.Path))
 	})
 }

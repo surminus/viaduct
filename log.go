@@ -38,12 +38,8 @@ func NewQuietLogger(resource, action string) *Logger {
 	}
 }
 
-func NewSilentLogger(resource, action string) *Logger {
-	return &Logger{
-		Resource: resource,
-		Action:   action,
-		Silent:   true,
-	}
+func NewSilentLogger() *Logger {
+	return &Logger{Silent: true}
 }
 
 func (l *Logger) Fatal(v ...interface{}) {

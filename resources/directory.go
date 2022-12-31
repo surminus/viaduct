@@ -110,7 +110,7 @@ func (d *Directory) createDirectory(log *viaduct.Logger) error {
 	}
 
 	return setDirectoryPermissions(
-		viaduct.NewLogger("Directory", "permissions"),
+		log,
 		path,
 		d.UID, d.GID,
 		d.User, d.Group,
@@ -149,8 +149,8 @@ func setDirectoryPermissions(
 		}
 	}
 
-	chmodmsg := fmt.Sprintf("%s -> %s", path, mode)
-	chownmsg := fmt.Sprintf("%s -> %d:%d", path, uid, gid)
+	chmodmsg := fmt.Sprintf("Permissions: %s -> %s", path, mode)
+	chownmsg := fmt.Sprintf("Permissions: %s -> %d:%d", path, uid, gid)
 
 	if viaduct.MatchChmod(path, mode) {
 		log.Noop(chmodmsg)
