@@ -67,6 +67,16 @@ func FileExists(path string) bool {
 	return false
 }
 
+// FileContents simply returns the file contents as a string
+func FileContents(path string) string {
+	c, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return string(c)
+}
+
 // DirExists returns true if the file exists, and is a directory
 func DirExists(path string) bool {
 	if info, err := os.Stat(path); err == nil {

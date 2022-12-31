@@ -192,26 +192,25 @@ func (f *File) createFile(log *viaduct.Logger) error {
 		}
 	}
 
-	permlog := viaduct.NewLogger("File", "permissions")
-	chmodmsg := fmt.Sprintf("%s -> %s", path, f.Mode)
-	chownmsg := fmt.Sprintf("%s -> %d:%d", path, uid, gid)
+	chmodmsg := fmt.Sprintf("Permissions: %s -> %s", path, f.Mode)
+	chownmsg := fmt.Sprintf("Permissions: %s -> %d:%d", path, uid, gid)
 
 	if viaduct.MatchChown(path, uid, gid) {
-		permlog.Noop(chownmsg)
+		log.Noop(chownmsg)
 	} else {
 		if err := os.Chown(path, uid, gid); err != nil {
 			return err
 		}
-		permlog.Info(chownmsg)
+		log.Info(chownmsg)
 	}
 
 	if viaduct.MatchChmod(path, f.Mode) {
-		permlog.Noop(chmodmsg)
+		log.Noop(chmodmsg)
 	} else {
 		if err := os.Chown(path, uid, gid); err != nil {
 			return err
 		}
-		permlog.Info(chownmsg)
+		log.Info(chownmsg)
 	}
 
 	return nil
