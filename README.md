@@ -41,9 +41,6 @@ import (
 func main() {
         m := viaduct.New()
 
-        // The first argument is what operation to perform, such as
-        // creating or deleting a file, and the second argument are
-        // the attributes of the resource
         m.Add(&resources.Directory{"/tmp/test"})
         m.Add(&resources.File{Path: "/tmp/test/foo"})
 }
