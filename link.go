@@ -18,6 +18,16 @@ type Link struct {
 	Delete bool
 }
 
+// CreateLink will create a new symlink.
+func CreateLink(path, source string) *Link {
+	return &Link{Path: path, Source: source}
+}
+
+// CreateLink will delete a symlink if it exists.
+func DeleteLink(path, source string) *Link {
+	return &Link{Path: path, Delete: true}
+}
+
 func (l *Link) opts() *ResourceOptions {
 	return NewResourceOptions()
 }

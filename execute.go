@@ -22,9 +22,14 @@ type Execute struct {
 	Quiet bool
 }
 
-// E is a shortcut for declaring a new Execute resource
-func E(command string) *Execute {
+// Exec is a shortcut for running a command
+func Exec(command string) *Execute {
 	return &Execute{Command: command}
+}
+
+// ExecUnless is like Exec, but will only run conditionally
+func ExecUnless(command, unless string) *Execute {
+	return &Execute{Command: command, Unless: unless}
 }
 
 func (e *Execute) opts() *ResourceOptions {

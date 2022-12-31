@@ -39,9 +39,13 @@ func Touch(path string) *File {
 	return &File{Path: path}
 }
 
-// Content writes content to the specified path
-func Content(path, content string) *File {
+// CreateFile writes content to the specified path
+func CreateFile(path, content string) *File {
 	return &File{Path: path, Content: content}
+}
+
+func DeleteFile(path string) *File {
+	return &File{Path: path, Delete: true}
 }
 
 func (f *File) opts() *ResourceOptions {

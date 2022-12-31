@@ -7,11 +7,11 @@ import (
 func main() {
 	m := v.New()
 
-	sleep := m.Add(v.E("sleep 5"))
-	err := m.Add(v.E("touch blah/boo"))
+	sleep := m.Add(v.Exec("sleep 5"))
+	err := m.Add(v.Exec("touch blah/boo"))
 	dir := m.Add(v.Dir("test"))
 
-	m.Add(v.E("echo hello"), err)
+	m.Add(v.ExecUnless("echo hello", "true"), err)
 	m.WithLock(sleep)
 
 	m.Add(v.Pkg("cowsay"), dir)
