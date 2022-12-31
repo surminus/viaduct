@@ -26,5 +26,7 @@ func main() {
 	deletefoo := m.Add(&v.File{Path: "test/foo", Delete: true}, foo)
 	m.Add(&v.Directory{Path: "test", Delete: true}, dir, deletefoo)
 
+	m.Add(v.Echo("test"))
+
 	m.Run()
 }

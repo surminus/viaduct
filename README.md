@@ -36,8 +36,8 @@ func main() {
         // The first argument is what operation to perform, such as
         // creating or deleting a file, and the second argument are
         // the attributes of the resource
-        m.Add(v.Create, v.Directory{"/tmp/test"})
-        m.Add(v.Create, v.File{Path: "/tmp/test/foo"})
+        m.Add(&v.Directory{"/tmp/test"})
+        m.Add(&v.File{Path: "/tmp/test/foo"})
 }
 ```
 
@@ -48,8 +48,8 @@ dependency so that the directory is created before the file:
 func main() {
         m := v.New()
 
-        dir := m.Add(v.Create, v.Directory{"/tmp/test"})
-        m.Add(v.Create, v.File{Path: "/tmp/test/foo"}, dir)
+        dir := m.Add(&v.Directory{"/tmp/test"})
+        m.Add(&v.File{Path: "/tmp/test/foo"}, dir)
 }
 ```
 
@@ -59,8 +59,8 @@ When you've added all the resources you need, we can apply them:
 func main() {
         m := v.New()
 
-        dir := m.Add(v.Create, v.Directory{"/tmp/test"})
-        m.Add(v.Create, v.File{Path: "/tmp/test/foo"}, dir)
+        dir := m.Add(&v.Directory{"/tmp/test"})
+        m.Add(&v.File{Path: "/tmp/test/foo"}, dir)
 
         m.Run()
 }
@@ -78,13 +78,6 @@ The compiled binary comes with runtime flags:
 ```
 ./viaduct --help
 ```
-
-## Operations and Resources
-
-The primary operations are `Create` and `Delete` which
-perform creations & updates and deletions respectively.
-
-The `Run` operation is used with the `Execute` resource type.
 
 ## Embedded files and templates
 
@@ -120,7 +113,8 @@ func main() {
                 struct{ Name string }{Name: "Bella"},
         )
 
-        m.Add(v.Create, v.File{Path: "test/foo", Content: template})
+        // CreateFile is a helper function that takes two arguments
+        m.Add(v.CreateFile("test/foo", template))
 }
 ```
 
@@ -142,7 +136,7 @@ func main() {
         m := v.New()
 
         // v.E is an alias for creating an Execute resource
-        m.Add(v.Run, v.E(fmt.Sprintf("echo \"Hello %s!\"", v.Attribute.User.Username)))
+        m.Add(v.Exec(fmt.Sprintf("echo \"Hello %s!\"", v.Attribute.User.Username)))
 }
 ```
 
@@ -162,23 +156,8 @@ func main() {
         m := v.New()
 
         // Will print my home directory
-        m.Add(v.Run, v.E(fmt.Sprintf("echo %s", v.Attribute.User.Homedir)))
+        m.Add(v.Echo(v.Attribute.User.Homedir))
+
+        m.Run()
 }
 ```
-
-## Scripting mode
-
-It's possible to use resources directly in scripting mode:
-
-```
-import (
-        v "github.com/surminus/viaduct"
-)
-
-func main() {
-        v.E("echo hello").Run()
-        v.E("echo world").Run()
-}
-```
-
-These will just run in order and without concurrency.

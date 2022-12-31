@@ -32,6 +32,10 @@ func ExecUnless(command, unless string) *Execute {
 	return &Execute{Command: command, Unless: unless}
 }
 
+func Echo(message string) *Execute {
+	return &Execute{Command: fmt.Sprintf("echo \"%s\"", message)}
+}
+
 func (e *Execute) opts() *ResourceOptions {
 	return NewResourceOptions()
 }
