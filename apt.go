@@ -37,15 +37,15 @@ type Apt struct {
 	path string
 }
 
-// opts allows the resource to dynamically set options that will be passed
+// Params allows the resource to dynamically set options that will be passed
 // at compile time
-func (a *Apt) opts() *ResourceOptions {
-	return &ResourceOptions{GlobalLock: a.Update || a.UpdateOnly}
+func (a *Apt) Params() *ResourceParams {
+	return &ResourceParams{GlobalLock: a.Update || a.UpdateOnly}
 }
 
-// satisfy sets default values for the parameters for a particular
+// PreflightChecks sets default values for the parameters for a particular
 // resource
-func (a *Apt) satisfy(log *logger) error {
+func (a *Apt) PreflightChecks(log *logger) error {
 	// Set required values here, and error if they are not set
 	if a.UpdateOnly {
 		return nil
@@ -81,7 +81,7 @@ func AptUpdate() *Apt {
 	return &Apt{UpdateOnly: true}
 }
 
-func (a *Apt) operationName() string {
+func (a *Apt) OperationName() string {
 	if a.Delete {
 		return "Delete"
 	}
@@ -93,7 +93,7 @@ func (a *Apt) operationName() string {
 	return "Create"
 }
 
-func (a *Apt) run(log *logger) error {
+func (a *Apt) Run(log *logger) error {
 	if a.UpdateOnly {
 		return a.updateApt(log)
 	}

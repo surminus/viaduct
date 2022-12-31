@@ -33,13 +33,13 @@ func Dir(path string) *Directory {
 	return &Directory{Path: path}
 }
 
-func (d *Directory) opts() *ResourceOptions {
-	return NewResourceOptions()
+func (d *Directory) Params() *ResourceParams {
+	return NewResourceParams()
 }
 
-// satisfy sets default values for the parameters for a particular
+// PreflightChecks sets default values for the parameters for a particular
 // resource
-func (d *Directory) satisfy(log *logger) error {
+func (d *Directory) PreflightChecks(log *logger) error {
 	// Set required values here, and error if they are not set
 	if d.Path == "" {
 		return fmt.Errorf("Required parameter: Path")
@@ -72,7 +72,7 @@ func (d *Directory) satisfy(log *logger) error {
 	return nil
 }
 
-func (d *Directory) operationName() string {
+func (d *Directory) OperationName() string {
 	if d.Delete {
 		return "Delete"
 	}
@@ -80,7 +80,7 @@ func (d *Directory) operationName() string {
 	return "Create"
 }
 
-func (d *Directory) run(log *logger) error {
+func (d *Directory) Run(log *logger) error {
 	if d.Delete {
 		return d.deleteDirectory(log)
 	} else {

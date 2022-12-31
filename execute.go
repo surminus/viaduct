@@ -36,11 +36,11 @@ func Echo(message string) *Execute {
 	return &Execute{Command: fmt.Sprintf("echo \"%s\"", message)}
 }
 
-func (e *Execute) opts() *ResourceOptions {
-	return NewResourceOptions()
+func (e *Execute) Params() *ResourceParams {
+	return NewResourceParams()
 }
 
-func (e *Execute) satisfy(log *logger) error {
+func (e *Execute) PreflightChecks(log *logger) error {
 	// Set required values here, and error if they are not set
 	if e.Command == "" {
 		return fmt.Errorf("Required parameter: Command")
@@ -50,11 +50,11 @@ func (e *Execute) satisfy(log *logger) error {
 	return nil
 }
 
-func (e *Execute) operationName() string {
+func (e *Execute) OperationName() string {
 	return "Run"
 }
 
-func (e *Execute) run(log *logger) error {
+func (e *Execute) Run(log *logger) error {
 	return e.runExecute(log)
 }
 

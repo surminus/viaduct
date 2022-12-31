@@ -28,13 +28,13 @@ func DeleteLink(path, source string) *Link {
 	return &Link{Path: path, Delete: true}
 }
 
-func (l *Link) opts() *ResourceOptions {
-	return NewResourceOptions()
+func (l *Link) Params() *ResourceParams {
+	return NewResourceParams()
 }
 
-// satisfy sets default values for the parameters for a particular
+// PreflightChecks sets default values for the parameters for a particular
 // resource
-func (l *Link) satisfy(log *logger) error {
+func (l *Link) PreflightChecks(log *logger) error {
 	// Set required values here, and error if they are not set
 	if l.Path == "" {
 		return fmt.Errorf("Required parameter: Path")
@@ -44,7 +44,7 @@ func (l *Link) satisfy(log *logger) error {
 	return nil
 }
 
-func (l *Link) operationName() string {
+func (l *Link) OperationName() string {
 	if l.Delete {
 		return "Delete"
 	}
@@ -52,7 +52,7 @@ func (l *Link) operationName() string {
 	return "Create"
 }
 
-func (l *Link) run(log *logger) error {
+func (l *Link) Run(log *logger) error {
 	if l.Delete {
 		return l.deleteLink(log)
 	} else {

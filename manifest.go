@@ -66,7 +66,7 @@ func (m *Manifest) addResource(r *Resource, a ResourceAttributes) (err error) {
 	// Set attributes
 	r.Attributes = a
 
-	if a.opts().GlobalLock {
+	if a.Params().GlobalLock {
 		r.GlobalLock = true
 	}
 

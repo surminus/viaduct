@@ -43,13 +43,13 @@ func Repo(path, url string) *Git {
 	return &Git{Path: path, URL: url, Ensure: true}
 }
 
-func (g *Git) opts() *ResourceOptions {
-	return NewResourceOptions()
+func (g *Git) Params() *ResourceParams {
+	return NewResourceParams()
 }
 
-// satisfy sets default values for the parameters for a particular
+// PreflightChecks sets default values for the parameters for a particular
 // resource
-func (g *Git) satisfy(log *logger) error {
+func (g *Git) PreflightChecks(log *logger) error {
 	// Set required values here, and error if they are not set
 	if g.Path == "" {
 		return fmt.Errorf("required parameter: Path")
@@ -94,7 +94,7 @@ func (g *Git) satisfy(log *logger) error {
 	return nil
 }
 
-func (g *Git) operationName() string {
+func (g *Git) OperationName() string {
 	if g.Delete {
 		return "Delete"
 	}
@@ -102,7 +102,7 @@ func (g *Git) operationName() string {
 	return "Create"
 }
 
-func (g *Git) run(log *logger) error {
+func (g *Git) Run(log *logger) error {
 	if g.Delete {
 		return g.deleteGit(log)
 	} else {

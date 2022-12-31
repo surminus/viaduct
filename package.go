@@ -19,13 +19,13 @@ type Package struct {
 	Uninstall bool
 }
 
-func (p *Package) opts() *ResourceOptions {
-	return NewResourceOptionsWithLock()
+func (p *Package) Params() *ResourceParams {
+	return NewResourceParamsWithLock()
 }
 
-// satisfy sets default values for the parameters for a particular
+// PreflightChecks sets default values for the parameters for a particular
 // resource
-func (p *Package) satisfy(log *logger) error {
+func (p *Package) PreflightChecks(log *logger) error {
 	// Set required values here, and error if they are not set
 	if len(p.Names) < 1 {
 		return fmt.Errorf("Required parameter: Names")
@@ -53,7 +53,7 @@ func Pkgs(names ...string) *Package {
 	}
 }
 
-func (p *Package) operationName() string {
+func (p *Package) OperationName() string {
 	if p.Uninstall {
 		return "Uninstall"
 	}
@@ -61,7 +61,7 @@ func (p *Package) operationName() string {
 	return "Install"
 }
 
-func (p *Package) run(log *logger) error {
+func (p *Package) Run(log *logger) error {
 	if p.Uninstall {
 		return p.uninstall(log)
 	} else {

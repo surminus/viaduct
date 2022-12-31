@@ -9,53 +9,68 @@ import (
 	"strings"
 )
 
+// ResourceKind is the kind of resource, such as "File" or "Package".
 type ResourceKind string
 
-// Resource specifies how a new resource should be run
+// Resource holds details about a particular resource during a Viaduct run.
 type Resource struct {
+	// Attributes are the resource type attributes.
 	Attributes ResourceAttributes
-	// The kind of resource, such as "file" or "package"
+	// ResourceKind is what the resource kind is, such as "File" or "Package".
 	ResourceKind
-	// What the resource is doing, such as "create" or "delete"
-	// Operation
-	// A list of resource dependencies
+	// DependsOn is a list of resource dependencies.
 	DependsOn []ResourceID
-	// Status denotes the current status of the resource
+	// Status denotes the current status of the resource.
 	Status
-	// ResourceID is the resources generated ID
+	// ResourceID is the resources generated ID.
 	ResourceID
 	// GlobalLock will mean the resource will not run at the same time
-	// as other resources that have this set to true
+	// as other resources that have this set to true.
 	GlobalLock bool
-	// Error contains any errors raised during a run
+	// Error contains any errors raised during a run.
 	Error string
 }
 
-// ResourceOptions are a set of options that each resource can set
+// ResourceParams are a set of options that each resource can set
 // depending on their logic
-type ResourceOptions struct {
+type ResourceParams struct {
 	// GlobalLock can be set to ensure that the resource uses a global
 	// lock during operations
 	GlobalLock bool
 }
 
-func NewResourceOptions() *ResourceOptions {
-	return &ResourceOptions{}
+// NewResourceParams creates a new ResourceParams.
+func NewResourceParams() *ResourceParams {
+	return &ResourceParams{}
 }
 
-func NewResourceOptionsWithLock() *ResourceOptions {
-	return &ResourceOptions{GlobalLock: true}
+// NewResourceParamsWithLock creates a new ResourceParams, but with
+// a global lock applied.
+func NewResourceParamsWithLock() *ResourceParams {
+	return &ResourceParams{GlobalLock: true}
 }
 
-// ResourceAttributes implement resource types.
+// ResourceAttributes implement different resource types, such as File or
+// Directory. As long as this interface is implemented, then custom resources
+// can be directly integrated.
 type ResourceAttributes interface {
-	operationName() string
-	opts() *ResourceOptions
-	run(log *logger) error
-	satisfy(log *logger) error
+	// OperationName is a simple identifier for the operation type, such as
+	// Create, Delete, Update or Run.
+	OperationName() string
+
+	// Params are a set of parameters that determine how a resource should
+	// interact with Viaduct.
+	Params() *ResourceParams
+
+	// PreflightChecks are used to check that the resource parameters have been
+	// correctly set, and to ensure that default parameters are assigned.
+	PreflightChecks(log *logger) error
+
+	// Run performs the resource operation.
+	Run(log *logger) error
 }
 
-// ResourceID is an id of a resource
+// ResourceID is an id of a resource.
 type ResourceID string
 
 func newResource(deps []*Resource) (*Resource, error) {
@@ -114,11 +129,11 @@ func (r *Resource) setID() error {
 }
 
 func (r *Resource) run() error {
-	log := newLogger(string(r.ResourceKind), r.Attributes.operationName())
+	log := newLogger(string(r.ResourceKind), r.Attributes.OperationName())
 
-	if err := r.Attributes.satisfy(log); err != nil {
+	if err := r.Attributes.PreflightChecks(log); err != nil {
 		return err
 	}
 
-	return r.Attributes.run(log)
+	return r.Attributes.Run(log)
 }

@@ -48,13 +48,13 @@ func DeleteFile(path string) *File {
 	return &File{Path: path, Delete: true}
 }
 
-func (f *File) opts() *ResourceOptions {
-	return NewResourceOptions()
+func (f *File) Params() *ResourceParams {
+	return NewResourceParams()
 }
 
-// satisfy sets default values for the parameters for a particular
+// PreflightChecks sets default values for the parameters for a particular
 // resource
-func (f *File) satisfy(log *logger) error {
+func (f *File) PreflightChecks(log *logger) error {
 	// Set required values here, and error if they are not set
 	if f.Path == "" {
 		return fmt.Errorf("required parameter: Path")
@@ -113,7 +113,7 @@ func NewTemplate(files embed.FS, path string, variables interface{}) string {
 	return b.String()
 }
 
-func (f *File) operationName() string {
+func (f *File) OperationName() string {
 	if f.Delete {
 		return "Delete"
 	}
@@ -121,7 +121,7 @@ func (f *File) operationName() string {
 	return "Create"
 }
 
-func (f *File) run(log *logger) error {
+func (f *File) Run(log *logger) error {
 	if f.Delete {
 		return f.deleteFile(log)
 	} else {
