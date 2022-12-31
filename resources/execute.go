@@ -1,10 +1,12 @@
-package viaduct
+package resources
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/surminus/viaduct"
 )
 
 type Execute struct {
@@ -36,11 +38,11 @@ func Echo(message string) *Execute {
 	return &Execute{Command: fmt.Sprintf("echo \"%s\"", message)}
 }
 
-func (e *Execute) Params() *ResourceParams {
-	return NewResourceParams()
+func (e *Execute) Params() *viaduct.ResourceParams {
+	return viaduct.NewResourceParams()
 }
 
-func (e *Execute) PreflightChecks(log *logger) error {
+func (e *Execute) PreflightChecks(log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if e.Command == "" {
 		return fmt.Errorf("Required parameter: Command")
@@ -54,12 +56,12 @@ func (e *Execute) OperationName() string {
 	return "Run"
 }
 
-func (e *Execute) Run(log *logger) error {
+func (e *Execute) Run(log *viaduct.Logger) error {
 	return e.runExecute(log)
 }
 
 // Run runs the given command
-func (e *Execute) runExecute(log *logger) error {
+func (e *Execute) runExecute(log *viaduct.Logger) error {
 	if e.Unless != "" {
 		unless := strings.Split(e.Unless, " ")
 
@@ -75,7 +77,7 @@ func (e *Execute) runExecute(log *logger) error {
 	}
 
 	log.Info(e.Command, " -> started")
-	if Config.DryRun {
+	if viaduct.Config.DryRun {
 		return nil
 	}
 

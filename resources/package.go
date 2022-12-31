@@ -1,10 +1,12 @@
-package viaduct
+package resources
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/surminus/viaduct"
 )
 
 // Package installs one or more packages. Specify the package names.
@@ -19,19 +21,19 @@ type Package struct {
 	Uninstall bool
 }
 
-func (p *Package) Params() *ResourceParams {
-	return NewResourceParamsWithLock()
+func (p *Package) Params() *viaduct.ResourceParams {
+	return viaduct.NewResourceParamsWithLock()
 }
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (p *Package) PreflightChecks(log *logger) error {
+func (p *Package) PreflightChecks(log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if len(p.Names) < 1 {
 		return fmt.Errorf("Required parameter: Names")
 	}
 
-	if !isRoot() {
+	if !viaduct.IsRoot() {
 		return fmt.Errorf("Package resource must be run as root")
 	}
 
@@ -61,7 +63,7 @@ func (p *Package) OperationName() string {
 	return "Install"
 }
 
-func (p *Package) Run(log *logger) error {
+func (p *Package) Run(log *viaduct.Logger) error {
 	if p.Uninstall {
 		return p.uninstall(log)
 	} else {
@@ -69,22 +71,22 @@ func (p *Package) Run(log *logger) error {
 	}
 }
 
-func (p *Package) install(log *logger) error {
+func (p *Package) install(log *viaduct.Logger) error {
 	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
-	if Config.DryRun {
+	if viaduct.Config.DryRun {
 		return nil
 	}
 
-	return installPkg(Attribute.Platform.ID, p.Names, p.Verbose)
+	return installPkg(viaduct.Attribute.Platform.ID, p.Names, p.Verbose)
 }
 
-func (p *Package) uninstall(log *logger) error {
+func (p *Package) uninstall(log *viaduct.Logger) error {
 	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
-	if Config.DryRun {
+	if viaduct.Config.DryRun {
 		return nil
 	}
 
-	return removePkg(Attribute.Platform.ID, p.Names, p.Verbose)
+	return removePkg(viaduct.Attribute.Platform.ID, p.Names, p.Verbose)
 }
 
 func installPkg(platform string, pkgs []string, verbose bool) error {
@@ -96,7 +98,7 @@ func installPkg(platform string, pkgs []string, verbose bool) error {
 	case "arch", "manjaro":
 		return pacmanCmd("-S", pkgs, verbose)
 	default:
-		return fmt.Errorf("unrecognised distribution: %s", Attribute.Platform.ID)
+		return fmt.Errorf("unrecognised distribution: %s", viaduct.Attribute.Platform.ID)
 	}
 }
 
@@ -109,7 +111,7 @@ func removePkg(platform string, pkgs []string, verbose bool) error {
 	case "arch":
 		return pacmanCmd("-R", pkgs, verbose)
 	default:
-		return fmt.Errorf("unrecognised distribution: %s", Attribute.Platform.ID)
+		return fmt.Errorf("unrecognised distribution: %s", viaduct.Attribute.Platform.ID)
 	}
 }
 

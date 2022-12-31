@@ -10,16 +10,15 @@ func TestSetName(t *testing.T) {
 	t.Parallel()
 
 	m := New()
-	d := Dir("test")
-	r := m.Add(d)
+	r := m.Add(testResource)
 	m.SetName(r, "test-name")
 
 	expected := map[ResourceID]Resource{
 		ResourceID("test-name"): {
-			Attributes:   d,
+			Attributes:   testResource,
 			ResourceID:   "test-name",
 			Status:       Pending,
-			ResourceKind: ResourceKind("Directory"),
+			ResourceKind: ResourceKind("testResourceType"),
 		},
 	}
 
@@ -30,17 +29,16 @@ func TestSetDep(t *testing.T) {
 	t.Parallel()
 
 	m := New()
-	d := Dir("test")
-	r := m.Add(d)
+	r := m.Add(testResource)
 	m.SetDep(r, "test-dep")
 
 	expected := map[ResourceID]Resource{
 		r.ResourceID: {
-			Attributes:   d,
+			Attributes:   testResource,
 			DependsOn:    []ResourceID{"test-dep"},
 			ResourceID:   r.ResourceID,
 			Status:       Pending,
-			ResourceKind: ResourceKind("Directory"),
+			ResourceKind: ResourceKind("testResourceType"),
 		},
 	}
 
@@ -51,17 +49,16 @@ func TestWithLock(t *testing.T) {
 	t.Parallel()
 
 	m := New()
-	d := Dir("test")
-	r := m.Add(d)
+	r := m.Add(testResource)
 	m.WithLock(r)
 
 	expected := map[ResourceID]Resource{
 		r.ResourceID: {
-			Attributes:   d,
+			Attributes:   testResource,
 			GlobalLock:   true,
 			ResourceID:   r.ResourceID,
 			Status:       Pending,
-			ResourceKind: ResourceKind("Directory"),
+			ResourceKind: ResourceKind("testResourceType"),
 		},
 	}
 
@@ -75,16 +72,15 @@ func TestAddResource(t *testing.T) {
 		t.Parallel()
 
 		m := New()
-		d := Dir("test")
 		r, err := newResource([]*Resource{{ResourceID: "test"}})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = r.setKind(d)
+		err = r.setKind(testResource)
 		assert.NoError(t, err)
 
-		err = m.addResource(r, d)
+		err = m.addResource(r, testResource)
 		assert.NoError(t, err)
 
 		assert.Equal(t, 1, len(m.resources))
@@ -93,11 +89,11 @@ func TestAddResource(t *testing.T) {
 			// Set ResourceKind happens separately to this function,
 			// but should it?
 			expected := Resource{
-				Attributes:   d,
+				Attributes:   testResource,
 				DependsOn:    []ResourceID{ResourceID("test")},
 				ResourceID:   id,
 				Status:       Pending,
-				ResourceKind: "Directory",
+				ResourceKind: "testResourceType",
 			}
 
 			assert.Equal(t, expected, res)
@@ -108,25 +104,24 @@ func TestAddResource(t *testing.T) {
 		t.Parallel()
 
 		m := New()
-		d := Dir("test")
 		r, err := newResource([]*Resource{{ResourceID: "test"}})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = r.setKind(d)
+		err = r.setKind(testResource)
 		assert.NoError(t, err)
 
-		err = m.addResource(r, d)
+		err = m.addResource(r, testResource)
 		assert.NoError(t, err)
 
-		d2 := Dir("test")
-		r2, err := newResource([]*Resource{{ResourceID: "test"}})
+		sameAttributes := newTestResource("test")
+		sameResource, err := newResource([]*Resource{{ResourceID: "test"}})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = m.addResource(r2, d2)
+		err = m.addResource(sameResource, sameAttributes)
 		assert.Error(t, err)
 	})
 
@@ -134,7 +129,7 @@ func TestAddResource(t *testing.T) {
 		t.Parallel()
 
 		m := New()
-		p := Pkg("test")
+		p := newTestResourceWithLock("test")
 		r, err := newResource([]*Resource{{ResourceID: "test"}})
 		if err != nil {
 			t.Fatal(err)
@@ -153,7 +148,7 @@ func TestAddResource(t *testing.T) {
 				GlobalLock:   true,
 				ResourceID:   id,
 				Status:       Pending,
-				ResourceKind: ResourceKind("Package"),
+				ResourceKind: ResourceKind("testResourceType"),
 			}
 
 			assert.Equal(t, expected, res)

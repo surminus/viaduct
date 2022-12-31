@@ -64,10 +64,10 @@ type ResourceAttributes interface {
 
 	// PreflightChecks are used to check that the resource parameters have been
 	// correctly set, and to ensure that default parameters are assigned.
-	PreflightChecks(log *logger) error
+	PreflightChecks(log *Logger) error
 
 	// Run performs the resource operation.
-	Run(log *logger) error
+	Run(log *Logger) error
 }
 
 // ResourceID is an id of a resource.
@@ -129,7 +129,7 @@ func (r *Resource) setID() error {
 }
 
 func (r *Resource) run() error {
-	log := newLogger(string(r.ResourceKind), r.Attributes.OperationName())
+	log := NewLogger(string(r.ResourceKind), r.Attributes.OperationName())
 
 	if err := r.Attributes.PreflightChecks(log); err != nil {
 		return err

@@ -1,9 +1,11 @@
-package viaduct
+package resources
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/surminus/viaduct"
 )
 
 // Link creates a symlink. If the file exists and is not a symlink, it will
@@ -28,13 +30,13 @@ func DeleteLink(path, source string) *Link {
 	return &Link{Path: path, Delete: true}
 }
 
-func (l *Link) Params() *ResourceParams {
-	return NewResourceParams()
+func (l *Link) Params() *viaduct.ResourceParams {
+	return viaduct.NewResourceParams()
 }
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (l *Link) PreflightChecks(log *logger) error {
+func (l *Link) PreflightChecks(log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if l.Path == "" {
 		return fmt.Errorf("Required parameter: Path")
@@ -52,7 +54,7 @@ func (l *Link) OperationName() string {
 	return "Create"
 }
 
-func (l *Link) Run(log *logger) error {
+func (l *Link) Run(log *viaduct.Logger) error {
 	if l.Delete {
 		return l.deleteLink(log)
 	} else {
@@ -61,7 +63,7 @@ func (l *Link) Run(log *logger) error {
 }
 
 // Create can be used in scripting mode to create a symlink from Source to Path
-func (l *Link) createLink(log *logger) error {
+func (l *Link) createLink(log *viaduct.Logger) error {
 	// If creating a link, a source is required, but not if we're deleting.
 	if l.Source == "" {
 		return fmt.Errorf("Required parameter: Source")
@@ -69,15 +71,15 @@ func (l *Link) createLink(log *logger) error {
 
 	// The source should always be the full path, so we will
 	// attempt to expand it
-	source, err := filepath.Abs(ExpandPath(l.Source))
+	source, err := filepath.Abs(viaduct.ExpandPath(l.Source))
 	if err != nil {
 		return err
 	}
 
-	path := ExpandPath(l.Path)
+	path := viaduct.ExpandPath(l.Path)
 	logmsg := fmt.Sprintf("%s -> %s", source, path)
 
-	if Config.DryRun {
+	if viaduct.Config.DryRun {
 		log.Info(logmsg)
 		return nil
 	}
@@ -115,15 +117,15 @@ func (l *Link) createLink(log *logger) error {
 }
 
 // Delete deletes the symlink from the Path
-func (l *Link) deleteLink(log *logger) error {
-	path := ExpandPath(l.Path)
+func (l *Link) deleteLink(log *viaduct.Logger) error {
+	path := viaduct.ExpandPath(l.Path)
 
-	if Config.DryRun {
+	if viaduct.Config.DryRun {
 		log.Info(path)
 		return nil
 	}
 
-	if !FileExists(path) {
+	if !viaduct.FileExists(path) {
 		log.Noop(path)
 		return nil
 	}

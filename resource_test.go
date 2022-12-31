@@ -6,49 +6,49 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type testResourceType struct {
+	Value    string
+	WithLock bool
+}
+
+func (t *testResourceType) OperationName() string {
+	return "Test"
+}
+
+func (t *testResourceType) Params() *ResourceParams {
+	if t.WithLock {
+		return NewResourceParamsWithLock()
+	}
+
+	return NewResourceParams()
+}
+
+func (t *testResourceType) PreflightChecks(log *Logger) error {
+	return nil
+}
+
+func (t *testResourceType) Run(log *Logger) error {
+	return nil
+}
+
+func newTestResource(value string) *testResourceType {
+	return &testResourceType{Value: value}
+}
+
+func newTestResourceWithLock(value string) *testResourceType {
+	return &testResourceType{Value: value, WithLock: true}
+}
+
+var testResource = newTestResource("test")
+
 func TestSetKind(t *testing.T) {
 	t.Parallel()
 
-	for _, test := range []struct {
-		attr     ResourceAttributes
-		expected ResourceKind
-	}{
-		{
-			attr:     &Apt{},
-			expected: "Apt",
-		},
-		{
-			attr:     &Directory{},
-			expected: "Directory",
-		},
-		{
-			attr:     &Execute{},
-			expected: "Execute",
-		},
-		{
-			attr:     &File{},
-			expected: "File",
-		},
-		{
-			attr:     &Git{},
-			expected: "Git",
-		},
-		{
-			attr:     &Link{},
-			expected: "Link",
-		},
-		{
-			attr:     &Package{},
-			expected: "Package",
-		},
-	} {
-		var r Resource
-		err := r.setKind(test.attr)
-		assert.NoError(t, err)
+	var r Resource
+	err := r.setKind(testResource)
+	assert.NoError(t, err)
 
-		assert.Equal(t, test.expected, r.ResourceKind)
-	}
-
+	assert.Equal(t, ResourceKind("testResourceType"), r.ResourceKind)
 }
 
 func TestSetID(t *testing.T) {
@@ -56,16 +56,16 @@ func TestSetID(t *testing.T) {
 
 	r := Resource{}
 
-	err := r.setKind(&File{})
+	err := r.setKind(testResource)
 	assert.NoError(t, err)
 
 	err = r.setID()
 	assert.NoError(t, err)
 
-	assert.Equal(t, ResourceID("File_id-3d542aff"), r.ResourceID)
+	assert.Equal(t, ResourceID("testResourceType_id-274da5a8"), r.ResourceID)
 }
 
-func TestNewReso(t *testing.T) {
+func TestNewResource(t *testing.T) {
 	t.Parallel()
 
 	t.Run("error if invalid dependency", func(t *testing.T) {

@@ -85,7 +85,7 @@ func (m *Manifest) addResource(r *Resource, a ResourceAttributes) (err error) {
 }
 
 func (m *Manifest) Add(attributes ResourceAttributes, deps ...*Resource) *Resource {
-	log := newLogger("Viaduct", "Compile")
+	log := NewLogger("Viaduct", "Compile")
 
 	r, err := newResource(deps)
 	if err != nil {
@@ -115,7 +115,7 @@ func attrJSON(a any) string {
 // Run will run the specified resources concurrently, taking into account
 // any dependencies that have been declared
 func (m *Manifest) Run() {
-	log := newLogger("Viaduct", "Run")
+	log := NewLogger("Viaduct", "Run")
 	start := time.Now()
 	log.Info("Started")
 

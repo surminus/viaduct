@@ -45,7 +45,7 @@ type PlatformAttributes struct {
 
 // SetUser allows us to assign a default username
 func (a *SystemAttributes) SetUser(username string) {
-	newLogger("Attribute", "set").Info(fmt.Sprintf("User -> %s", username))
+	NewLogger("Attribute", "set").Info(fmt.Sprintf("User -> %s", username))
 
 	u, err := user.Lookup(username)
 	if err != nil {

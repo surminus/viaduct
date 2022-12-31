@@ -1,34 +1,35 @@
 package main
 
 import (
-	v "github.com/surminus/viaduct"
+	"github.com/surminus/viaduct"
+	"github.com/surminus/viaduct/resources"
 )
 
 func main() {
-	m := v.New()
+	m := viaduct.New()
 
-	sleep := m.Add(v.Exec("sleep 5"))
-	err := m.Add(v.Exec("touch blah/boo"))
-	dir := m.Add(v.Dir("test"))
+	sleep := m.Add(resources.Exec("sleep 5"))
+	err := m.Add(resources.Exec("touch blah/boo"))
+	dir := m.Add(resources.Dir("test"))
 
-	m.Add(v.ExecUnless("echo hello", "true"), err)
+	m.Add(resources.ExecUnless("echo hello", "true"), err)
 	m.WithLock(sleep)
 
-	m.Add(v.Pkg("cowsay"), dir)
+	m.Add(resources.Pkg("cowsay"), dir)
 
-	foo := m.Add(&v.File{
+	foo := m.Add(&resources.File{
 		Path:    "test/foo",
 		Content: "bar",
 	}, dir)
 
-	m.Add(v.Pkg("cowsay"), sleep)
+	m.Add(resources.Pkg("cowsay"), sleep)
 
-	deletefoo := m.Add(&v.File{Path: "test/foo", Delete: true}, foo)
-	m.Add(&v.Directory{Path: "test", Delete: true}, dir, deletefoo)
+	deletefoo := m.Add(&resources.File{Path: "test/foo", Delete: true}, foo)
+	m.Add(&resources.Directory{Path: "test", Delete: true}, dir, deletefoo)
 
-	m.Add(v.Echo("test"))
+	m.Add(resources.Echo("test"))
 
-	m.Add(&v.Example{})
+	m.Add(&resources.Example{})
 
 	m.Run()
 }

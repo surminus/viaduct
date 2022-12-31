@@ -1,4 +1,4 @@
-package viaduct
+package resources
 
 import (
 	"bytes"
@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"text/template"
 	"time"
+
+	"github.com/surminus/viaduct"
 )
 
 // File manages files on the filesystem
@@ -48,13 +50,13 @@ func DeleteFile(path string) *File {
 	return &File{Path: path, Delete: true}
 }
 
-func (f *File) Params() *ResourceParams {
-	return NewResourceParams()
+func (f *File) Params() *viaduct.ResourceParams {
+	return viaduct.NewResourceParams()
 }
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (f *File) PreflightChecks(log *logger) error {
+func (f *File) PreflightChecks(log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if f.Path == "" {
 		return fmt.Errorf("required parameter: Path")
@@ -65,7 +67,7 @@ func (f *File) PreflightChecks(log *logger) error {
 	}
 
 	if f.User == "" && f.UID == 0 && !f.Root {
-		if uid, err := strconv.Atoi(Attribute.User.Uid); err != nil {
+		if uid, err := strconv.Atoi(viaduct.Attribute.User.Uid); err != nil {
 			return err
 		} else {
 			f.UID = uid
@@ -73,7 +75,7 @@ func (f *File) PreflightChecks(log *logger) error {
 	}
 
 	if f.Group == "" && f.GID == 0 && !f.Root {
-		if gid, err := strconv.Atoi(Attribute.User.Gid); err != nil {
+		if gid, err := strconv.Atoi(viaduct.Attribute.User.Gid); err != nil {
 			return err
 		} else {
 			f.GID = gid
@@ -121,7 +123,7 @@ func (f *File) OperationName() string {
 	return "Create"
 }
 
-func (f *File) Run(log *logger) error {
+func (f *File) Run(log *viaduct.Logger) error {
 	if f.Delete {
 		return f.deleteFile(log)
 	} else {
@@ -130,16 +132,16 @@ func (f *File) Run(log *logger) error {
 }
 
 // Create creates or updates a file
-func (f *File) createFile(log *logger) error {
-	if Config.DryRun {
+func (f *File) createFile(log *viaduct.Logger) error {
+	if viaduct.Config.DryRun {
 		log.Info(f.Path)
 		return nil
 	}
 
-	path := ExpandPath(f.Path)
+	path := viaduct.ExpandPath(f.Path)
 
 	var shouldWriteFile bool
-	if FileExists(path) {
+	if viaduct.FileExists(path) {
 		if content, err := os.ReadFile(path); err == nil {
 			if string(content) != f.Content {
 				shouldWriteFile = true
@@ -190,11 +192,11 @@ func (f *File) createFile(log *logger) error {
 		}
 	}
 
-	permlog := newLogger("File", "permissions")
+	permlog := viaduct.NewLogger("File", "permissions")
 	chmodmsg := fmt.Sprintf("%s -> %s", path, f.Mode)
 	chownmsg := fmt.Sprintf("%s -> %d:%d", path, uid, gid)
 
-	if MatchChown(path, uid, gid) {
+	if viaduct.MatchChown(path, uid, gid) {
 		permlog.Noop(chownmsg)
 	} else {
 		if err := os.Chown(path, uid, gid); err != nil {
@@ -203,7 +205,7 @@ func (f *File) createFile(log *logger) error {
 		permlog.Info(chownmsg)
 	}
 
-	if MatchChmod(path, f.Mode) {
+	if viaduct.MatchChmod(path, f.Mode) {
 		permlog.Noop(chmodmsg)
 	} else {
 		if err := os.Chown(path, uid, gid); err != nil {
@@ -216,16 +218,16 @@ func (f *File) createFile(log *logger) error {
 }
 
 // Delete deletes a file
-func (f *File) deleteFile(log *logger) error {
-	if Config.DryRun {
+func (f *File) deleteFile(log *viaduct.Logger) error {
+	if viaduct.Config.DryRun {
 		log.Info(f.Path)
 		return nil
 	}
 
-	path := ExpandPath(f.Path)
+	path := viaduct.ExpandPath(f.Path)
 
 	// If the file does not exist, return early
-	if !FileExists(path) {
+	if !viaduct.FileExists(path) {
 		log.Noop(f.Path)
 		return nil
 	}

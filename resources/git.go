@@ -1,10 +1,11 @@
-package viaduct
+package resources
 
 import (
 	"fmt"
 	"os"
 	"strconv"
 
+	"github.com/surminus/viaduct"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 )
@@ -43,13 +44,13 @@ func Repo(path, url string) *Git {
 	return &Git{Path: path, URL: url, Ensure: true}
 }
 
-func (g *Git) Params() *ResourceParams {
-	return NewResourceParams()
+func (g *Git) Params() *viaduct.ResourceParams {
+	return viaduct.NewResourceParams()
 }
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (g *Git) PreflightChecks(log *logger) error {
+func (g *Git) PreflightChecks(log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if g.Path == "" {
 		return fmt.Errorf("required parameter: Path")
@@ -76,7 +77,7 @@ func (g *Git) PreflightChecks(log *logger) error {
 	}
 
 	if g.User == "" && g.UID == 0 && !g.Root {
-		if uid, err := strconv.Atoi(Attribute.User.Uid); err != nil {
+		if uid, err := strconv.Atoi(viaduct.Attribute.User.Uid); err != nil {
 			return err
 		} else {
 			g.UID = uid
@@ -84,7 +85,7 @@ func (g *Git) PreflightChecks(log *logger) error {
 	}
 
 	if g.Group == "" && g.GID == 0 && !g.Root {
-		if gid, err := strconv.Atoi(Attribute.User.Gid); err != nil {
+		if gid, err := strconv.Atoi(viaduct.Attribute.User.Gid); err != nil {
 			return err
 		} else {
 			g.GID = gid
@@ -102,7 +103,7 @@ func (g *Git) OperationName() string {
 	return "Create"
 }
 
-func (g *Git) Run(log *logger) error {
+func (g *Git) Run(log *viaduct.Logger) error {
 	if g.Delete {
 		return g.deleteGit(log)
 	} else {
@@ -110,17 +111,17 @@ func (g *Git) Run(log *logger) error {
 	}
 }
 
-func (g *Git) createGit(log *logger) error {
-	path := ExpandPath(g.Path)
+func (g *Git) createGit(log *viaduct.Logger) error {
+	path := viaduct.ExpandPath(g.Path)
 	logmsg := fmt.Sprintf("%s -> %s", g.URL, path)
 
-	if Config.DryRun {
+	if viaduct.Config.DryRun {
 		log.Info(logmsg)
 		return nil
 	}
 
 	var pathExists bool
-	if FileExists(path) {
+	if viaduct.FileExists(path) {
 		if !g.Ensure {
 			log.Noop(logmsg)
 			return nil
@@ -140,8 +141,8 @@ func (g *Git) createGit(log *logger) error {
 			return err
 		}
 
-		if Attribute.User.Username != "root" {
-			err = os.Setenv("SSH_KNOWN_HOSTS", ExpandPath("~/.ssh/known_hosts"))
+		if viaduct.Attribute.User.Username != "root" {
+			err = os.Setenv("SSH_KNOWN_HOSTS", viaduct.ExpandPath("~/.ssh/known_hosts"))
 			if err != nil {
 				return err
 			}
@@ -181,7 +182,7 @@ func (g *Git) createGit(log *logger) error {
 	}
 
 	return setDirectoryPermissions(
-		newLogger("Git", "permissions"),
+		viaduct.NewLogger("Git", "permissions"),
 		path,
 		g.UID, g.GID,
 		g.User, g.Group,
@@ -189,15 +190,15 @@ func (g *Git) createGit(log *logger) error {
 	)
 }
 
-func (g *Git) deleteGit(log *logger) error {
-	path := ExpandPath(g.Path)
+func (g *Git) deleteGit(log *viaduct.Logger) error {
+	path := viaduct.ExpandPath(g.Path)
 
-	if Config.DryRun {
+	if viaduct.Config.DryRun {
 		log.Info(path)
 		return nil
 	}
 
-	if DirExists(path) {
+	if viaduct.DirExists(path) {
 		if err := os.RemoveAll(path); err != nil {
 			return err
 		}

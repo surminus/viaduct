@@ -111,6 +111,6 @@ func MatchChown(path string, user, group int) bool {
 	return false
 }
 
-func isRoot() bool {
+func IsRoot() bool {
 	return Attribute.runuser.Username == "root"
 }
