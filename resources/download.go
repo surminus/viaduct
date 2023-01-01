@@ -63,13 +63,7 @@ func (a *Download) get(log *viaduct.Logger) error {
 		return err
 	}
 
-	client := http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			req.URL.Opaque = a.URL
-			return nil
-		},
-	}
-
+	var client http.Client
 	resp, err := client.Get(a.URL)
 	if err != nil {
 		return err
