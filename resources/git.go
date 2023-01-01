@@ -37,8 +37,6 @@ type Git struct {
 	GID int
 	// Delete will remove the Git directory.
 	Delete bool
-	// Quiet will silently clone the repository
-	Quiet bool
 }
 
 // Repo will add a new repository, and ensure that it stays up to date.
@@ -170,18 +168,18 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 
 	if !pathExists {
 		progress := os.Stdout
-		devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0755)
-		if err != nil {
-			return err
-		}
 
-		if g.Quiet {
+		if viaduct.Config.Quiet || viaduct.Config.Silent {
+			devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0755)
+			if err != nil {
+				return err
+			}
+
 			progress = devnull
-			// progress = os.NewFile(0, os.DevNull)
 		}
 
 		// nolint:exhaustivestruct
-		_, err = git.PlainClone(path, false, &git.CloneOptions{
+		_, err := git.PlainClone(path, false, &git.CloneOptions{
 			Progress:      progress,
 			ReferenceName: plumbing.ReferenceName(g.Reference),
 			RemoteName:    "origin",

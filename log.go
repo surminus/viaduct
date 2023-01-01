@@ -24,6 +24,21 @@ type Logger struct {
 }
 
 func NewLogger(resource, action string) *Logger {
+	if Config.Silent {
+		return NewSilentLogger()
+	}
+
+	if Config.Quiet {
+		return NewQuietLogger(resource, action)
+	}
+
+	return &Logger{
+		Resource: resource,
+		Action:   action,
+	}
+}
+
+func NewStandardLogger(resource, action string) *Logger {
 	return &Logger{
 		Resource: resource,
 		Action:   action,

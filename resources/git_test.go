@@ -10,9 +10,8 @@ import (
 
 func newTestGit(t *testing.T, path string) *Git {
 	g := &Git{
-		Path:  path,
-		Quiet: true,
-		URL:   "https://github.com/surminus/viaduct",
+		Path: path,
+		URL:  "https://github.com/surminus/viaduct",
 	}
 
 	err := g.PreflightChecks(testLogger)

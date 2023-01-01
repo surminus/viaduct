@@ -19,9 +19,6 @@ type Execute struct {
 	// Unless is another command to run, which if exits cleanly signifies
 	// that we should not run the execute command. Optional.
 	Unless string
-
-	// Quiet suppresses output from STDOUT. Optional.
-	Quiet bool
 }
 
 // Exec is a shortcut for running a command
@@ -67,8 +64,7 @@ func (e *Execute) runExecute(log *viaduct.Logger) error {
 
 		// nolint:gosec
 		ucmd := exec.Command("bash", "-c", strings.Join(unless, " "))
-		ucmd.Stdout = os.Stdout
-		ucmd.Stderr = os.Stderr
+		setCommandOutput(ucmd)
 
 		if err := ucmd.Run(); err == nil {
 			log.Noop(e.Command)
@@ -85,10 +81,7 @@ func (e *Execute) runExecute(log *viaduct.Logger) error {
 
 	// nolint:gosec
 	cmd := exec.Command("bash", "-c", strings.Join(command, " "))
-	if !e.Quiet {
-		cmd.Stdout = os.Stdout
-	}
-	cmd.Stderr = os.Stderr
+	setCommandOutput(cmd)
 	cmd.Dir = e.WorkingDirectory
 
 	if err := cmd.Run(); err != nil {
@@ -97,4 +90,21 @@ func (e *Execute) runExecute(log *viaduct.Logger) error {
 	log.Info(e.Command, " -> finished")
 
 	return nil
+}
+
+func setCommandOutput(cmd *exec.Cmd) {
+	if viaduct.Config.Silent {
+		cmd.Stdout = nil
+		cmd.Stderr = nil
+		return
+	}
+
+	if viaduct.Config.Quiet {
+		cmd.Stdout = nil
+		cmd.Stderr = os.Stderr
+		return
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 }
