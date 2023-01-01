@@ -133,12 +133,12 @@ func (r *Resource) setID() error {
 	return nil
 }
 
+func (r *Resource) preflight() error {
+	log := NewLogger(string(r.ResourceKind), "Preflight")
+	return r.Attributes.PreflightChecks(log)
+}
+
 func (r *Resource) run() error {
 	log := NewLogger(string(r.ResourceKind), r.Attributes.OperationName())
-
-	if err := r.Attributes.PreflightChecks(log); err != nil {
-		return err
-	}
-
 	return r.Attributes.Run(log)
 }

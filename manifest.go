@@ -119,6 +119,36 @@ func (m *Manifest) Run() {
 	start := time.Now()
 	log.Info("Started")
 
+	log.Info("Performing preflight checks...")
+
+	var preflightFailed bool
+	for id, resource := range m.resources {
+		if err := resource.preflight(); err != nil {
+			if r, ok := m.resources[id]; ok {
+				r.Error.Err = err
+				r.Error.Message = err.Error()
+				m.resources[id] = r
+			}
+
+			preflightFailed = true
+		}
+	}
+
+	if preflightFailed {
+		for _, resource := range m.resources {
+			if resource.Error.Err != nil {
+				log.Critical(
+					fmt.Sprintf(
+						"The following resource failed preflight checks:\n%s\n",
+						attrJSON(resource),
+					),
+				)
+			}
+		}
+
+		os.Exit(1)
+	}
+
 	var lock, globalLock sync.RWMutex
 	var wg sync.WaitGroup
 
