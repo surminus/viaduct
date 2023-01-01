@@ -23,6 +23,16 @@ type Logger struct {
 	Silent bool
 }
 
+func Log(v ...interface{}) {
+	var l = NewLogger("Viaduct", "User")
+
+	if l.Silent || l.Quiet {
+		return
+	}
+
+	log.Println(LoggerOutput(userlog(l.Resource), userlog(l.Action), v...))
+}
+
 func NewLogger(resource, action string) *Logger {
 	if Config.Silent {
 		return NewSilentLogger()
@@ -109,4 +119,5 @@ var critical = color.New(color.FgRed).SprintFunc()
 var fatal = color.New(color.FgRed).SprintFunc()
 var info = color.New(color.FgGreen).SprintFunc()
 var noop = color.New(color.FgBlue, color.Faint).SprintFunc()
+var userlog = color.New(color.FgCyan).SprintFunc()
 var warn = color.New(color.FgYellow).SprintFunc()
