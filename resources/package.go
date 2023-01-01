@@ -108,7 +108,7 @@ func removePkg(platform string, pkgs []string, verbose bool) error {
 		return aptGetCmd("remove", pkgs, verbose)
 	case "fedora", "centos":
 		return dnfCmd("remove", pkgs, verbose)
-	case "arch":
+	case "arch", "manjaro":
 		return pacmanCmd("-R", pkgs, verbose)
 	default:
 		return fmt.Errorf("unrecognised distribution: %s", viaduct.Attribute.Platform.ID)
