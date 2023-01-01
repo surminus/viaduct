@@ -2,6 +2,26 @@
 
 A configuration management framework written in Go.
 
+## v0.3.1
+
+### Added
+
+- Further acceptance tests for resources
+- --silent and --quiet CLI flags
+- Better error handling
+- A new Download resource type
+- A bunch of new helper commands for use within viaduct configuration
+- A viaduct.Log() function to allow users to add their own logging
+
+### Changed
+
+- Ensure that preflight checks run before the run actually starts
+- TmpDir is now cleaned after a successful run, but left when there are errors
+
+### Fixed
+
+- Bug with remove packages with manjaro
+
 ## v0.3.0
 
 See README for full examples.
