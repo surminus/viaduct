@@ -149,3 +149,44 @@ func FileSize(path string) int64 {
 
 	return f.Size()
 }
+
+// CommandTrue is similar to the "Unless" parameter found in some resources, but instead
+// can be used freeform within configuration. If it exits cleanly, then it
+// returns true.
+func CommandTrue(command string) bool {
+	c := strings.Split(command, " ")
+
+	// nolint:gosec
+	cmd := exec.Command("bash", "-c", strings.Join(c, " "))
+	if Config.Quiet {
+		cmd.Stderr = os.Stderr
+	} else if !Config.Silent {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
+
+	if err := cmd.Run(); err == nil {
+		return true
+	} else {
+		return false
+	}
+}
+
+// CommandFalse is the same as True, but returns the opposite.
+func CommandFalse(command string) bool {
+	return !CommandTrue(command)
+}
+
+// CommandOutput will run a command and provide the output. Can be useful in if
+// statements for checking arbitary values. Will not error, but will return an
+// empty string.
+func CommandOutput(command string) string {
+	c := strings.Split(command, " ")
+	cmd := exec.Command("bash", "-c", strings.Join(c, " "))
+
+	if out, err := cmd.Output(); err == nil {
+		return strings.TrimSpace(string(out))
+	} else {
+		return ""
+	}
+}
