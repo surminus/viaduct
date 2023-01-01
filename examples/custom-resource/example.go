@@ -1,6 +1,9 @@
-package resources
+package example
 
 import "github.com/surminus/viaduct"
+
+// This is an example custom resource with everything required to create your
+// first custom resource in Viaduct.
 
 // Example is an example resource. Add a description of your resource
 // and what it does here.

@@ -41,7 +41,7 @@ import (
 func main() {
         m := viaduct.New()
 
-        m.Add(&resources.Directory{"/tmp/test"})
+        m.Add(&resources.Directory{Path: "/tmp/test"})
         m.Add(&resources.File{Path: "/tmp/test/foo"})
 }
 ```
@@ -53,7 +53,7 @@ dependency so that the directory is created before the file:
 func main() {
         m := viaduct.New()
 
-        dir := m.Add(&resources.Directory{"/tmp/test"})
+        dir := m.Add(&resources.Directory{Path: "/tmp/test"})
         m.Add(&resources.File{Path: "/tmp/test/foo"}, dir)
 }
 ```
@@ -64,7 +64,7 @@ When you've added all the resources you need, we can apply them:
 func main() {
         m := viaduct.New()
 
-        dir := m.Add(&resources.Directory{"/tmp/test"})
+        dir := m.Add(&resources.Directory{Path: "/tmp/test"})
         m.Add(&resources.File{Path: "/tmp/test/foo"}, dir)
 
         m.Run()
@@ -76,6 +76,8 @@ Compile the package and run it:
 go build -o viaduct
 ./viaduct
 ```
+
+See the example in the [examples](examples/basic) directory.
 
 ## CLI
 
@@ -168,3 +170,12 @@ func main() {
         m.Run()
 }
 ```
+
+## Using custom resources
+
+Custom resources just need to implement the
+[`ResourceAttributes`](https://pkg.go.dev/github.com/surminus/viaduct#ResourceAttributes)
+interface.
+
+See the example custom resource in the
+[examples](examples/custom-resource/example.go) directory.
