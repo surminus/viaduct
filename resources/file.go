@@ -46,6 +46,7 @@ func CreateFile(path, content string) *File {
 	return &File{Path: path, Content: content}
 }
 
+// DeleteFile will delete the specified file
 func DeleteFile(path string) *File {
 	return &File{Path: path, Delete: true}
 }
@@ -54,8 +55,6 @@ func (f *File) Params() *viaduct.ResourceParams {
 	return viaduct.NewResourceParams()
 }
 
-// PreflightChecks sets default values for the parameters for a particular
-// resource
 func (f *File) PreflightChecks(log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if f.Path == "" {

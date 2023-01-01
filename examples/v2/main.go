@@ -31,5 +31,7 @@ func main() {
 
 	m.Add(&resources.Example{})
 
+	m.Add(resources.Wget("https://icanhazip.com", viaduct.TmpFile("ip.txt")))
+
 	m.Run()
 }

@@ -130,6 +130,22 @@ func MatchChown(path string, user, group int) bool {
 	return false
 }
 
+// IsRoot returns true if the user is root
 func IsRoot() bool {
 	return Attribute.runuser.Username == "root"
+}
+
+// TmpFile returns the path for a Viaduct temporary file
+func TmpFile(path string) string {
+	return filepath.Join(Attribute.TmpDir, path)
+}
+
+// FileSize returns the file size in bytes
+func FileSize(path string) int64 {
+	f, err := os.Stat(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return f.Size()
 }
