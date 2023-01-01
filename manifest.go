@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -210,6 +211,12 @@ func (m *Manifest) Run() {
 			log.Info("To see all resources, run with --dump-manifest")
 		}
 		os.Exit(1)
+	}
+
+	// Tidy up temporary directory if there were no errors
+	err := os.RemoveAll(filepath.Join(Attribute.TmpDir))
+	if err != nil {
+		log.Fatal(err)
 	}
 }
 

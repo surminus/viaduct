@@ -79,12 +79,6 @@ func initAttributes(a *SystemAttributes) {
 
 	tmpDirPath = filepath.Join(a.User.HomeDir, ".viaduct", "tmp")
 
-	// Tidy up previous tmp dirs
-	err = os.RemoveAll(tmpDirPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	err = os.MkdirAll(tmpDirPath, 0o755)
 	if err != nil {
 		log.Fatal(err)
