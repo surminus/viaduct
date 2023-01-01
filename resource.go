@@ -14,21 +14,26 @@ type ResourceKind string
 
 // Resource holds details about a particular resource during a Viaduct run.
 type Resource struct {
-	// Attributes are the resource type attributes.
-	Attributes ResourceAttributes
-	// ResourceKind is what the resource kind is, such as "File" or "Package".
-	ResourceKind
-	// DependsOn is a list of resource dependencies.
-	DependsOn []ResourceID
-	// Status denotes the current status of the resource.
-	Status
 	// ResourceID is the resources generated ID.
 	ResourceID
+	// ResourceKind is what the resource kind is, such as "File" or "Package".
+	ResourceKind
+	// Status denotes the current status of the resource.
+	Status
+	// Attributes are the resource type attributes.
+	Attributes ResourceAttributes
+	// DependsOn is a list of resource dependencies.
+	DependsOn []ResourceID `json:"DependsOn,omitempty"`
 	// GlobalLock will mean the resource will not run at the same time
 	// as other resources that have this set to true.
 	GlobalLock bool
 	// Error contains any errors raised during a run.
-	Error string
+	Error `json:"Error"`
+}
+
+type Error struct {
+	Err     error  `json:"-"`
+	Message string `json:"Message"`
 }
 
 // ResourceParams are a set of options that each resource can set

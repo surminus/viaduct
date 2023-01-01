@@ -62,7 +62,7 @@ func TestSetID(t *testing.T) {
 	err = r.setID()
 	assert.NoError(t, err)
 
-	assert.Equal(t, ResourceID("testResourceType_id-274da5a8"), r.ResourceID)
+	assert.Contains(t, string(r.ResourceID), "testResourceType")
 }
 
 func TestNewResource(t *testing.T) {

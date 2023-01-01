@@ -134,7 +134,7 @@ func (m *Manifest) Run() {
 
 	var withErrors bool
 	for _, resource := range m.resources {
-		if resource.Error != "" {
+		if resource.Error.Err != nil {
 			withErrors = true
 			break
 		}
@@ -148,13 +148,11 @@ func (m *Manifest) Run() {
 
 	if withErrors {
 		for _, resource := range m.resources {
-			if resource.Error != "" {
-				attr, _ := json.MarshalIndent(resource.Attributes, "", "  ")
-
+			if resource.Error.Err != nil {
 				log.Critical(
 					fmt.Sprintf(
-						"Resource type %s had error: \"%s\"\nAttributes:\n%s",
-						warn(resource.ResourceKind), resource.Error, attr,
+						"The following resource returned an error:\n%s\n",
+						attrJSON(resource),
 					),
 				)
 			}
@@ -231,7 +229,7 @@ func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
 						m.setStatus(r, lock, DependencyFailed)
 
 						// Unlock and return error
-						return fmt.Errorf("dependency failed, refusing to run")
+						return fmt.Errorf("upstream dependency %s returned an error", d.ResourceID)
 					}
 
 					if d.Status != Success {
@@ -269,7 +267,7 @@ func (m *Manifest) setStatus(r *Resource, lock *sync.RWMutex, s Status) {
 func (m *Manifest) setError(r *Resource, lock *sync.RWMutex, err error) {
 	lock.Lock()
 	if re, ok := m.resources[r.ResourceID]; ok {
-		re.Error = err.Error()
+		re.Error = Error{Err: err, Message: err.Error()}
 		m.resources[r.ResourceID] = re
 	}
 	lock.Unlock()
