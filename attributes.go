@@ -12,6 +12,8 @@ import (
 	"strings"
 )
 
+const LinuxOsReleaseFile = "/etc/os-release"
+
 // Attributes represents all possible attributes of a system
 type SystemAttributes struct {
 	User     user.User          `json:"user"`
@@ -74,7 +76,7 @@ func initAttributes(a *SystemAttributes) {
 	}
 
 	if a.OS == "linux" {
-		a.Platform = newPlatformAttributes("/etc/os-release")
+		a.Platform = newPlatformAttributes(LinuxOsReleaseFile)
 	}
 
 	tmpDirPath = filepath.Join(a.User.HomeDir, ".viaduct", "tmp")

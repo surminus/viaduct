@@ -9,7 +9,7 @@ import (
 func TestNewPlatform(t *testing.T) {
 	t.Parallel()
 
-	actual := newPlatformAttributes("test/fixtures/os-release")
+	actual := newPlatformAttributes("test/fixtures/os-release_linuxmint")
 	expected := PlatformAttributes{
 		Name:             "Linux Mint",
 		Version:          "20.2 (Uma)",

@@ -55,7 +55,8 @@ func SudoCommand(command ...string) error {
 
 // IsUbuntu returns true if the distribution is Ubuntu
 func IsUbuntu() bool {
-	return strings.Contains(Attribute.Platform.IDLike, "ubuntu")
+	// Linux Mint uses IDLike since it's an Ubuntu fork
+	return strings.Contains(Attribute.Platform.ID, "ubuntu") || strings.Contains(Attribute.Platform.IDLike, "ubuntu")
 }
 
 // FileExists returns true if the file exists
