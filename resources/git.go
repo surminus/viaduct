@@ -120,17 +120,7 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 		return nil
 	}
 
-	var pathExists bool
-	if viaduct.FileExists(path) {
-		if !g.Ensure {
-			log.Noop(logmsg)
-			return nil
-		}
-
-		pathExists = true
-	}
-
-	if pathExists {
+	if viaduct.FileExists(path) && g.Ensure {
 		r, err := git.PlainOpen(path)
 		if err != nil {
 			return err
@@ -150,7 +140,6 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 
 		// nolint:exhaustivestruct
 		err = w.Pull(&git.PullOptions{
-			// Auth:          auth,
 			RemoteName:    "origin",
 			Progress:      os.Stdout,
 			ReferenceName: plumbing.ReferenceName(g.Reference),
@@ -166,7 +155,7 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 		}
 	}
 
-	if !pathExists {
+	if !viaduct.FileExists(path) {
 		progress := os.Stdout
 
 		if viaduct.Config.Quiet || viaduct.Config.Silent {
