@@ -163,15 +163,41 @@ func setDirectoryPermissions(
 		log.Info(chmodmsg)
 	}
 
-	if viaduct.MatchChown(path, uid, gid) {
-		log.Noop(chownmsg)
-	} else {
-		err := os.Chown(path, uid, gid)
-		if err != nil {
+	// If it's a directory, recursively set ownership permissions
+	if viaduct.IsDirectory(path) {
+		chownmsg += " (recursive)"
+		var wasupdated bool
+
+		if files, err := viaduct.ListFiles(path); err == nil {
+			for _, f := range files {
+				if viaduct.MatchChown(f, uid, gid) {
+					continue
+				}
+
+				wasupdated = true
+				if err := os.Chown(f, uid, gid); err != nil {
+					return err
+				}
+			}
+		} else {
 			return err
 		}
 
-		log.Info(chownmsg)
+		if wasupdated {
+			log.Info(chownmsg)
+		} else {
+			log.Noop(chownmsg)
+		}
+	} else {
+		if viaduct.MatchChown(path, uid, gid) {
+			log.Noop(chownmsg)
+		} else {
+			if err := os.Chown(path, uid, gid); err != nil {
+				return err
+			}
+
+			log.Info(chownmsg)
+		}
 	}
 
 	return nil

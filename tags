@@ -1,0 +1,243 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+Add	manifest.go	/^func (m *Manifest) Add(attributes ResourceAttributes, deps ...*Resource) *Resource {$/;"	f
+AddCustom	attributes.go	/^func (a *SystemAttributes) AddCustom(key, value string) {$/;"	f
+Apt	resources/apt.go	/^type Apt struct {$/;"	t
+AptUpdate	resources/apt.go	/^func AptUpdate() *Apt {$/;"	f
+Attribute	main.go	/^	Attribute SystemAttributes$/;"	v
+CommandFalse	helpers.go	/^func CommandFalse(command string) bool {$/;"	f
+CommandOutput	helpers.go	/^func CommandOutput(command string) string {$/;"	f
+CommandTrue	helpers.go	/^func CommandTrue(command string) bool {$/;"	f
+Config	main.go	/^	Config    Configs$/;"	v
+Configs	config.go	/^type Configs struct {$/;"	t
+CreateFile	resources/file.go	/^func CreateFile(path, content string) *File {$/;"	f
+CreateLink	resources/link.go	/^func CreateLink(path, source string) *Link {$/;"	f
+Critical	log.go	/^func (l *Logger) Critical(v ...interface{}) {$/;"	f
+DeleteFile	resources/file.go	/^func DeleteFile(path string) *File {$/;"	f
+DeleteLink	resources/link.go	/^func DeleteLink(path, source string) *Link {$/;"	f
+DependencyFailed	manifest.go	/^	DependencyFailed Status = "DependencyFailed"$/;"	c
+Dir	resources/directory.go	/^func Dir(path string) *Directory {$/;"	f
+DirExists	helpers.go	/^func DirExists(path string) bool {$/;"	f
+Directory	resources/directory.go	/^type Directory struct {$/;"	t
+Download	resources/download.go	/^type Download struct {$/;"	t
+Echo	resources/execute.go	/^func Echo(message string) *Execute {$/;"	f
+EmbeddedFile	resources/file.go	/^func EmbeddedFile(files embed.FS, path string) string {$/;"	f
+Error	resource.go	/^type Error struct {$/;"	t
+Example	examples/custom-resource/example.go	/^type Example struct{}$/;"	t
+Exec	resources/execute.go	/^func Exec(command string) *Execute {$/;"	f
+ExecUnless	resources/execute.go	/^func ExecUnless(command, unless string) *Execute {$/;"	f
+Execute	resources/execute.go	/^type Execute struct {$/;"	t
+ExpandPath	helpers.go	/^func ExpandPath(path string) string {$/;"	f
+ExpandPathRoot	helpers.go	/^func ExpandPathRoot(path string) string {$/;"	f
+Failed	manifest.go	/^	Failed           Status = "Failed"$/;"	c
+Failed	resource.go	/^func (r *Resource) Failed() bool {$/;"	f
+Fatal	log.go	/^func (l *Logger) Fatal(v ...interface{}) {$/;"	f
+File	resources/file.go	/^type File struct {$/;"	t
+FileContents	helpers.go	/^func FileContents(path string) string {$/;"	f
+FileExists	helpers.go	/^func FileExists(path string) bool {$/;"	f
+FileSize	helpers.go	/^func FileSize(path string) int64 {$/;"	f
+GetCustom	attributes.go	/^func (a *SystemAttributes) GetCustom(key string) string {$/;"	f
+Git	resources/git.go	/^type Git struct {$/;"	t
+Info	log.go	/^func (l *Logger) Info(v ...interface{}) {$/;"	f
+IsDirectory	helpers.go	/^func IsDirectory(path string) bool {$/;"	f
+IsRoot	helpers.go	/^func IsRoot() bool {$/;"	f
+IsUbuntu	helpers.go	/^func IsUbuntu() bool {$/;"	f
+JSON	attributes.go	/^func (a *SystemAttributes) JSON() string {$/;"	f
+Link	resources/link.go	/^type Link struct {$/;"	t
+LinkExists	helpers.go	/^func LinkExists(path string) bool {$/;"	f
+LinuxOsReleaseFile	attributes.go	/^const LinuxOsReleaseFile = "\/etc\/os-release"$/;"	c
+ListFiles	helpers.go	/^func ListFiles(path string) (files []string, err error) {$/;"	f
+Log	log.go	/^func Log(v ...interface{}) {$/;"	f
+Logger	log.go	/^type Logger struct {$/;"	t
+LoggerOutput	log.go	/^func LoggerOutput(resource, action string, v ...interface{}) string {$/;"	f
+Manifest	manifest.go	/^type Manifest struct {$/;"	t
+MatchChmod	helpers.go	/^func MatchChmod(path string, perms fs.FileMode) bool {$/;"	f
+MatchChown	helpers.go	/^func MatchChown(path string, user, group int) bool {$/;"	f
+New	manifest.go	/^func New() *Manifest {$/;"	f
+NewLogger	log.go	/^func NewLogger(resource, action string) *Logger {$/;"	f
+NewQuietLogger	log.go	/^func NewQuietLogger(resource, action string) *Logger {$/;"	f
+NewResourceParams	resource.go	/^func NewResourceParams() *ResourceParams {$/;"	f
+NewResourceParamsWithLock	resource.go	/^func NewResourceParamsWithLock() *ResourceParams {$/;"	f
+NewSilentLogger	log.go	/^func NewSilentLogger() *Logger {$/;"	f
+NewStandardLogger	log.go	/^func NewStandardLogger(resource, action string) *Logger {$/;"	f
+NewTemplate	resources/file.go	/^func NewTemplate(files embed.FS, path string, variables interface{}) string {$/;"	f
+Noop	log.go	/^func (l *Logger) Noop(v ...interface{}) {$/;"	f
+OperationName	examples/custom-resource/example.go	/^func (a *Example) OperationName() string {$/;"	f
+OperationName	resource_test.go	/^func (t *testResourceType) OperationName() string {$/;"	f
+OperationName	resources/apt.go	/^func (a *Apt) OperationName() string {$/;"	f
+OperationName	resources/directory.go	/^func (d *Directory) OperationName() string {$/;"	f
+OperationName	resources/download.go	/^func (a *Download) OperationName() string {$/;"	f
+OperationName	resources/execute.go	/^func (e *Execute) OperationName() string {$/;"	f
+OperationName	resources/file.go	/^func (f *File) OperationName() string {$/;"	f
+OperationName	resources/git.go	/^func (g *Git) OperationName() string {$/;"	f
+OperationName	resources/link.go	/^func (l *Link) OperationName() string {$/;"	f
+OperationName	resources/package.go	/^func (p *Package) OperationName() string {$/;"	f
+Package	resources/package.go	/^type Package struct {$/;"	t
+Params	examples/custom-resource/example.go	/^func (a *Example) Params() *viaduct.ResourceParams {$/;"	f
+Params	resource_test.go	/^func (t *testResourceType) Params() *ResourceParams {$/;"	f
+Params	resources/apt.go	/^func (a *Apt) Params() *viaduct.ResourceParams {$/;"	f
+Params	resources/directory.go	/^func (d *Directory) Params() *viaduct.ResourceParams {$/;"	f
+Params	resources/download.go	/^func (a *Download) Params() *viaduct.ResourceParams {$/;"	f
+Params	resources/execute.go	/^func (e *Execute) Params() *viaduct.ResourceParams {$/;"	f
+Params	resources/file.go	/^func (f *File) Params() *viaduct.ResourceParams {$/;"	f
+Params	resources/git.go	/^func (g *Git) Params() *viaduct.ResourceParams {$/;"	f
+Params	resources/link.go	/^func (l *Link) Params() *viaduct.ResourceParams {$/;"	f
+Params	resources/package.go	/^func (p *Package) Params() *viaduct.ResourceParams {$/;"	f
+Pending	manifest.go	/^	Pending          Status = "Pending"$/;"	c
+Pkg	resources/package.go	/^func Pkg(name string) *Package {$/;"	f
+Pkgs	resources/package.go	/^func Pkgs(names ...string) *Package {$/;"	f
+PlatformAttributes	attributes.go	/^type PlatformAttributes struct {$/;"	t
+PreflightChecks	examples/custom-resource/example.go	/^func (a *Example) PreflightChecks(log *viaduct.Logger) error {$/;"	f
+PreflightChecks	resource_test.go	/^func (t *testResourceType) PreflightChecks(log *Logger) error {$/;"	f
+PreflightChecks	resources/apt.go	/^func (a *Apt) PreflightChecks(log *viaduct.Logger) error {$/;"	f
+PreflightChecks	resources/directory.go	/^func (d *Directory) PreflightChecks(log *viaduct.Logger) error {$/;"	f
+PreflightChecks	resources/download.go	/^func (a *Download) PreflightChecks(log *viaduct.Logger) error {$/;"	f
+PreflightChecks	resources/execute.go	/^func (e *Execute) PreflightChecks(log *viaduct.Logger) error {$/;"	f
+PreflightChecks	resources/file.go	/^func (f *File) PreflightChecks(log *viaduct.Logger) error {$/;"	f
+PreflightChecks	resources/git.go	/^func (g *Git) PreflightChecks(log *viaduct.Logger) error {$/;"	f
+PreflightChecks	resources/link.go	/^func (l *Link) PreflightChecks(log *viaduct.Logger) error {$/;"	f
+PreflightChecks	resources/package.go	/^func (p *Package) PreflightChecks(log *viaduct.Logger) error {$/;"	f
+PrependSudo	helpers.go	/^func PrependSudo(args []string) []string {$/;"	f
+Repo	resources/git.go	/^func Repo(path, url string) *Git {$/;"	f
+Resource	resource.go	/^type Resource struct {$/;"	t
+ResourceAttributes	resource.go	/^type ResourceAttributes interface {$/;"	t
+ResourceID	resource.go	/^type ResourceID string$/;"	t
+ResourceKind	resource.go	/^type ResourceKind string$/;"	t
+ResourceParams	resource.go	/^type ResourceParams struct {$/;"	t
+Run	examples/custom-resource/example.go	/^func (a *Example) Run(log *viaduct.Logger) error {$/;"	f
+Run	manifest.go	/^func (m *Manifest) Run() {$/;"	f
+Run	resource_test.go	/^func (t *testResourceType) Run(log *Logger) error {$/;"	f
+Run	resources/apt.go	/^func (a *Apt) Run(log *viaduct.Logger) error {$/;"	f
+Run	resources/directory.go	/^func (d *Directory) Run(log *viaduct.Logger) error {$/;"	f
+Run	resources/download.go	/^func (a *Download) Run(log *viaduct.Logger) error {$/;"	f
+Run	resources/execute.go	/^func (e *Execute) Run(log *viaduct.Logger) error {$/;"	f
+Run	resources/file.go	/^func (f *File) Run(log *viaduct.Logger) error {$/;"	f
+Run	resources/git.go	/^func (g *Git) Run(log *viaduct.Logger) error {$/;"	f
+Run	resources/link.go	/^func (l *Link) Run(log *viaduct.Logger) error {$/;"	f
+Run	resources/package.go	/^func (p *Package) Run(log *viaduct.Logger) error {$/;"	f
+RunCommand	helpers.go	/^func RunCommand(command ...string) error {$/;"	f
+SetDep	manifest.go	/^func (m *Manifest) SetDep(r *Resource, name string) {$/;"	f
+SetDryRun	config.go	/^func (c *Configs) SetDryRun() {$/;"	f
+SetDumpManifest	config.go	/^func (c *Configs) SetDumpManifest() {$/;"	f
+SetName	manifest.go	/^func (m *Manifest) SetName(r *Resource, newName string) {$/;"	f
+SetQuiet	config.go	/^func (c *Configs) SetQuiet() {$/;"	f
+SetSilent	config.go	/^func (c *Configs) SetSilent() {$/;"	f
+SetUser	attributes.go	/^func (a *SystemAttributes) SetUser(username string) {$/;"	f
+Status	manifest.go	/^type Status string$/;"	t
+Success	manifest.go	/^	Success          Status = "Success"$/;"	c
+SudoCommand	helpers.go	/^func SudoCommand(command ...string) error {$/;"	f
+SystemAttributes	attributes.go	/^type SystemAttributes struct {$/;"	t
+TestAddResource	manifest_test.go	/^func TestAddResource(t *testing.T) {$/;"	f
+TestDirectory	resources/directory_test.go	/^func TestDirectory(t *testing.T) {$/;"	f
+TestDown	resources/download_test.go	/^func TestDown(t *testing.T) {$/;"	f
+TestExecute	resources/execute_test.go	/^func TestExecute(t *testing.T) {$/;"	f
+TestFile	resources/file_test.go	/^func TestFile(t *testing.T) {$/;"	f
+TestGit	resources/git_test.go	/^func TestGit(t *testing.T) {$/;"	f
+TestIsUbuntu	helpers_test.go	/^func TestIsUbuntu(t *testing.T) {$/;"	f
+TestLink	resources/link_test.go	/^func TestLink(t *testing.T) {$/;"	f
+TestNewPlatform	attributes_test.go	/^func TestNewPlatform(t *testing.T) {$/;"	f
+TestNewResource	resource_test.go	/^func TestNewResource(t *testing.T) {$/;"	f
+TestSetDep	manifest_test.go	/^func TestSetDep(t *testing.T) {$/;"	f
+TestSetID	resource_test.go	/^func TestSetID(t *testing.T) {$/;"	f
+TestSetKind	resource_test.go	/^func TestSetKind(t *testing.T) {$/;"	f
+TestSetName	manifest_test.go	/^func TestSetName(t *testing.T) {$/;"	f
+TestWithLock	manifest_test.go	/^func TestWithLock(t *testing.T) {$/;"	f
+TmpFile	helpers.go	/^func TmpFile(path string) string {$/;"	f
+Touch	resources/file.go	/^func Touch(path string) *File {$/;"	f
+Warn	log.go	/^func (l *Logger) Warn(v ...interface{}) {$/;"	f
+Wget	resources/download.go	/^func Wget(url, path string) *Download {$/;"	f
+WithLock	manifest.go	/^func (m *Manifest) WithLock(r *Resource) {$/;"	f
+addResource	manifest.go	/^func (m *Manifest) addResource(r *Resource, a ResourceAttributes) (err error) {$/;"	f
+apply	manifest.go	/^func (m *Manifest) apply(id ResourceID, r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, globalLock *sync.RWMutex) {$/;"	f
+aptGetCmd	resources/package.go	/^func aptGetCmd(command string, packages []string, verbose bool) error {$/;"	f
+attrJSON	manifest.go	/^func attrJSON(a any) string {$/;"	f
+createApt	resources/apt.go	/^func (a *Apt) createApt(log *viaduct.Logger) error {$/;"	f
+createDirectory	resources/directory.go	/^func (d *Directory) createDirectory(log *viaduct.Logger) error {$/;"	f
+createFile	resources/file.go	/^func (f *File) createFile(log *viaduct.Logger) error {$/;"	f
+createGit	resources/git.go	/^func (g *Git) createGit(log *viaduct.Logger) error {$/;"	f
+createLink	resources/link.go	/^func (l *Link) createLink(log *viaduct.Logger) error {$/;"	f
+critical	log.go	/^var critical = color.New(color.FgRed).SprintFunc()$/;"	v
+deleteApt	resources/apt.go	/^func (a *Apt) deleteApt(log *viaduct.Logger) error {$/;"	f
+deleteDirectory	resources/directory.go	/^func (d *Directory) deleteDirectory(log *viaduct.Logger) error {$/;"	f
+deleteFile	resources/file.go	/^func (f *File) deleteFile(log *viaduct.Logger) error {$/;"	f
+deleteGit	resources/git.go	/^func (g *Git) deleteGit(log *viaduct.Logger) error {$/;"	f
+deleteLink	resources/link.go	/^func (l *Link) deleteLink(log *viaduct.Logger) error {$/;"	f
+dependencyCheck	manifest.go	/^func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {$/;"	f
+dnfCmd	resources/package.go	/^func dnfCmd(command string, packages []string, verbose bool) error {$/;"	f
+example	examples/custom-resource/example.go	/^package example$/;"	p
+fatal	log.go	/^var fatal = color.New(color.FgRed).SprintFunc()$/;"	v
+get	resources/download.go	/^func (a *Download) get(log *viaduct.Logger) error {$/;"	f
+info	log.go	/^var info = color.New(color.FgGreen).SprintFunc()$/;"	v
+init	main.go	/^func init() {$/;"	f
+init	resource.go	/^func (r *Resource) init(a ResourceAttributes) error {$/;"	f
+init	resources/resources_test.go	/^func init() {$/;"	f
+initAttributes	attributes.go	/^func initAttributes(a *SystemAttributes) {$/;"	f
+initConfigs	config.go	/^func initConfigs(c *Configs) {$/;"	f
+install	resources/package.go	/^func (p *Package) install(log *viaduct.Logger) error {$/;"	f
+installCmd	resources/package.go	/^func installCmd(args []string, verbose bool) (err error) {$/;"	f
+installPkg	resources/package.go	/^func installPkg(platform string, pkgs []string, verbose bool) error {$/;"	f
+main	examples/basic/main.go	/^func main() {$/;"	f
+main	examples/basic/main.go	/^package main$/;"	p
+newPlatformAttributes	attributes.go	/^func newPlatformAttributes(releaseFile string) (p PlatformAttributes) {$/;"	f
+newResource	resource.go	/^func newResource(deps []*Resource) (*Resource, error) {$/;"	f
+newTestDirectory	resources/directory_test.go	/^func newTestDirectory(t *testing.T, path string) *Directory {$/;"	f
+newTestDownload	resources/download_test.go	/^func newTestDownload(t *testing.T, url, path string) *Download {$/;"	f
+newTestExecute	resources/execute_test.go	/^func newTestExecute(t *testing.T) *Execute {$/;"	f
+newTestFile	resources/file_test.go	/^func newTestFile(t *testing.T, path string) *File {$/;"	f
+newTestGit	resources/git_test.go	/^func newTestGit(t *testing.T, path string) *Git {$/;"	f
+newTestLink	resources/link_test.go	/^func newTestLink(t *testing.T, source, dest string) *Link {$/;"	f
+newTestResource	resource_test.go	/^func newTestResource(value string) *testResourceType {$/;"	f
+newTestResourceWithLock	resource_test.go	/^func newTestResourceWithLock(value string) *testResourceType {$/;"	f
+noop	log.go	/^var noop = color.New(color.FgBlue, color.Faint).SprintFunc()$/;"	v
+pacmanCmd	resources/package.go	/^func pacmanCmd(command string, packages []string, verbose bool) error {$/;"	f
+preflight	resource.go	/^func (r *Resource) preflight() error {$/;"	f
+receiveSigningKey	resources/apt.go	/^func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {$/;"	f
+removePkg	resources/package.go	/^func removePkg(platform string, pkgs []string, verbose bool) error {$/;"	f
+resources	resources/apt.go	/^package resources$/;"	p
+resources	resources/directory.go	/^package resources$/;"	p
+resources	resources/directory_test.go	/^package resources$/;"	p
+resources	resources/download.go	/^package resources$/;"	p
+resources	resources/download_test.go	/^package resources$/;"	p
+resources	resources/execute.go	/^package resources$/;"	p
+resources	resources/execute_test.go	/^package resources$/;"	p
+resources	resources/file.go	/^package resources$/;"	p
+resources	resources/file_test.go	/^package resources$/;"	p
+resources	resources/git.go	/^package resources$/;"	p
+resources	resources/git_test.go	/^package resources$/;"	p
+resources	resources/link.go	/^package resources$/;"	p
+resources	resources/link_test.go	/^package resources$/;"	p
+resources	resources/package.go	/^package resources$/;"	p
+resources	resources/package_test.go	/^package resources$/;"	p
+resources	resources/resources_test.go	/^package resources$/;"	p
+run	resource.go	/^func (r *Resource) run() error {$/;"	f
+runExecute	resources/execute.go	/^func (e *Execute) runExecute(log *viaduct.Logger) error {$/;"	f
+setCommandOutput	resources/execute.go	/^func setCommandOutput(cmd *exec.Cmd) {$/;"	f
+setDirectoryPermissions	resources/directory.go	/^func setDirectoryPermissions($/;"	f
+setError	manifest.go	/^func (m *Manifest) setError(r *Resource, lock *sync.RWMutex, err error) {$/;"	f
+setID	resource.go	/^func (r *Resource) setID() error {$/;"	f
+setKind	resource.go	/^func (r *Resource) setKind(a ResourceAttributes) error {$/;"	f
+setStatus	manifest.go	/^func (m *Manifest) setStatus(r *Resource, lock *sync.RWMutex, s Status) {$/;"	f
+signingKeyPath	resources/apt.go	/^func (a *Apt) signingKeyPath() string {$/;"	f
+testLogger	resources/resources_test.go	/^var testLogger *viaduct.Logger$/;"	v
+testResource	resource_test.go	/^var testResource = newTestResource("test")$/;"	v
+testResourceType	resource_test.go	/^type testResourceType struct {$/;"	t
+tmpDirPath	main.go	/^	tmpDirPath string$/;"	v
+uninstall	resources/package.go	/^func (p *Package) uninstall(log *viaduct.Logger) error {$/;"	f
+updateApt	resources/apt.go	/^func (a *Apt) updateApt(log *viaduct.Logger) error {$/;"	f
+userlog	log.go	/^var userlog = color.New(color.FgCyan).SprintFunc()$/;"	v
+viaduct	attributes.go	/^package viaduct$/;"	p
+viaduct	attributes_test.go	/^package viaduct$/;"	p
+viaduct	config.go	/^package viaduct$/;"	p
+viaduct	helpers.go	/^package viaduct$/;"	p
+viaduct	helpers_test.go	/^package viaduct$/;"	p
+viaduct	log.go	/^package viaduct$/;"	p
+viaduct	main.go	/^package viaduct$/;"	p
+viaduct	manifest.go	/^package viaduct$/;"	p
+viaduct	manifest_test.go	/^package viaduct$/;"	p
+viaduct	resource.go	/^package viaduct$/;"	p
+viaduct	resource_test.go	/^package viaduct$/;"	p
+warn	log.go	/^var warn = color.New(color.FgYellow).SprintFunc()$/;"	v
