@@ -142,3 +142,7 @@ func (r *Resource) run() error {
 	log := NewLogger(string(r.ResourceKind), r.Attributes.OperationName())
 	return r.Attributes.Run(log)
 }
+
+func (r *Resource) Failed() bool {
+	return r.Status == Failed || r.Status == DependencyFailed
+}

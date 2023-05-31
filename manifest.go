@@ -258,7 +258,7 @@ func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
 			for _, dep := range r.DependsOn {
 				lock.RLock()
 				if d, ok := m.resources[dep]; ok {
-					if d.Status == Failed {
+					if d.Failed() {
 						lock.RUnlock()
 						m.setStatus(r, lock, DependencyFailed)
 
