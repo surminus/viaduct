@@ -87,6 +87,11 @@ func LinkExists(path string) bool {
 	return false
 }
 
+// IsDirectory is an alias for DirExists
+func IsDirectory(path string) bool {
+	return DirExists(path)
+}
+
 // DirExists returns true if the file exists, and is a directory
 func DirExists(path string) bool {
 	if info, err := os.Stat(path); err == nil {
@@ -98,14 +103,26 @@ func DirExists(path string) bool {
 	return false
 }
 
+// ListFiles returns all files within a path
+func ListFiles(path string) (files []string, err error) {
+	err = filepath.Walk(path, func(p string, f os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		files = append(files, p)
+		return nil
+	})
+
+	return files, err
+}
+
 // MatchChmod returns true if the permissions of the path match
 func MatchChmod(path string, perms fs.FileMode) bool {
 	if info, err := os.Stat(path); err == nil {
 		if info.Mode() == perms {
 			return true
 		}
-
-		log.Print(info.Mode().String())
 	} else {
 		log.Fatal(err)
 	}

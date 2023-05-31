@@ -198,6 +198,7 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 		g.UID, g.GID,
 		g.User, g.Group,
 		g.Mode,
+		true,
 	)
 }
 
