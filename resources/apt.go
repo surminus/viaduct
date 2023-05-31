@@ -209,7 +209,7 @@ func (a *Apt) createApt(log *viaduct.Logger) error {
 // receiveSigningKey will fetch a signing key
 func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
 	if viaduct.FileExists(a.signingKeyPath()) {
-		log.Noop(a.signingKeyPath())
+		log.Noop("Signing key: ", a.signingKeyPath())
 		return nil
 	}
 
@@ -254,6 +254,7 @@ func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
 		}()
 	}
 
+	log.Info("Signing key: ", a.signingKeyPath())
 	return nil
 }
 
