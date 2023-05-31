@@ -231,6 +231,7 @@ func (m *Manifest) apply(id ResourceID, r Resource, wg *sync.WaitGroup, lock *sy
 
 	if r.GlobalLock {
 		globalLock.Lock()
+		defer globalLock.Unlock()
 	}
 
 	// Run the resource operation
@@ -242,10 +243,6 @@ func (m *Manifest) apply(id ResourceID, r Resource, wg *sync.WaitGroup, lock *sy
 	}
 
 	m.setStatus(&r, lock, Success)
-
-	if r.GlobalLock {
-		globalLock.Unlock()
-	}
 }
 
 func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
