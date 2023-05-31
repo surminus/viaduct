@@ -27,6 +27,11 @@ type Apt struct {
 	// Parameters is a map of optional parameters that gets represented as key
 	// value pairs, eg "[arch=amd64]"
 	Parameters map[string]string
+	// SigningKey will use the legacy apt-key command to retrieve a key
+	SigningKey string
+	// SigningKeyURL will retrieve the signing key for the package,
+	// and include it as part of the source list
+	SigningKeyURL string
 
 	// Delete will remove the apt repository if set to true.
 	Delete bool
@@ -72,6 +77,10 @@ func (a *Apt) PreflightChecks(log *viaduct.Logger) error {
 
 	if a.Source == "" {
 		a.Source = "main"
+	}
+
+	if a.SigningKey != "" && a.SigningKeyURL != "" {
+		return fmt.Errorf("Cannot set both SigningKey and SigningKeyURL")
 	}
 
 	a.path = filepath.Join("/etc", "apt", "sources.list.d", fmt.Sprintf("%s.list", a.Name))
@@ -144,6 +153,18 @@ func (a *Apt) createApt(log *viaduct.Logger) error {
 		"deb",
 	}
 
+	if a.SigningKey != "" || a.SigningKeyURL != "" {
+		if err := a.receiveSigningKey(log); err == nil {
+			if a.Parameters == nil {
+				a.Parameters = make(map[string]string)
+			}
+
+			a.Parameters["signed-by"] = a.signingKeyPath()
+		} else {
+			return err
+		}
+	}
+
 	if len(a.Parameters) > 0 {
 		var params []string
 
@@ -183,6 +204,61 @@ func (a *Apt) createApt(log *viaduct.Logger) error {
 	}
 
 	return nil
+}
+
+// receiveSigningKey will fetch a signing key
+func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
+	if viaduct.FileExists(a.signingKeyPath()) {
+		log.Noop(a.signingKeyPath())
+		return nil
+	}
+
+	if a.SigningKeyURL != "" {
+		command := []string{"curl", "-sS", a.SigningKeyURL, "|", "gpg", "--dearmor", "|", "tee", a.signingKeyPath()}
+
+		cmd := exec.Command("bash", "-c", strings.Join(command, " "))
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
+			return nil
+		}
+	}
+
+	if a.SigningKey != "" {
+		// First we fetch the key using GPG
+		command := []string{"gpg", "--recv-keys", "--keyserver", "keyserver.ubuntu.com", a.SigningKey}
+
+		cmd := exec.Command("bash", "-c", strings.Join(command, " "))
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
+			return nil
+		}
+
+		// Then we export the key to disk
+		command = []string{"gpg", "--export", a.SigningKey, "|", "tee", a.signingKeyPath()}
+
+		cmd = exec.Command("bash", "-c", strings.Join(command, " "))
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
+			return nil
+		}
+
+		// Ensure that the key is deleted from GPG
+		defer func() {
+			command = []string{"gpg", "--delete-keys", a.SigningKey}
+			cmd = exec.Command("bash", "-c", strings.Join(command, " "))
+			cmd.Env = []string{"DEBIAN_FRONTEND=noninteractive"}
+			cmd.Run()
+		}()
+	}
+
+	return nil
+}
+
+func (a *Apt) signingKeyPath() string {
+	return filepath.Join("/usr/share/keyrings", fmt.Sprintf("%s.gpg", a.Name))
 }
 
 // Delete removes an apt repository
