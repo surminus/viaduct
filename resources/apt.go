@@ -250,6 +250,7 @@ func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
 			command = []string{"gpg", "--delete-keys", "--yes", a.SigningKey}
 			cmd = exec.Command("bash", "-c", strings.Join(command, " "))
 			cmd.Env = []string{"DEBIAN_FRONTEND=noninteractive"}
+			//nolint:errcheck
 			cmd.Run()
 		}()
 	}
