@@ -96,7 +96,7 @@ func (a *Download) get(log *viaduct.Logger) error {
 		return nil
 	}
 
-	if viaduct.FileExists(a.Path) && a.NotIfExists {
+	if viaduct.FileExists(path) && a.NotIfExists {
 		log.Noop(logmsg)
 		return nil
 	}
