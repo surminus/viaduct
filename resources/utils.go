@@ -9,17 +9,77 @@ import (
 	"github.com/surminus/viaduct"
 )
 
+// permissions is a private struct to make it easy to include permission
+// set functionality
+type permissions struct {
+	// Mode is the permissions set of the file
+	Mode os.FileMode
+	// User sets the user permissions by user name
+	User string
+	// Group sets the group permissions by group name
+	Group string
+	// UID sets the user permissions by UID
+	UID int
+	// GID sets the group permissions by GID
+	GID int
+	// Root enforces using the root user
+	Root bool
+}
+
+type ptype string
+
+const (
+	pdir  ptype = "directory"
+	pfile ptype = "file"
+)
+
+func (p *permissions) preflightPermissions(t ptype) error {
+	if p.Mode == 0 {
+		if t == pdir {
+			p.Mode = os.ModeDir | 0755
+		}
+
+		if t == pfile {
+			p.Mode = 0o644
+		}
+	} else {
+		if t == pdir {
+			// Explicity set modedir to avoid diffs
+			p.Mode = os.ModeDir | p.Mode
+		}
+	}
+
+	if p.User == "" && p.UID == 0 && !p.Root {
+		if uid, err := strconv.Atoi(viaduct.Attribute.User.Uid); err != nil {
+			return err
+		} else {
+			p.UID = uid
+		}
+	}
+
+	if p.Group == "" && p.GID == 0 && !p.Root {
+		if gid, err := strconv.Atoi(viaduct.Attribute.User.Gid); err != nil {
+			return err
+		} else {
+			p.GID = gid
+		}
+	}
+
+	return nil
+}
+
 // Set permissions for a directory
-func setDirectoryPermissions(
+func (p *permissions) setDirectoryPermissions(
 	log *viaduct.Logger,
 	path string,
-	uid, gid int,
-	username, group string,
-	mode os.FileMode,
 	recursiveChown bool,
 ) error {
-	if username != "" {
-		u, err := user.Lookup(username)
+	uid := p.UID
+	gid := p.GID
+	mode := p.Mode
+
+	if p.User != "" {
+		u, err := user.Lookup(p.User)
 		if err != nil {
 			return err
 		}
@@ -30,8 +90,8 @@ func setDirectoryPermissions(
 		}
 	}
 
-	if group != "" {
-		g, err := user.LookupGroup(group)
+	if p.Group != "" {
+		g, err := user.LookupGroup(p.Group)
 		if err != nil {
 			return err
 		}
@@ -97,15 +157,16 @@ func setDirectoryPermissions(
 }
 
 // Set permissions for a file
-func setFilePermissions(
+func (p *permissions) setFilePermissions(
 	log *viaduct.Logger,
 	path string,
-	uid, gid int,
-	username, group string,
-	mode os.FileMode,
 ) error {
-	if username != "" {
-		u, err := user.Lookup(username)
+	uid := p.UID
+	gid := p.GID
+	mode := p.Mode
+
+	if p.User != "" {
+		u, err := user.Lookup(p.User)
 		if err != nil {
 			return err
 		}
@@ -116,8 +177,8 @@ func setFilePermissions(
 		}
 	}
 
-	if group != "" {
-		g, err := user.LookupGroup(group)
+	if p.Group != "" {
+		g, err := user.LookupGroup(p.Group)
 		if err != nil {
 			return err
 		}
