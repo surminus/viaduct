@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/user"
 	"strconv"
 	"text/template"
 	"time"
@@ -164,55 +163,14 @@ func (f *File) createFile(log *viaduct.Logger) error {
 		log.Noop(path)
 	}
 
-	uid := f.UID
-	gid := f.GID
-
-	if f.User != "" {
-		u, err := user.Lookup(f.User)
-		if err != nil {
-			return err
-		}
-
-		uid, err = strconv.Atoi(u.Uid)
-		if err != nil {
-			return err
-		}
-	}
-
-	if f.Group != "" {
-		g, err := user.LookupGroup(f.Group)
-		if err != nil {
-			return err
-		}
-
-		gid, err = strconv.Atoi(g.Gid)
-		if err != nil {
-			return err
-		}
-	}
-
-	chmodmsg := fmt.Sprintf("Permissions: %s -> %s", path, f.Mode)
-	chownmsg := fmt.Sprintf("Permissions: %s -> %d:%d", path, uid, gid)
-
-	if viaduct.MatchChown(path, uid, gid) {
-		log.Noop(chownmsg)
-	} else {
-		if err := os.Chown(path, uid, gid); err != nil {
-			return err
-		}
-		log.Info(chownmsg)
-	}
-
-	if viaduct.MatchChmod(path, f.Mode) {
-		log.Noop(chmodmsg)
-	} else {
-		if err := os.Chown(path, uid, gid); err != nil {
-			return err
-		}
-		log.Info(chownmsg)
-	}
-
-	return nil
+	return setFilePermissions(log,
+		path,
+		f.UID,
+		f.GID,
+		f.User,
+		f.Group,
+		f.Mode,
+	)
 }
 
 // Delete deletes a file
