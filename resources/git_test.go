@@ -23,11 +23,7 @@ func newTestGit(t *testing.T, path string) *Git {
 }
 
 func TestGit(t *testing.T) {
-	t.Parallel()
-
 	t.Run("basic", func(t *testing.T) {
-		t.Parallel()
-
 		g := newTestGit(t, "test/acceptance/git/create")
 
 		err := g.Run(testLogger)

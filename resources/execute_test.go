@@ -18,8 +18,6 @@ func newTestExecute(t *testing.T) *Execute {
 }
 
 func TestExecute(t *testing.T) {
-	t.Parallel()
-
 	t.Run("without error", func(t *testing.T) {
 		e := newTestExecute(t)
 
