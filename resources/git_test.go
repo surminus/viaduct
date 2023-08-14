@@ -34,6 +34,7 @@ func TestGit(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.DirExists(filepath.Join(g.Path, ".git")))
+		assert.Equal(t, true, viaduct.MatchChmod(g.Path, DefaultDirectoryPermissions))
 
 		// Use the same test for cloning and deleting so we don't waste time
 		// cloning twice

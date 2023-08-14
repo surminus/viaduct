@@ -34,6 +34,7 @@ func TestFile(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.FileExists(f.Path))
+		assert.Equal(t, true, viaduct.MatchChmod(f.Path, DefaultFilePermissions))
 		assert.Equal(t, f.Content, viaduct.FileContents(f.Path))
 
 		err = os.Remove(f.Path)

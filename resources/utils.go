@@ -2,6 +2,7 @@ package resources
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"os/user"
 	"strconv"
@@ -33,14 +34,19 @@ const (
 	pfile ptype = "file"
 )
 
+const (
+	DefaultDirectoryPermissions fs.FileMode = os.ModeDir | 0o755
+	DefaultFilePermissions      fs.FileMode = 0o644
+)
+
 func (p *permissions) preflightPermissions(t ptype) error {
 	if p.Mode == 0 {
 		if t == pdir {
-			p.Mode = os.ModeDir | 0755
+			p.Mode = DefaultDirectoryPermissions
 		}
 
 		if t == pfile {
-			p.Mode = 0o644
+			p.Mode = DefaultFilePermissions
 		}
 	} else {
 		if t == pdir {
