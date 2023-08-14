@@ -10,9 +10,9 @@ import (
 	"github.com/surminus/viaduct"
 )
 
-// permissions is a private struct to make it easy to include permission
-// set functionality
-type permissions struct {
+// Permissions can be used with some resources to manage how they set
+// permissions on files
+type Permissions struct {
 	// Mode is the permissions set of the file
 	Mode os.FileMode
 	// User sets the user permissions by user name
@@ -39,7 +39,7 @@ const (
 	DefaultFilePermissions      fs.FileMode = 0o644
 )
 
-func (p *permissions) preflightPermissions(t ptype) error {
+func (p *Permissions) preflightPermissions(t ptype) error {
 	if p.Mode == 0 {
 		if t == pdir {
 			p.Mode = DefaultDirectoryPermissions
@@ -75,7 +75,7 @@ func (p *permissions) preflightPermissions(t ptype) error {
 }
 
 // Set permissions for a directory
-func (p *permissions) setDirectoryPermissions(
+func (p *Permissions) setDirectoryPermissions(
 	log *viaduct.Logger,
 	path string,
 	recursiveChown bool,
@@ -163,7 +163,7 @@ func (p *permissions) setDirectoryPermissions(
 }
 
 // Set permissions for a file
-func (p *permissions) setFilePermissions(
+func (p *Permissions) setFilePermissions(
 	log *viaduct.Logger,
 	path string,
 ) error {

@@ -21,7 +21,8 @@ type File struct {
 	// Delete will delete the file rather than create it if set to true.
 	Delete bool
 
-	permissions
+	// Permissions manages permissions for the file
+	Permissions
 }
 
 // Touch simply touches an empty file to disk

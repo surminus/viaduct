@@ -20,7 +20,8 @@ type Download struct {
 	// NotIfExists will not download the file if it already exists
 	NotIfExists bool
 
-	permissions
+	// Permissions manages permissions for the downloaded content
+	Permissions
 }
 
 func Wget(url, path string) *Download {

@@ -25,7 +25,8 @@ type Git struct {
 	// Delete will remove the Git directory.
 	Delete bool
 
-	permissions
+	// Permissions manages permissions for the repository
+	Permissions
 }
 
 // Repo will add a new repository, and ensure that it stays up to date.

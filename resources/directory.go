@@ -14,7 +14,8 @@ type Directory struct {
 	// Delete removes the directory if set to true.
 	Delete bool
 
-	permissions
+	// Permissions manages permissions for the directory
+	Permissions
 }
 
 // Dir creates a new directory
