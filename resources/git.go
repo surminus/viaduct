@@ -3,7 +3,6 @@ package resources
 import (
 	"fmt"
 	"os"
-	"strconv"
 
 	"github.com/surminus/viaduct"
 	"gopkg.in/src-d/go-git.v4"
@@ -23,20 +22,10 @@ type Git struct {
 	RemoteName string
 	// Ensure will continue to pull the latest changes. Optional.
 	Ensure bool
-	// Mode is the permissions set of the directory
-	Mode os.FileMode
-	// Root enforces using the root user
-	Root bool
-	// User sets the user permissions by user name
-	User string
-	// Group sets the group permissions by group name
-	Group string
-	// UID sets the user permissions by UID
-	UID int
-	// GID sets the group permissions by GID
-	GID int
 	// Delete will remove the Git directory.
 	Delete bool
+
+	permissions
 }
 
 // Repo will add a new repository, and ensure that it stays up to date.
@@ -69,30 +58,7 @@ func (g *Git) PreflightChecks(log *viaduct.Logger) error {
 		g.RemoteName = "origin"
 	}
 
-	if g.Mode == 0 {
-		g.Mode = os.ModeDir | 0755
-	} else {
-		// Explicity set modedir to avoid diffs
-		g.Mode = os.ModeDir | g.Mode
-	}
-
-	if g.User == "" && g.UID == 0 && !g.Root {
-		if uid, err := strconv.Atoi(viaduct.Attribute.User.Uid); err != nil {
-			return err
-		} else {
-			g.UID = uid
-		}
-	}
-
-	if g.Group == "" && g.GID == 0 && !g.Root {
-		if gid, err := strconv.Atoi(viaduct.Attribute.User.Gid); err != nil {
-			return err
-		} else {
-			g.GID = gid
-		}
-	}
-
-	return nil
+	return g.preflightPermissions(pdir)
 }
 
 func (g *Git) OperationName() string {
@@ -181,12 +147,9 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 		log.Info(logmsg)
 	}
 
-	return setDirectoryPermissions(
+	return g.setDirectoryPermissions(
 		log,
 		path,
-		g.UID, g.GID,
-		g.User, g.Group,
-		g.Mode,
 		true,
 	)
 }

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/user"
-	"strconv"
 	"text/template"
 	"time"
 
@@ -20,20 +18,10 @@ type File struct {
 	Path string
 	// Content is the content of the file
 	Content string
-	// Mode is the permissions set of the file
-	Mode os.FileMode
-	// Root enforces using the root user
-	Root bool
-	// User sets the user permissions by user name
-	User string
-	// Group sets the group permissions by group name
-	Group string
-	// UID sets the user permissions by UID
-	UID int
-	// GID sets the group permissions by GID
-	GID int
 	// Delete will delete the file rather than create it if set to true.
 	Delete bool
+
+	permissions
 }
 
 // Touch simply touches an empty file to disk
@@ -65,23 +53,7 @@ func (f *File) PreflightChecks(log *viaduct.Logger) error {
 		f.Mode = 0o644
 	}
 
-	if f.User == "" && f.UID == 0 && !f.Root {
-		if uid, err := strconv.Atoi(viaduct.Attribute.User.Uid); err != nil {
-			return err
-		} else {
-			f.UID = uid
-		}
-	}
-
-	if f.Group == "" && f.GID == 0 && !f.Root {
-		if gid, err := strconv.Atoi(viaduct.Attribute.User.Gid); err != nil {
-			return err
-		} else {
-			f.GID = gid
-		}
-	}
-
-	return nil
+	return f.preflightPermissions(pfile)
 }
 
 // EmbeddedFile is a small helper function to helper reading
@@ -164,55 +136,7 @@ func (f *File) createFile(log *viaduct.Logger) error {
 		log.Noop(path)
 	}
 
-	uid := f.UID
-	gid := f.GID
-
-	if f.User != "" {
-		u, err := user.Lookup(f.User)
-		if err != nil {
-			return err
-		}
-
-		uid, err = strconv.Atoi(u.Uid)
-		if err != nil {
-			return err
-		}
-	}
-
-	if f.Group != "" {
-		g, err := user.LookupGroup(f.Group)
-		if err != nil {
-			return err
-		}
-
-		gid, err = strconv.Atoi(g.Gid)
-		if err != nil {
-			return err
-		}
-	}
-
-	chmodmsg := fmt.Sprintf("Permissions: %s -> %s", path, f.Mode)
-	chownmsg := fmt.Sprintf("Permissions: %s -> %d:%d", path, uid, gid)
-
-	if viaduct.MatchChown(path, uid, gid) {
-		log.Noop(chownmsg)
-	} else {
-		if err := os.Chown(path, uid, gid); err != nil {
-			return err
-		}
-		log.Info(chownmsg)
-	}
-
-	if viaduct.MatchChmod(path, f.Mode) {
-		log.Noop(chmodmsg)
-	} else {
-		if err := os.Chown(path, uid, gid); err != nil {
-			return err
-		}
-		log.Info(chownmsg)
-	}
-
-	return nil
+	return f.setFilePermissions(log, path)
 }
 
 // Delete deletes a file

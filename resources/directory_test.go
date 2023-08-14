@@ -31,6 +31,7 @@ func TestDirectory(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.DirExists(d.Path))
+		assert.Equal(t, true, viaduct.MatchChmod(d.Path, DefaultDirectoryPermissions))
 
 		err = os.RemoveAll(d.Path)
 		if err != nil {

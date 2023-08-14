@@ -5,8 +5,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/user"
-	"strconv"
 
 	humanize "github.com/dustin/go-humanize"
 	"github.com/surminus/viaduct"
@@ -22,18 +20,7 @@ type Download struct {
 	// NotIfExists will not download the file if it already exists
 	NotIfExists bool
 
-	// Mode is the permissions set of the file
-	Mode os.FileMode
-	// Root enforces using the root user
-	Root bool
-	// User sets the user permissions by user name
-	User string
-	// Group sets the group permissions by group name
-	Group string
-	// UID sets the user permissions by UID
-	UID int
-	// GID sets the group permissions by GID
-	GID int
+	permissions
 }
 
 func Wget(url, path string) *Download {
@@ -56,27 +43,7 @@ func (a *Download) PreflightChecks(log *viaduct.Logger) error {
 		return fmt.Errorf("required parameter: Path")
 	}
 
-	if a.Mode == 0 {
-		a.Mode = 0o644
-	}
-
-	if a.User == "" && a.UID == 0 && !a.Root {
-		if uid, err := strconv.Atoi(viaduct.Attribute.User.Uid); err != nil {
-			return err
-		} else {
-			a.UID = uid
-		}
-	}
-
-	if a.Group == "" && a.GID == 0 && !a.Root {
-		if gid, err := strconv.Atoi(viaduct.Attribute.User.Gid); err != nil {
-			return err
-		} else {
-			a.GID = gid
-		}
-	}
-
-	return nil
+	return a.preflightPermissions(pfile)
 }
 
 func (a *Download) OperationName() string {
@@ -125,53 +92,8 @@ func (a *Download) get(log *viaduct.Logger) error {
 	logmsg = fmt.Sprintf("%s -> %s (size: %s)", a.URL, path, humanize.Bytes(uint64(size)))
 	log.Info(logmsg)
 
-	uid := a.UID
-	gid := a.GID
-
-	if a.User != "" {
-		u, err := user.Lookup(a.User)
-		if err != nil {
-			return err
-		}
-
-		uid, err = strconv.Atoi(u.Uid)
-		if err != nil {
-			return err
-		}
-	}
-
-	if a.Group != "" {
-		g, err := user.LookupGroup(a.Group)
-		if err != nil {
-			return err
-		}
-
-		gid, err = strconv.Atoi(g.Gid)
-		if err != nil {
-			return err
-		}
-	}
-
-	chmodmsg := fmt.Sprintf("Permissions: %s -> %s", path, a.Mode)
-	chownmsg := fmt.Sprintf("Permissions: %s -> %d:%d", path, uid, gid)
-
-	if viaduct.MatchChown(path, uid, gid) {
-		log.Noop(chownmsg)
-	} else {
-		if err := os.Chown(path, uid, gid); err != nil {
-			return err
-		}
-		log.Info(chownmsg)
-	}
-
-	if viaduct.MatchChmod(path, a.Mode) {
-		log.Noop(chmodmsg)
-	} else {
-		if err := os.Chown(path, uid, gid); err != nil {
-			return err
-		}
-		log.Info(chownmsg)
-	}
-
-	return nil
+	return a.setFilePermissions(
+		log,
+		path,
+	)
 }
