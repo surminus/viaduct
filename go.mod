@@ -3,18 +3,17 @@ module github.com/surminus/viaduct
 go 1.19
 
 require (
+	github.com/dustin/go-humanize v1.0.0
 	github.com/fatih/color v1.13.0
+	github.com/h2non/gock v1.2.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
-	golang.org/x/text v0.3.2
 	gopkg.in/src-d/go-git.v4 v4.13.1
 )
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/emirpasic/gods v1.12.0 // indirect
-	github.com/h2non/gock v1.2.0 // indirect
 	github.com/h2non/parth v0.0.0-20190131123155-b4df798d6542 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v0.0.0-20190725054713-01f96b0aa0cd // indirect
