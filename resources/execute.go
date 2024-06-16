@@ -73,7 +73,7 @@ func (e *Execute) runExecute(log *viaduct.Logger) error {
 	}
 
 	log.Info(e.Command, " -> started")
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		return nil
 	}
 
@@ -93,13 +93,13 @@ func (e *Execute) runExecute(log *viaduct.Logger) error {
 }
 
 func setCommandOutput(cmd *exec.Cmd) {
-	if viaduct.Config.Silent {
+	if viaduct.Cli.Silent {
 		cmd.Stdout = nil
 		cmd.Stderr = nil
 		return
 	}
 
-	if viaduct.Config.Quiet {
+	if viaduct.Cli.Quiet {
 		cmd.Stdout = nil
 		cmd.Stderr = os.Stderr
 		return

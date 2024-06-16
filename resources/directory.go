@@ -58,7 +58,7 @@ func (d *Directory) Run(log *viaduct.Logger) error {
 func (d *Directory) createDirectory(log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(d.Path)
 
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		log.Info(d.Path)
 		return nil
 	}
@@ -82,7 +82,7 @@ func (d *Directory) createDirectory(log *viaduct.Logger) error {
 
 // Delete deletes a directory.
 func (d *Directory) deleteDirectory(log *viaduct.Logger) error {
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		log.Info(d.Path)
 		return nil
 	}

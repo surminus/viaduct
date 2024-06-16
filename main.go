@@ -8,21 +8,21 @@ import (
 
 var (
 	Attribute SystemAttributes
-	Config    Configs
+	Cli       CliFlags
 
 	tmpDirPath string
 )
 
 func init() {
 	initAttributes(&Attribute)
-	initConfigs(&Config)
+	initCli(&Cli)
 
-	if Config.OutputAttributes {
+	if Cli.Attributes {
 		fmt.Println(Attribute.JSON())
 		os.Exit(0)
 	}
 
-	if Config.DryRun {
+	if Cli.DryRun {
 		log.Println("WARNING: dry run mode enabled")
 	}
 }

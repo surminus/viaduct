@@ -79,7 +79,7 @@ func (l *Link) createLink(log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(l.Path)
 	logmsg := fmt.Sprintf("%s -> %s", source, path)
 
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		log.Info(logmsg)
 		return nil
 	}
@@ -120,7 +120,7 @@ func (l *Link) createLink(log *viaduct.Logger) error {
 func (l *Link) deleteLink(log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(l.Path)
 
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		log.Info(path)
 		return nil
 	}

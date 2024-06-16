@@ -73,7 +73,7 @@ func (p *Package) Run(log *viaduct.Logger) error {
 
 func (p *Package) install(log *viaduct.Logger) error {
 	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		return nil
 	}
 
@@ -82,7 +82,7 @@ func (p *Package) install(log *viaduct.Logger) error {
 
 func (p *Package) uninstall(log *viaduct.Logger) error {
 	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		return nil
 	}
 

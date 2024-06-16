@@ -176,9 +176,9 @@ func CommandTrue(command string) bool {
 
 	// nolint:gosec
 	cmd := exec.Command("bash", "-c", strings.Join(c, " "))
-	if Config.Quiet {
+	if Cli.Quiet {
 		cmd.Stderr = os.Stderr
-	} else if !Config.Silent {
+	} else if !Cli.Silent {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 	}

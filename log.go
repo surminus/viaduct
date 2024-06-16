@@ -34,11 +34,11 @@ func Log(v ...interface{}) {
 }
 
 func NewLogger(resource, action string) *Logger {
-	if Config.Silent {
+	if Cli.Silent {
 		return NewSilentLogger()
 	}
 
-	if Config.Quiet {
+	if Cli.Quiet {
 		return NewQuietLogger(resource, action)
 	}
 

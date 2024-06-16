@@ -119,7 +119,7 @@ func (a *Apt) Run(log *viaduct.Logger) error {
 // AptUpdate is a helper function to perform "apt-get update"
 // Should be converted to a proper resource
 func (a *Apt) updateApt(log *viaduct.Logger) error {
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		log.Info()
 		return nil
 	}
@@ -144,7 +144,7 @@ func (a *Apt) updateApt(log *viaduct.Logger) error {
 
 // Create adds a new apt repository
 func (a *Apt) createApt(log *viaduct.Logger) error {
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		log.Info(a.Name)
 		return nil
 	}
@@ -265,7 +265,7 @@ func (a *Apt) signingKeyPath() string {
 
 // Delete removes an apt repository
 func (a *Apt) deleteApt(log *viaduct.Logger) error {
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		log.Info(a.Name)
 		return nil
 	}

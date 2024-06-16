@@ -105,7 +105,7 @@ func (f *File) Run(log *viaduct.Logger) error {
 
 // Create creates or updates a file
 func (f *File) createFile(log *viaduct.Logger) error {
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		log.Info(f.Path)
 		return nil
 	}
@@ -142,7 +142,7 @@ func (f *File) createFile(log *viaduct.Logger) error {
 
 // Delete deletes a file
 func (f *File) deleteFile(log *viaduct.Logger) error {
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		log.Info(f.Path)
 		return nil
 	}

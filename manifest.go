@@ -190,7 +190,7 @@ func (m *Manifest) Run() {
 		}
 	}
 
-	if Config.DumpManifest {
+	if Cli.DumpManifest {
 		tmpName := fmt.Sprintf("/tmp/viaduct-%d.json", time.Now().Unix())
 
 		out, err := json.MarshalIndent(m.resources, "", "    ")
@@ -207,7 +207,7 @@ func (m *Manifest) Run() {
 	}
 
 	if withErrors {
-		if !Config.DumpManifest {
+		if !Cli.DumpManifest {
 			log.Info("To see all resources, run with --dump-manifest")
 		}
 		os.Exit(1)

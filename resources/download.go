@@ -59,7 +59,7 @@ func (a *Download) get(log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(a.Path)
 	logmsg := fmt.Sprintf("%s -> %s", a.URL, path)
 
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		log.Info(logmsg)
 		return nil
 	}

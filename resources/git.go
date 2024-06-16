@@ -82,7 +82,7 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(g.Path)
 	logmsg := fmt.Sprintf("%s -> %s", g.URL, path)
 
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		log.Info(logmsg)
 		return nil
 	}
@@ -125,7 +125,7 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 	if !viaduct.FileExists(path) {
 		progress := os.Stdout
 
-		if viaduct.Config.Quiet || viaduct.Config.Silent {
+		if viaduct.Cli.Quiet || viaduct.Cli.Silent {
 			devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0755)
 			if err != nil {
 				return err
@@ -158,7 +158,7 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 func (g *Git) deleteGit(log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(g.Path)
 
-	if viaduct.Config.DryRun {
+	if viaduct.Cli.DryRun {
 		log.Info(path)
 		return nil
 	}
