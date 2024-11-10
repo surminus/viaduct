@@ -10,6 +10,13 @@ import (
 	"github.com/surminus/viaduct"
 )
 
+type AptFormat string
+
+const (
+	List    AptFormat = "list"
+	Sources AptFormat = "sources"
+)
+
 // Apt configures Ubuntu apt repositories. It will automatically use sudo
 // if the user is not root.
 type Apt struct {
@@ -20,9 +27,10 @@ type Apt struct {
 	URI string
 
 	// Distribution is normally the codename of the distribution. Defaults to
-	// the Ubuntu codename.
+	// the Ubuntu codename. For Sources format, this represents Suites.
 	Distribution string
-	// Source is repository type. Defaults to main.
+	// Source is repository type. Defaults to main. For Sources format, this
+	// represents Components.
 	Source string
 	// Parameters is a map of optional parameters that gets represented as key
 	// value pairs, eg "[arch=amd64]"
@@ -32,6 +40,11 @@ type Apt struct {
 	// SigningKeyURL will retrieve the signing key for the package,
 	// and include it as part of the source list
 	SigningKeyURL string
+	// Format will either use the list or sources format
+	Format AptFormat
+	// PublicPgpKey is just a string representation of a public key. This is
+	// only applicable to Sources format.
+	PublicPgpKey string
 
 	// Delete will remove the apt repository if set to true.
 	Delete bool
@@ -42,6 +55,9 @@ type Apt struct {
 
 	// path is a private attribute for where to write the apt file
 	path string
+	// altpath is the path of the alternative format, so we can ensure it
+	// gets removed
+	altpath string
 }
 
 // Params allows the resource to dynamically set options that will be passed
@@ -79,11 +95,30 @@ func (a *Apt) PreflightChecks(log *viaduct.Logger) error {
 		a.Source = "main"
 	}
 
+	if a.Format == "" {
+		a.Format = List
+	}
+
+	if a.PublicPgpKey != "" && a.Format == List {
+		return fmt.Errorf("Cannot set PublicPgpKey with list format")
+	}
+
 	if a.SigningKey != "" && a.SigningKeyURL != "" {
 		return fmt.Errorf("Cannot set both SigningKey and SigningKeyURL")
 	}
 
-	a.path = filepath.Join("/etc", "apt", "sources.list.d", fmt.Sprintf("%s.list", a.Name))
+	if a.PublicPgpKey != "" && (a.SigningKey != "" || a.SigningKeyURL != "") {
+		return fmt.Errorf("Cannot set both PublicPgpKey and SigningKey/SigningKeyURL")
+	}
+
+	rootpath := filepath.Join("/etc", "apt", "sources.list.d")
+	if a.Format == List {
+		a.path = filepath.Join(rootpath, fmt.Sprintf("%s.list", a.Name))
+		a.altpath = filepath.Join(rootpath, fmt.Sprintf("%s.sources", a.Name))
+	} else {
+		a.path = filepath.Join(rootpath, fmt.Sprintf("%s.sources", a.Name))
+		a.altpath = filepath.Join(rootpath, fmt.Sprintf("%s.list", a.Name))
+	}
 
 	return nil
 }
@@ -149,6 +184,50 @@ func (a *Apt) createApt(log *viaduct.Logger) error {
 		return nil
 	}
 
+	var content string
+	var err error
+
+	if a.Format == List {
+		content, err = a.listContent(log)
+	} else {
+		content, err = a.sourceContent(log)
+	}
+	if err != nil {
+		return err
+	}
+
+	if viaduct.FileExists(a.path) {
+		if con, err := os.ReadFile(a.path); err == nil {
+			if string(con) == content {
+				log.Noop(a.Name)
+				return nil
+			}
+		} else {
+			return err
+		}
+	}
+
+	// Remove the other type so we don't have repeats
+	if viaduct.FileExists(a.altpath) {
+		if err := os.Remove(a.altpath); err != nil {
+			return err
+		}
+	}
+
+	if err := os.WriteFile(a.path, []byte(content), 0o644); err != nil {
+		return err
+	}
+
+	log.Info(a.Name)
+
+	if a.Update {
+		return a.updateApt(log)
+	}
+
+	return nil
+}
+
+func (a *Apt) listContent(log *viaduct.Logger) (string, error) {
 	content := []string{
 		"deb",
 	}
@@ -161,7 +240,7 @@ func (a *Apt) createApt(log *viaduct.Logger) error {
 
 			a.Parameters["signed-by"] = a.signingKeyPath()
 		} else {
-			return err
+			return "", err
 		}
 	}
 
@@ -182,28 +261,49 @@ func (a *Apt) createApt(log *viaduct.Logger) error {
 		"\n",
 	}...)
 
-	if viaduct.FileExists(a.path) {
-		if con, err := os.ReadFile(a.path); err == nil {
-			if string(con) == strings.Join(content, " ") {
-				log.Noop(a.Name)
-				return nil
+	return strings.Join(content, " "), nil
+}
+
+func (a *Apt) sourceContent(log *viaduct.Logger) (string, error) {
+	content := []string{
+		"Types: deb",
+	}
+
+	if a.SigningKey != "" || a.SigningKeyURL != "" {
+		if err := a.receiveSigningKey(log); err == nil {
+			if a.Parameters == nil {
+				a.Parameters = make(map[string]string)
 			}
+
+			content = append(content, fmt.Sprintf("Signed-By: %s", a.signingKeyPath()))
 		} else {
-			return err
+			return "", err
 		}
 	}
 
-	if err := os.WriteFile(a.path, []byte(strings.Join(content, " ")), 0o644); err != nil {
-		return err
+	if a.PublicPgpKey != "" {
+		content = append(content, fmt.Sprintf("Signed-By: %s", formatPublicGpgKey(a.PublicPgpKey)))
 	}
 
-	log.Info(a.Name)
+	if len(a.Parameters) > 0 {
+		for k, v := range a.Parameters {
+			if k == "arch" {
+				content = append(content, fmt.Sprintf("Architectures: %s", v))
+				continue
+			}
 
-	if a.Update {
-		return a.updateApt(log)
+			content = append(content, fmt.Sprintf("%s: %s", k, v))
+		}
 	}
 
-	return nil
+	content = append(content, []string{
+		fmt.Sprintf("URIs: %s", a.URI),
+		fmt.Sprintf("Suites: %s", a.Distribution),
+		fmt.Sprintf("Components: %s", a.Source),
+		"\n",
+	}...)
+
+	return strings.Join(content, "\n"), nil
 }
 
 // receiveSigningKey will fetch a signing key
@@ -286,4 +386,25 @@ func (a *Apt) deleteApt(log *viaduct.Logger) error {
 	}
 
 	return nil
+}
+
+// formatPublicGpgKey by adding an indent and adding a dot to any empty line
+func formatPublicGpgKey(original string) string {
+	var result []string
+	splitkey := strings.Split(original, "\n")
+	for i, line := range splitkey {
+		// ignore an empty last line
+		if i == len(splitkey)-1 && line == "" {
+			break
+		}
+
+		if line == "" {
+			line = "."
+		}
+
+		line = " " + line
+		result = append(result, line)
+	}
+
+	return strings.Join(result, "\n")
 }
