@@ -210,10 +210,10 @@ func (p *Permissions) setFilePermissions(
 	if viaduct.MatchChmod(path, mode) {
 		log.Noop(chmodmsg)
 	} else {
-		if err := os.Chown(path, uid, gid); err != nil {
+		if err := os.Chmod(path, mode); err != nil {
 			return err
 		}
-		log.Info(chownmsg)
+		log.Info(chmodmsg)
 	}
 
 	return nil
