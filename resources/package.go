@@ -30,11 +30,11 @@ func (p *Package) Params() *viaduct.ResourceParams {
 func (p *Package) PreflightChecks(log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if len(p.Names) < 1 {
-		return fmt.Errorf("Required parameter: Names")
+		return fmt.Errorf("required parameter: Names")
 	}
 
 	if !viaduct.IsRoot() {
-		return fmt.Errorf("Package resource must be run as root")
+		return fmt.Errorf("package resource must be run as root")
 	}
 
 	// Set optional defaults here

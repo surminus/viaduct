@@ -126,8 +126,8 @@ func (m *Manifest) Run() {
 	for id, resource := range m.resources {
 		if err := resource.preflight(); err != nil {
 			if r, ok := m.resources[id]; ok {
-				r.Error.Err = err
-				r.Error.Message = err.Error()
+				r.Err = err
+				r.Message = err.Error()
 				m.resources[id] = r
 			}
 
@@ -137,7 +137,7 @@ func (m *Manifest) Run() {
 
 	if preflightFailed {
 		for _, resource := range m.resources {
-			if resource.Error.Err != nil {
+			if resource.Err != nil {
 				log.Critical(
 					fmt.Sprintf(
 						"The following resource failed preflight checks:\n%s\n",
@@ -165,7 +165,7 @@ func (m *Manifest) Run() {
 
 	var withErrors bool
 	for _, resource := range m.resources {
-		if resource.Error.Err != nil {
+		if resource.Err != nil {
 			withErrors = true
 			break
 		}
@@ -179,7 +179,7 @@ func (m *Manifest) Run() {
 
 	if withErrors {
 		for _, resource := range m.resources {
-			if resource.Error.Err != nil {
+			if resource.Err != nil {
 				log.Critical(
 					fmt.Sprintf(
 						"The following resource returned an error:\n%s\n",

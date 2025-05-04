@@ -42,7 +42,7 @@ func (e *Execute) Params() *viaduct.ResourceParams {
 func (e *Execute) PreflightChecks(log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if e.Command == "" {
-		return fmt.Errorf("Required parameter: Command")
+		return fmt.Errorf("required parameter: Command")
 	}
 
 	// Set optional defaults here

@@ -32,7 +32,7 @@ func (d *Directory) Params() *viaduct.ResourceParams {
 func (d *Directory) PreflightChecks(log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if d.Path == "" {
-		return fmt.Errorf("Required parameter: Path")
+		return fmt.Errorf("required parameter: Path")
 	}
 
 	return d.preflightPermissions(pdir)

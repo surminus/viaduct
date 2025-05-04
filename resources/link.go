@@ -39,7 +39,7 @@ func (l *Link) Params() *viaduct.ResourceParams {
 func (l *Link) PreflightChecks(log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if l.Path == "" {
-		return fmt.Errorf("Required parameter: Path")
+		return fmt.Errorf("required parameter: Path")
 	}
 
 	// Set optional defaults here
@@ -66,7 +66,7 @@ func (l *Link) Run(log *viaduct.Logger) error {
 func (l *Link) createLink(log *viaduct.Logger) error {
 	// If creating a link, a source is required, but not if we're deleting.
 	if l.Source == "" {
-		return fmt.Errorf("Required parameter: Source")
+		return fmt.Errorf("required parameter: Source")
 	}
 
 	// The source should always be the full path, so we will

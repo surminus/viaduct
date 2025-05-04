@@ -75,15 +75,15 @@ func (a *Apt) PreflightChecks(log *viaduct.Logger) error {
 	}
 
 	if a.Name == "" {
-		return fmt.Errorf("Required parameter: Name")
+		return fmt.Errorf("required parameter: Name")
 	}
 
 	if a.URI == "" {
-		return fmt.Errorf("Required parameter: URI")
+		return fmt.Errorf("required parameter: URI")
 	}
 
 	if !viaduct.IsRoot() {
-		return fmt.Errorf("Apt resource must be run as root")
+		return fmt.Errorf("apt resource must be run as root")
 	}
 
 	// Set optional defaults here
@@ -100,15 +100,15 @@ func (a *Apt) PreflightChecks(log *viaduct.Logger) error {
 	}
 
 	if a.PublicPgpKey != "" && a.Format == List {
-		return fmt.Errorf("Cannot set PublicPgpKey with list format")
+		return fmt.Errorf("cannot set PublicPgpKey with list format")
 	}
 
 	if a.SigningKey != "" && a.SigningKeyURL != "" {
-		return fmt.Errorf("Cannot set both SigningKey and SigningKeyURL")
+		return fmt.Errorf("cannot set both SigningKey and SigningKeyURL")
 	}
 
 	if a.PublicPgpKey != "" && (a.SigningKey != "" || a.SigningKeyURL != "") {
-		return fmt.Errorf("Cannot set both PublicPgpKey and SigningKey/SigningKeyURL")
+		return fmt.Errorf("cannot set both PublicPgpKey and SigningKey/SigningKeyURL")
 	}
 
 	rootpath := filepath.Join("/etc", "apt", "sources.list.d")
