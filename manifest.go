@@ -4,11 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+)
+
+const (
+	// dependencyTimeout is how long a resource will wait for its
+	// dependencies before giving up.
+	dependencyTimeout = 5 * time.Minute
+
+	// dependencyPollInterval is how often to check dependency status.
+	dependencyPollInterval = 10 * time.Millisecond
 )
 
 type Status string
@@ -155,8 +163,8 @@ func (m *Manifest) Run() {
 
 	wg.Add(len(m.resources))
 
-	for id, resource := range m.resources {
-		go m.apply(id, resource, &wg, &lock, &globalLock)
+	for _, resource := range m.resources {
+		go m.apply(resource, &wg, &lock, &globalLock)
 	}
 
 	wg.Wait()
@@ -220,7 +228,7 @@ func (m *Manifest) Run() {
 	}
 }
 
-func (m *Manifest) apply(id ResourceID, r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, globalLock *sync.RWMutex) {
+func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, globalLock *sync.RWMutex) {
 	defer wg.Done()
 
 	err := m.dependencyCheck(&r, lock)
@@ -246,47 +254,46 @@ func (m *Manifest) apply(id ResourceID, r Resource, wg *sync.WaitGroup, lock *sy
 }
 
 func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
-	// If we have a dependency, wait until the status of the dependency
-	// is successful
-	if len(r.DependsOn) > 0 {
-		var depsSuccess bool
-
-		// This loop should be tidied
-		for i := 0; i < 600000; i++ {
-			depsSuccess = true
-
-			for _, dep := range r.DependsOn {
-				lock.RLock()
-				if d, ok := m.resources[dep]; ok {
-					if d.Failed() {
-						lock.RUnlock()
-						m.setStatus(r, lock, DependencyFailed)
-
-						// Unlock and return error
-						return fmt.Errorf("upstream dependency %s returned an error", d.ResourceID)
-					}
-
-					if d.Status != Success {
-						depsSuccess = false
-					}
-				}
-				lock.RUnlock()
-			}
-
-			if depsSuccess {
-				break
-			}
-
-			// Random sleep to add some jitter
-			time.Sleep(time.Duration(rand.Intn(30)) * time.Millisecond)
-		}
-
-		if !depsSuccess {
-			return fmt.Errorf("resource %s gave up waiting for dependencies", string(r.ResourceID))
-		}
+	if len(r.DependsOn) == 0 {
+		return nil
 	}
 
-	return nil
+	deadline := time.After(dependencyTimeout)
+	ticker := time.NewTicker(dependencyPollInterval)
+	defer ticker.Stop()
+
+	for {
+		depsSuccess := true
+
+		for _, dep := range r.DependsOn {
+			lock.RLock()
+			d, ok := m.resources[dep]
+			lock.RUnlock()
+
+			if !ok {
+				continue
+			}
+
+			if d.Failed() {
+				m.setStatus(r, lock, DependencyFailed)
+				return fmt.Errorf("upstream dependency %s returned an error", d.ResourceID)
+			}
+
+			if d.Status != Success {
+				depsSuccess = false
+			}
+		}
+
+		if depsSuccess {
+			return nil
+		}
+
+		select {
+		case <-deadline:
+			return fmt.Errorf("resource %s timed out waiting for dependencies", string(r.ResourceID))
+		case <-ticker.C:
+		}
+	}
 }
 
 func (m *Manifest) setStatus(r *Resource, lock *sync.RWMutex, s Status) {
