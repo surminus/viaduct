@@ -25,8 +25,8 @@ func CreateLink(path, source string) *Link {
 	return &Link{Path: path, Source: source}
 }
 
-// CreateLink will delete a symlink if it exists.
-func DeleteLink(path, source string) *Link {
+// DeleteLink will delete a symlink if it exists.
+func DeleteLink(path string) *Link {
 	return &Link{Path: path, Delete: true}
 }
 
