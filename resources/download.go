@@ -69,7 +69,7 @@ func (a *Download) get(log *viaduct.Logger) error {
 		return nil
 	}
 
-	file, err := os.Create(a.Path)
+	file, err := os.Create(path)
 	if err != nil {
 		return err
 	}
