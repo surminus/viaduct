@@ -107,7 +107,7 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 
 		// nolint:exhaustivestruct
 		err = w.Pull(&git.PullOptions{
-			RemoteName:    "origin",
+			RemoteName:    g.RemoteName,
 			Progress:      os.Stdout,
 			ReferenceName: plumbing.ReferenceName(g.Reference),
 		})
@@ -138,7 +138,7 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 		_, err := git.PlainClone(path, false, &git.CloneOptions{
 			Progress:      progress,
 			ReferenceName: plumbing.ReferenceName(g.Reference),
-			RemoteName:    "origin",
+			RemoteName:    g.RemoteName,
 			URL:           g.URL,
 		})
 		if err != nil {
