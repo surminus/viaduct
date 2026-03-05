@@ -74,88 +74,114 @@ func (p *Permissions) preflightPermissions(t ptype) error {
 	return nil
 }
 
-// Set permissions for a directory
-func (p *Permissions) setDirectoryPermissions(
-	log *viaduct.Logger,
-	path string,
-	recursiveChown bool,
-) error {
-	uid := p.UID
-	gid := p.GID
-	mode := p.Mode
+// resolveOwnership resolves User/Group names to UID/GID, falling back
+// to the numeric UID/GID already set on the Permissions struct.
+func (p *Permissions) resolveOwnership() (uid, gid int, err error) {
+	uid = p.UID
+	gid = p.GID
 
 	if p.User != "" {
 		u, err := user.Lookup(p.User)
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 
 		uid, err = strconv.Atoi(u.Uid)
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 	}
 
 	if p.Group != "" {
 		g, err := user.LookupGroup(p.Group)
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 
 		gid, err = strconv.Atoi(g.Gid)
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 	}
 
+	return uid, gid, nil
+}
+
+func applyChmod(log *viaduct.Logger, path string, mode os.FileMode) error {
 	chmodmsg := fmt.Sprintf("Permissions: %s -> %s", path, mode)
-	chownmsg := fmt.Sprintf("Permissions: %s -> %d:%d", path, uid, gid)
 
 	if viaduct.MatchChmod(path, mode) {
 		log.Noop(chmodmsg)
-	} else {
-		err := os.Chmod(path, mode)
+		return nil
+	}
+
+	if err := os.Chmod(path, mode); err != nil {
+		return err
+	}
+
+	log.Info(chmodmsg)
+	return nil
+}
+
+func applyChown(log *viaduct.Logger, path string, uid, gid int) error {
+	chownmsg := fmt.Sprintf("Permissions: %s -> %d:%d", path, uid, gid)
+
+	if viaduct.MatchChown(path, uid, gid) {
+		log.Noop(chownmsg)
+		return nil
+	}
+
+	if err := os.Chown(path, uid, gid); err != nil {
+		return err
+	}
+
+	log.Info(chownmsg)
+	return nil
+}
+
+// Set permissions for a directory
+func (p *Permissions) setDirectoryPermissions(
+	log *viaduct.Logger,
+	path string,
+	recursiveChown bool,
+) error {
+	uid, gid, err := p.resolveOwnership()
+	if err != nil {
+		return err
+	}
+
+	if err := applyChmod(log, path, p.Mode); err != nil {
+		return err
+	}
+
+	if viaduct.IsDirectory(path) && recursiveChown {
+		chownmsg := fmt.Sprintf("Permissions: %s -> %d:%d (recursive)", path, uid, gid)
+		var wasUpdated bool
+
+		files, err := viaduct.ListFiles(path)
 		if err != nil {
 			return err
 		}
 
-		log.Info(chmodmsg)
-	}
-
-	// If it's a directory, recursively set ownership permissions
-	if viaduct.IsDirectory(path) && recursiveChown {
-		chownmsg += " (recursive)"
-		var wasupdated bool
-
-		if files, err := viaduct.ListFiles(path); err == nil {
-			for _, f := range files {
-				if viaduct.MatchChown(f, uid, gid) {
-					continue
-				}
-
-				wasupdated = true
-				if err := os.Chown(f, uid, gid); err != nil {
-					return err
-				}
+		for _, f := range files {
+			if viaduct.MatchChown(f, uid, gid) {
+				continue
 			}
-		} else {
-			return err
+
+			wasUpdated = true
+			if err := os.Chown(f, uid, gid); err != nil {
+				return err
+			}
 		}
 
-		if wasupdated {
+		if wasUpdated {
 			log.Info(chownmsg)
 		} else {
 			log.Noop(chownmsg)
 		}
 	} else {
-		if viaduct.MatchChown(path, uid, gid) {
-			log.Noop(chownmsg)
-		} else {
-			if err := os.Chown(path, uid, gid); err != nil {
-				return err
-			}
-
-			log.Info(chownmsg)
+		if err := applyChown(log, path, uid, gid); err != nil {
+			return err
 		}
 	}
 
@@ -167,54 +193,14 @@ func (p *Permissions) setFilePermissions(
 	log *viaduct.Logger,
 	path string,
 ) error {
-	uid := p.UID
-	gid := p.GID
-	mode := p.Mode
-
-	if p.User != "" {
-		u, err := user.Lookup(p.User)
-		if err != nil {
-			return err
-		}
-
-		uid, err = strconv.Atoi(u.Uid)
-		if err != nil {
-			return err
-		}
+	uid, gid, err := p.resolveOwnership()
+	if err != nil {
+		return err
 	}
 
-	if p.Group != "" {
-		g, err := user.LookupGroup(p.Group)
-		if err != nil {
-			return err
-		}
-
-		gid, err = strconv.Atoi(g.Gid)
-		if err != nil {
-			return err
-		}
+	if err := applyChown(log, path, uid, gid); err != nil {
+		return err
 	}
 
-	chmodmsg := fmt.Sprintf("Permissions: %s -> %s", path, mode)
-	chownmsg := fmt.Sprintf("Permissions: %s -> %d:%d", path, uid, gid)
-
-	if viaduct.MatchChown(path, uid, gid) {
-		log.Noop(chownmsg)
-	} else {
-		if err := os.Chown(path, uid, gid); err != nil {
-			return err
-		}
-		log.Info(chownmsg)
-	}
-
-	if viaduct.MatchChmod(path, mode) {
-		log.Noop(chmodmsg)
-	} else {
-		if err := os.Chmod(path, mode); err != nil {
-			return err
-		}
-		log.Info(chmodmsg)
-	}
-
-	return nil
+	return applyChmod(log, path, p.Mode)
 }
