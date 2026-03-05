@@ -93,9 +93,9 @@ func (l *Logger) Info(v ...interface{}) {
 	log.Println(LoggerOutput(info(l.Resource), info(l.Action), v...))
 }
 
-// Warn prints warning messages
+// Warn prints warning messages. Shown in quiet mode, suppressed only in silent mode.
 func (l *Logger) Warn(v ...interface{}) {
-	if l.Silent || l.Quiet {
+	if l.Silent {
 		return
 	}
 
