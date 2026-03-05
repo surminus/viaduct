@@ -320,7 +320,7 @@ func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
 		cmd.Stderr = os.Stderr
 
 		if err := cmd.Run(); err != nil {
-			return nil
+			return err
 		}
 	}
 
@@ -332,7 +332,7 @@ func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
 		cmd.Stderr = os.Stderr
 
 		if err := cmd.Run(); err != nil {
-			return nil
+			return err
 		}
 
 		// Then we export the key to disk
@@ -342,7 +342,7 @@ func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
 		cmd.Stderr = os.Stderr
 
 		if err := cmd.Run(); err != nil {
-			return nil
+			return err
 		}
 
 		// Ensure that the key is deleted from GPG
