@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -32,6 +34,7 @@ const (
 // Manifest is a map of resources to allow concurrent runs
 type Manifest struct {
 	resources map[ResourceID]Resource
+	collector *ResultCollector
 }
 
 func New() *Manifest {
@@ -94,19 +97,19 @@ func (m *Manifest) addResource(r *Resource, a ResourceAttributes) (err error) {
 }
 
 func (m *Manifest) Add(attributes ResourceAttributes, deps ...*Resource) *Resource {
-	log := NewLogger("Viaduct", "Compile")
+	l := NewLogger("Viaduct", "Compile")
 
 	r, err := newResource(deps)
 	if err != nil {
-		log.Fatal(err)
+		l.Fatal(err.Error())
 	}
 
 	if err := r.init(attributes); err != nil {
-		log.Fatal(err)
+		l.Fatal(err.Error())
 	}
 
 	if err := m.addResource(r, attributes); err != nil {
-		log.Fatal(err)
+		l.Fatal(err.Error())
 	}
 
 	return r
@@ -124,11 +127,14 @@ func attrJSON(a any) string {
 // Run will run the specified resources concurrently, taking into account
 // any dependencies that have been declared
 func (m *Manifest) Run() {
-	log := NewLogger("Viaduct", "Run")
+	l := NewLogger("Viaduct", "Run")
 	start := time.Now()
-	log.Info("Started")
+	l.Info("started")
+	l.Info("preflight-checks")
 
-	log.Info("Performing preflight checks...")
+	if Cli.JSON {
+		m.collector = newResultCollector()
+	}
 
 	var preflightFailed bool
 	for id, resource := range m.resources {
@@ -146,11 +152,10 @@ func (m *Manifest) Run() {
 	if preflightFailed {
 		for _, resource := range m.resources {
 			if resource.Err != nil {
-				log.Critical(
-					fmt.Sprintf(
-						"The following resource failed preflight checks:\n%s\n",
-						attrJSON(resource),
-					),
+				l.Error("preflight-failed",
+					"resource_id", string(resource.ResourceID),
+					"resource_kind", string(resource.ResourceKind),
+					"error", resource.Message,
 				)
 			}
 		}
@@ -179,22 +184,43 @@ func (m *Manifest) Run() {
 		}
 	}
 
-	if withErrors {
-		log.Warn(fmt.Sprintf("Completed with errors in %s:", timeTaken))
-	} else {
-		log.Info(fmt.Sprintf("Completed without errors in %s:", timeTaken))
-	}
+	if Cli.JSON {
+		status := "success"
+		if withErrors {
+			status = "failed"
+		}
 
-	if withErrors {
-		for _, resource := range m.resources {
-			if resource.Err != nil {
-				log.Critical(
-					fmt.Sprintf(
-						"The following resource returned an error:\n%s\n",
-						attrJSON(resource),
-					),
-				)
-			}
+		var failures []failureSummary
+		if withErrors {
+			failures = collectFailures(m.resources)
+		}
+
+		output := RunOutput{
+			Status:    status,
+			Duration:  timeTaken,
+			Resources: m.collector.Results(),
+			Failures:  failures,
+		}
+
+		out, err := json.MarshalIndent(output, "", "  ")
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(string(out))
+
+		if withErrors {
+			os.Exit(1)
+		}
+	} else {
+		if withErrors {
+			l.Warn("completed-with-errors", "duration", timeTaken)
+		} else {
+			l.Info("completed", "duration", timeTaken)
+		}
+
+		if withErrors {
+			failures := collectFailures(m.resources)
+			printFailuresTree(failures, l)
 		}
 	}
 
@@ -203,20 +229,20 @@ func (m *Manifest) Run() {
 
 		out, err := json.MarshalIndent(m.resources, "", "    ")
 		if err != nil {
-			log.Fatal(err)
+			l.Fatal(err.Error())
 		}
 
 		err = os.WriteFile(tmpName, out, 0o644)
 		if err != nil {
-			log.Fatal(err)
+			l.Fatal(err.Error())
 		}
 
-		log.Info(fmt.Sprintf("Manifest written to: %s", tmpName))
+		l.Info("manifest-written", "path", tmpName)
 	}
 
 	if withErrors {
-		if !Cli.DumpManifest {
-			log.Info("To see all resources, run with --dump-manifest")
+		if !Cli.DumpManifest && !Cli.JSON {
+			l.Info("hint", "msg", "to see all resources, run with --dump-manifest")
 		}
 		os.Exit(1)
 	}
@@ -224,7 +250,7 @@ func (m *Manifest) Run() {
 	// Tidy up temporary directory if there were no errors
 	err := os.RemoveAll(filepath.Join(Attribute.TmpDir))
 	if err != nil {
-		log.Fatal(err)
+		l.Fatal(err.Error())
 	}
 }
 
@@ -234,6 +260,17 @@ func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, glo
 	err := m.dependencyCheck(&r, lock)
 	if err != nil {
 		m.setError(&r, lock, err)
+
+		if m.collector != nil {
+			m.collector.Add(ResourceResult{
+				ResourceID:   string(r.ResourceID),
+				ResourceKind: string(r.ResourceKind),
+				Description:  r.Attributes.Description(),
+				Operation:    r.Attributes.OperationName(),
+				Status:       string(DependencyFailed),
+				Error:        err.Error(),
+			})
+		}
 		return
 	}
 
@@ -243,14 +280,32 @@ func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, glo
 	}
 
 	// Run the resource operation
-	err = r.run()
-	if err != nil {
+	logger, runErr := r.run()
+	if runErr != nil {
 		m.setStatus(&r, lock, Failed)
-		m.setError(&r, lock, err)
-		return
+		m.setError(&r, lock, runErr)
+	} else {
+		m.setStatus(&r, lock, Success)
 	}
 
-	m.setStatus(&r, lock, Success)
+	if m.collector != nil {
+		status := string(Success)
+		errMsg := ""
+		if runErr != nil {
+			status = string(Failed)
+			errMsg = runErr.Error()
+		}
+
+		m.collector.Add(ResourceResult{
+			ResourceID:   string(r.ResourceID),
+			ResourceKind: string(r.ResourceKind),
+			Description:  r.Attributes.Description(),
+			Operation:    r.Attributes.OperationName(),
+			Status:       status,
+			Error:        errMsg,
+			Log:          logger.Entries(),
+		})
+	}
 }
 
 func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
@@ -312,4 +367,221 @@ func (m *Manifest) setError(r *Resource, lock *sync.RWMutex, err error) {
 		m.resources[r.ResourceID] = re
 	}
 	lock.Unlock()
+}
+
+// ResultCollector gathers per-resource results from concurrent goroutines.
+type ResultCollector struct {
+	mu      sync.Mutex
+	results []ResourceResult
+}
+
+func newResultCollector() *ResultCollector {
+	return &ResultCollector{}
+}
+
+func (c *ResultCollector) Add(r ResourceResult) {
+	c.mu.Lock()
+	c.results = append(c.results, r)
+	c.mu.Unlock()
+}
+
+func (c *ResultCollector) Results() []ResourceResult {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	out := make([]ResourceResult, len(c.results))
+	copy(out, c.results)
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].ResourceID < out[j].ResourceID
+	})
+	return out
+}
+
+// ResourceResult is a single resource's outcome in a run.
+type ResourceResult struct {
+	ResourceID   string     `json:"resource_id"`
+	ResourceKind string     `json:"resource_kind"`
+	Description  string     `json:"description"`
+	Operation    string     `json:"operation"`
+	Status       string     `json:"status"`
+	Error        string     `json:"error,omitempty"`
+	Log          []LogEntry `json:"log,omitempty"`
+}
+
+// RunOutput is the top-level JSON output for a run.
+type RunOutput struct {
+	Status    string           `json:"status"`
+	Duration  string           `json:"duration"`
+	Resources []ResourceResult `json:"resources"`
+	Failures  []failureSummary `json:"failures,omitempty"`
+}
+
+type failureDependent struct {
+	ResourceID   string `json:"resource_id"`
+	ResourceKind string `json:"resource_kind"`
+	Description  string `json:"description"`
+	Operation    string `json:"operation"`
+	Status       string `json:"status"`
+	Error        string `json:"error"`
+}
+
+type failureSummary struct {
+	ResourceID   string             `json:"resource_id"`
+	ResourceKind string             `json:"resource_kind"`
+	Description  string             `json:"description"`
+	Operation    string             `json:"operation"`
+	Status       string             `json:"status"`
+	Error        string             `json:"error"`
+	Dependents   []failureDependent `json:"dependents,omitempty"`
+}
+
+func resourceToDependent(r Resource) failureDependent {
+	return failureDependent{
+		ResourceID:   string(r.ResourceID),
+		ResourceKind: string(r.ResourceKind),
+		Description:  r.Attributes.Description(),
+		Operation:    r.Attributes.OperationName(),
+		Status:       string(r.Status),
+		Error:        r.Message,
+	}
+}
+
+// collectFailures groups failed resources into root failures and their
+// cascading dependency failures.
+func collectFailures(resources map[ResourceID]Resource) []failureSummary {
+	// Split into root failures and dependency failures.
+	var roots []Resource
+	depFailed := make(map[ResourceID]Resource)
+
+	for _, r := range resources {
+		switch r.Status {
+		case Failed:
+			roots = append(roots, r)
+		case DependencyFailed:
+			depFailed[r.ResourceID] = r
+		}
+	}
+
+	// Sort roots by ID for stable output.
+	sort.Slice(roots, func(i, j int) bool {
+		return roots[i].ResourceID < roots[j].ResourceID
+	})
+
+	// Build a set of all root IDs for quick lookup.
+	rootIDs := make(map[ResourceID]bool)
+	for _, r := range roots {
+		rootIDs[r.ResourceID] = true
+	}
+
+	// For each dependency-failed resource, trace back to find which root
+	// failure it depends on (directly or transitively).
+	claimed := make(map[ResourceID]ResourceID) // dep -> root
+	for id, r := range depFailed {
+		if root := traceToRoot(r, resources, rootIDs); root != "" {
+			claimed[id] = root
+		}
+	}
+
+	// Build summaries.
+	var summaries []failureSummary
+	for _, r := range roots {
+		s := failureSummary{
+			ResourceID:   string(r.ResourceID),
+			ResourceKind: string(r.ResourceKind),
+			Description:  r.Attributes.Description(),
+			Operation:    r.Attributes.OperationName(),
+			Status:       string(r.Status),
+			Error:        r.Message,
+		}
+
+		// Collect dependents claimed by this root.
+		var deps []failureDependent
+		for depID, rootID := range claimed {
+			if rootID == r.ResourceID {
+				deps = append(deps, resourceToDependent(depFailed[depID]))
+			}
+		}
+		sort.Slice(deps, func(i, j int) bool {
+			return deps[i].ResourceID < deps[j].ResourceID
+		})
+		s.Dependents = deps
+
+		summaries = append(summaries, s)
+	}
+
+	// Any unclaimed dependency failures get listed as their own entries.
+	var orphans []Resource
+	for id, r := range depFailed {
+		if _, ok := claimed[id]; !ok {
+			orphans = append(orphans, r)
+		}
+	}
+	sort.Slice(orphans, func(i, j int) bool {
+		return orphans[i].ResourceID < orphans[j].ResourceID
+	})
+	for _, r := range orphans {
+		summaries = append(summaries, failureSummary{
+			ResourceID:   string(r.ResourceID),
+			ResourceKind: string(r.ResourceKind),
+			Description:  r.Attributes.Description(),
+			Operation:    r.Attributes.OperationName(),
+			Status:       string(r.Status),
+			Error:        r.Message,
+		})
+	}
+
+	return summaries
+}
+
+// traceToRoot follows a dependency-failed resource's DependsOn chain to find
+// a root failure. Returns the root's ResourceID, or empty if none found.
+func traceToRoot(r Resource, resources map[ResourceID]Resource, rootIDs map[ResourceID]bool) ResourceID {
+	seen := make(map[ResourceID]bool)
+	queue := []ResourceID{r.ResourceID}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		if seen[current] {
+			continue
+		}
+		seen[current] = true
+
+		res, ok := resources[current]
+		if !ok {
+			continue
+		}
+
+		for _, dep := range res.DependsOn {
+			if rootIDs[dep] {
+				return dep
+			}
+			queue = append(queue, dep)
+		}
+	}
+
+	return ""
+}
+
+func printFailuresTree(failures []failureSummary, l *Logger) {
+	var b strings.Builder
+
+	b.WriteString("Failed resources:\n")
+
+	for _, f := range failures {
+		fmt.Fprintf(&b, "\n  %s [%s] %s\n", f.ResourceKind, f.Operation, f.Description)
+		fmt.Fprintf(&b, "  Error: %s\n", f.Error)
+
+		for i, d := range f.Dependents {
+			isLast := i == len(f.Dependents)-1
+			prefix := "├──"
+			if isLast {
+				prefix = "└──"
+			}
+			fmt.Fprintf(&b, "    %s %s [%s] %s: %s\n", prefix, d.ResourceKind, d.Operation, d.Description, d.Error)
+		}
+	}
+
+	l.Error(b.String())
 }

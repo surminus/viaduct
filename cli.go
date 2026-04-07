@@ -11,6 +11,7 @@ type CliFlags struct {
 	Attributes   bool
 	DryRun       bool
 	DumpManifest bool
+	JSON         bool
 	Quiet        bool
 	Silent       bool
 }
@@ -21,6 +22,7 @@ func initCli(c *CliFlags) {
 		attributes   bool
 		dryRun       bool
 		dumpManifest bool
+		jsonOutput   bool
 		quiet        bool
 		silent       bool
 	)
@@ -28,6 +30,7 @@ func initCli(c *CliFlags) {
 	flag.BoolVar(&dryRun, "dry-run", false, "Test changes with dry-run mode")
 	flag.BoolVar(&attributes, "attributes", false, "Display known attributes")
 	flag.BoolVar(&dumpManifest, "dump-manifest", false, "Dump the full manifest after the run")
+	flag.BoolVar(&jsonOutput, "json", false, "Output in JSON format")
 	flag.BoolVar(&quiet, "quiet", false, "Quiet mode will only display errors during a run")
 	flag.BoolVar(&silent, "silent", false, "Silent mode will suppress all output")
 	flag.Parse()
@@ -39,6 +42,7 @@ func initCli(c *CliFlags) {
 	c.Attributes = attributes
 	c.DryRun = dryRun
 	c.DumpManifest = dumpManifest
+	c.JSON = jsonOutput
 	c.Quiet = quiet
 	c.Silent = silent
 }
@@ -56,6 +60,11 @@ func (c *CliFlags) SetDumpManifest() {
 // SetQuiet enables quiet mode.
 func (c *CliFlags) SetQuiet() {
 	c.Quiet = true
+}
+
+// SetJSON enables JSON output mode.
+func (c *CliFlags) SetJSON() {
+	c.JSON = true
 }
 
 // SetSilent enables silent mode.
