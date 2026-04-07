@@ -23,6 +23,10 @@ func Dir(path string) *Directory {
 	return &Directory{Path: path}
 }
 
+func (d *Directory) Description() string {
+	return d.Path
+}
+
 func (d *Directory) Params() *viaduct.ResourceParams {
 	return viaduct.NewResourceParams()
 }
@@ -59,7 +63,7 @@ func (d *Directory) createDirectory(log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(d.Path)
 
 	if viaduct.Cli.DryRun {
-		log.Info(d.Path)
+		log.Info("created", "path", path)
 		return nil
 	}
 
@@ -68,9 +72,9 @@ func (d *Directory) createDirectory(log *viaduct.Logger) error {
 			return err
 		}
 
-		log.Info(d.Path)
+		log.Info("created", "path", path)
 	} else {
-		log.Noop(d.Path)
+		log.Noop("up-to-date", "path", path)
 	}
 
 	return d.setDirectoryPermissions(
@@ -82,20 +86,20 @@ func (d *Directory) createDirectory(log *viaduct.Logger) error {
 
 // Delete deletes a directory.
 func (d *Directory) deleteDirectory(log *viaduct.Logger) error {
+	path := viaduct.ExpandPath(d.Path)
+
 	if viaduct.Cli.DryRun {
-		log.Info(d.Path)
+		log.Info("deleted", "path", path)
 		return nil
 	}
-
-	path := viaduct.ExpandPath(d.Path)
 
 	if viaduct.DirExists(path) {
 		if err := os.RemoveAll(viaduct.ExpandPath(d.Path)); err != nil {
 			return err
 		}
-		log.Info(d.Path)
+		log.Info("deleted", "path", path)
 	} else {
-		log.Noop(d.Path)
+		log.Noop("up-to-date", "path", path)
 	}
 
 	return nil

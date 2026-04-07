@@ -11,6 +11,10 @@ type testResourceType struct {
 	WithLock bool
 }
 
+func (t *testResourceType) Description() string {
+	return t.Value
+}
+
 func (t *testResourceType) OperationName() string {
 	return "Test"
 }

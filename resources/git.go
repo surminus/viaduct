@@ -34,6 +34,10 @@ func Repo(path, url string) *Git {
 	return &Git{Path: path, URL: url, Ensure: true}
 }
 
+func (g *Git) Description() string {
+	return fmt.Sprintf("%s -> %s", g.URL, g.Path)
+}
+
 func (g *Git) Params() *viaduct.ResourceParams {
 	return viaduct.NewResourceParams()
 }
@@ -80,10 +84,9 @@ func (g *Git) Run(log *viaduct.Logger) error {
 
 func (g *Git) createGit(log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(g.Path)
-	logmsg := fmt.Sprintf("%s -> %s", g.URL, path)
 
 	if viaduct.Cli.DryRun {
-		log.Info(logmsg)
+		log.Info("cloned", "url", g.URL, "path", path)
 		return nil
 	}
 
@@ -105,34 +108,27 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 			}
 		}
 
+		progress := gitProgress()
+
 		// nolint:exhaustivestruct
 		err = w.Pull(&git.PullOptions{
 			RemoteName:    g.RemoteName,
-			Progress:      os.Stdout,
+			Progress:      progress,
 			ReferenceName: plumbing.ReferenceName(g.Reference),
 		})
 		if err != nil {
 			if err == git.NoErrAlreadyUpToDate {
-				log.Noop(logmsg)
+				log.Noop("up-to-date", "url", g.URL, "path", path)
 			} else {
 				return err
 			}
 		} else {
-			log.Info(logmsg)
+			log.Info("pulled", "url", g.URL, "path", path)
 		}
 	}
 
 	if !viaduct.FileExists(path) {
-		progress := os.Stdout
-
-		if viaduct.Cli.Quiet || viaduct.Cli.Silent {
-			devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0755)
-			if err != nil {
-				return err
-			}
-
-			progress = devnull
-		}
+		progress := gitProgress()
 
 		// nolint:exhaustivestruct
 		_, err := git.PlainClone(path, false, &git.CloneOptions{
@@ -145,7 +141,7 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 			return err
 		}
 
-		log.Info(logmsg)
+		log.Info("cloned", "url", g.URL, "path", path)
 	}
 
 	return g.setDirectoryPermissions(
@@ -155,11 +151,22 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 	)
 }
 
+func gitProgress() *os.File {
+	if viaduct.Cli.Quiet || viaduct.Cli.Silent || viaduct.Cli.JSON {
+		devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0755)
+		if err != nil {
+			return nil
+		}
+		return devnull
+	}
+	return os.Stdout
+}
+
 func (g *Git) deleteGit(log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(g.Path)
 
 	if viaduct.Cli.DryRun {
-		log.Info(path)
+		log.Info("deleted", "path", path)
 		return nil
 	}
 
@@ -168,9 +175,9 @@ func (g *Git) deleteGit(log *viaduct.Logger) error {
 			return err
 		}
 
-		log.Info(path)
+		log.Info("deleted", "path", path)
 	} else {
-		log.Noop(path)
+		log.Noop("up-to-date", "path", path)
 	}
 
 	return nil

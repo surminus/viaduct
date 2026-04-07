@@ -9,6 +9,11 @@ import "github.com/surminus/viaduct"
 // and what it does here.
 type Example struct{}
 
+// Description returns a short human-readable identifier for this resource.
+func (a *Example) Description() string {
+	return "example"
+}
+
 // Params are globally available parameters for interacting with Viaduct during
 // a run.
 func (a *Example) Params() *viaduct.ResourceParams {
@@ -33,7 +38,7 @@ func (a *Example) OperationName() string {
 
 // Run actually performs the work for the resource.
 func (a *Example) Run(log *viaduct.Logger) error {
-	log.Info("Hello, world!")
+	log.Info("hello")
 
 	return nil
 }

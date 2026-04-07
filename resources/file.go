@@ -40,6 +40,10 @@ func DeleteFile(path string) *File {
 	return &File{Path: path, Delete: true}
 }
 
+func (f *File) Description() string {
+	return f.Path
+}
+
 func (f *File) Params() *viaduct.ResourceParams {
 	return viaduct.NewResourceParams()
 }
@@ -105,12 +109,12 @@ func (f *File) Run(log *viaduct.Logger) error {
 
 // Create creates or updates a file
 func (f *File) createFile(log *viaduct.Logger) error {
+	path := viaduct.ExpandPath(f.Path)
+
 	if viaduct.Cli.DryRun {
-		log.Info(f.Path)
+		log.Info("created", "path", path)
 		return nil
 	}
-
-	path := viaduct.ExpandPath(f.Path)
 
 	var shouldWriteFile bool
 	if viaduct.FileExists(path) {
@@ -132,9 +136,9 @@ func (f *File) createFile(log *viaduct.Logger) error {
 		if err != nil {
 			return err
 		}
-		log.Info(path)
+		log.Info("created", "path", path)
 	} else {
-		log.Noop(path)
+		log.Noop("up-to-date", "path", path)
 	}
 
 	return f.setFilePermissions(log, path)
@@ -142,16 +146,16 @@ func (f *File) createFile(log *viaduct.Logger) error {
 
 // Delete deletes a file
 func (f *File) deleteFile(log *viaduct.Logger) error {
+	path := viaduct.ExpandPath(f.Path)
+
 	if viaduct.Cli.DryRun {
-		log.Info(f.Path)
+		log.Info("deleted", "path", path)
 		return nil
 	}
 
-	path := viaduct.ExpandPath(f.Path)
-
 	// If the file does not exist, return early
 	if !viaduct.FileExists(path) {
-		log.Noop(f.Path)
+		log.Noop("up-to-date", "path", path)
 		return nil
 	}
 
@@ -159,7 +163,7 @@ func (f *File) deleteFile(log *viaduct.Logger) error {
 		return err
 	}
 
-	log.Info(f.Path)
+	log.Info("deleted", "path", path)
 
 	return nil
 }

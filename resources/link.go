@@ -30,6 +30,10 @@ func DeleteLink(path string) *Link {
 	return &Link{Path: path, Delete: true}
 }
 
+func (l *Link) Description() string {
+	return fmt.Sprintf("%s -> %s", l.Source, l.Path)
+}
+
 func (l *Link) Params() *viaduct.ResourceParams {
 	return viaduct.NewResourceParams()
 }
@@ -77,10 +81,9 @@ func (l *Link) createLink(log *viaduct.Logger) error {
 	}
 
 	path := viaduct.ExpandPath(l.Path)
-	logmsg := fmt.Sprintf("%s -> %s", source, path)
 
 	if viaduct.Cli.DryRun {
-		log.Info(logmsg)
+		log.Info("created", "source", source, "path", path)
 		return nil
 	}
 
@@ -95,7 +98,7 @@ func (l *Link) createLink(log *viaduct.Logger) error {
 				}
 			} else {
 				// Otherwise everything is as we want it, so return
-				log.Noop(logmsg)
+				log.Noop("up-to-date", "source", source, "path", path)
 				return nil
 			}
 		} else {
@@ -111,7 +114,7 @@ func (l *Link) createLink(log *viaduct.Logger) error {
 		return err
 	}
 
-	log.Info(logmsg)
+	log.Info("created", "source", source, "path", path)
 
 	return nil
 }
@@ -121,12 +124,12 @@ func (l *Link) deleteLink(log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(l.Path)
 
 	if viaduct.Cli.DryRun {
-		log.Info(path)
+		log.Info("deleted", "path", path)
 		return nil
 	}
 
 	if !viaduct.LinkExists(path) {
-		log.Noop(path)
+		log.Noop("up-to-date", "path", path)
 		return nil
 	}
 
@@ -134,7 +137,7 @@ func (l *Link) deleteLink(log *viaduct.Logger) error {
 		return err
 	}
 
-	log.Info(path)
+	log.Info("deleted", "path", path)
 
 	return nil
 }

@@ -59,6 +59,10 @@ func NewResourceParamsWithLock() *ResourceParams {
 // Directory. As long as this interface is implemented, then custom resources
 // can be directly integrated.
 type ResourceAttributes interface {
+	// Description returns a short human-readable identifier for this
+	// resource instance, such as a file path or command.
+	Description() string
+
 	// OperationName is a simple identifier for the operation type, such as
 	// Create, Delete, Update or Run.
 	OperationName() string
@@ -138,9 +142,9 @@ func (r *Resource) preflight() error {
 	return r.Attributes.PreflightChecks(log)
 }
 
-func (r *Resource) run() error {
+func (r *Resource) run() (*Logger, error) {
 	log := NewLogger(string(r.ResourceKind), r.Attributes.OperationName())
-	return r.Attributes.Run(log)
+	return log, r.Attributes.Run(log)
 }
 
 func (r *Resource) Failed() bool {

@@ -21,6 +21,10 @@ type Package struct {
 	Uninstall bool
 }
 
+func (p *Package) Description() string {
+	return strings.Join(p.Names, ", ")
+}
+
 func (p *Package) Params() *viaduct.ResourceParams {
 	return viaduct.NewResourceParamsWithLock()
 }
@@ -72,7 +76,7 @@ func (p *Package) Run(log *viaduct.Logger) error {
 }
 
 func (p *Package) install(log *viaduct.Logger) error {
-	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
+	log.Info("installing", "packages", strings.Join(p.Names, ", "))
 	if viaduct.Cli.DryRun {
 		return nil
 	}
@@ -81,7 +85,7 @@ func (p *Package) install(log *viaduct.Logger) error {
 }
 
 func (p *Package) uninstall(log *viaduct.Logger) error {
-	log.Info("Packages:\n\t", strings.Join(p.Names, "\n\t"))
+	log.Info("uninstalling", "packages", strings.Join(p.Names, ", "))
 	if viaduct.Cli.DryRun {
 		return nil
 	}
@@ -119,11 +123,15 @@ func installCmd(args []string, verbose bool) (err error) {
 	// nolint:gosec
 	cmd := exec.Command(args[0], args[1:]...)
 
-	if verbose {
-		cmd.Stdout = os.Stdout
+	if viaduct.Cli.JSON {
+		cmd.Stdout = nil
+		cmd.Stderr = nil
+	} else {
+		if verbose {
+			cmd.Stdout = os.Stdout
+		}
+		cmd.Stderr = os.Stderr
 	}
-
-	cmd.Stderr = os.Stderr
 
 	err = cmd.Run()
 

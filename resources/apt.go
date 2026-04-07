@@ -60,6 +60,13 @@ type Apt struct {
 	altpath string
 }
 
+func (a *Apt) Description() string {
+	if a.UpdateOnly {
+		return "apt-update"
+	}
+	return a.Name
+}
+
 // Params allows the resource to dynamically set options that will be passed
 // at compile time
 func (a *Apt) Params() *viaduct.ResourceParams {
@@ -155,7 +162,7 @@ func (a *Apt) Run(log *viaduct.Logger) error {
 // Should be converted to a proper resource
 func (a *Apt) updateApt(log *viaduct.Logger) error {
 	if viaduct.Cli.DryRun {
-		log.Info()
+		log.Info("updating")
 		return nil
 	}
 
@@ -163,12 +170,12 @@ func (a *Apt) updateApt(log *viaduct.Logger) error {
 		return fmt.Errorf("must be run as root")
 	}
 
-	log.Info()
+	log.Info("updating")
 
 	command := []string{"apt-get", "update", "-y"}
 
 	cmd := exec.Command("bash", "-c", strings.Join(command, " "))
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = aptStderr()
 
 	if err := cmd.Run(); err != nil {
 		return err
@@ -177,10 +184,17 @@ func (a *Apt) updateApt(log *viaduct.Logger) error {
 	return nil
 }
 
+func aptStderr() *os.File {
+	if viaduct.Cli.JSON {
+		return nil
+	}
+	return os.Stderr
+}
+
 // Create adds a new apt repository
 func (a *Apt) createApt(log *viaduct.Logger) error {
 	if viaduct.Cli.DryRun {
-		log.Info(a.Name)
+		log.Info("created", "name", a.Name)
 		return nil
 	}
 
@@ -199,7 +213,7 @@ func (a *Apt) createApt(log *viaduct.Logger) error {
 	if viaduct.FileExists(a.path) {
 		if con, err := os.ReadFile(a.path); err == nil {
 			if string(con) == content {
-				log.Noop(a.Name)
+				log.Noop("up-to-date", "name", a.Name)
 				return nil
 			}
 		} else {
@@ -218,7 +232,7 @@ func (a *Apt) createApt(log *viaduct.Logger) error {
 		return err
 	}
 
-	log.Info(a.Name)
+	log.Info("created", "name", a.Name)
 
 	if a.Update {
 		return a.updateApt(log)
@@ -309,7 +323,7 @@ func (a *Apt) sourceContent(log *viaduct.Logger) (string, error) {
 // receiveSigningKey will fetch a signing key
 func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
 	if viaduct.FileExists(a.signingKeyPath()) {
-		log.Noop("Signing key: ", a.signingKeyPath())
+		log.Noop("signing-key-exists", "path", a.signingKeyPath())
 		return nil
 	}
 
@@ -317,7 +331,7 @@ func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
 		command := []string{"curl", "-sS", a.SigningKeyURL, "|", "gpg", "--dearmor", "|", "tee", a.signingKeyPath()}
 
 		cmd := exec.Command("bash", "-c", strings.Join(command, " "))
-		cmd.Stderr = os.Stderr
+		cmd.Stderr = aptStderr()
 
 		if err := cmd.Run(); err != nil {
 			return err
@@ -329,7 +343,7 @@ func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
 		command := []string{"gpg", "--recv-keys", "--keyserver", "keyserver.ubuntu.com", a.SigningKey}
 
 		cmd := exec.Command("bash", "-c", strings.Join(command, " "))
-		cmd.Stderr = os.Stderr
+		cmd.Stderr = aptStderr()
 
 		if err := cmd.Run(); err != nil {
 			return err
@@ -339,7 +353,7 @@ func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
 		command = []string{"gpg", "--export", a.SigningKey, "|", "tee", a.signingKeyPath()}
 
 		cmd = exec.Command("bash", "-c", strings.Join(command, " "))
-		cmd.Stderr = os.Stderr
+		cmd.Stderr = aptStderr()
 
 		if err := cmd.Run(); err != nil {
 			return err
@@ -355,7 +369,7 @@ func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
 		}()
 	}
 
-	log.Info("Signing key: ", a.signingKeyPath())
+	log.Info("signing-key-fetched", "path", a.signingKeyPath())
 	return nil
 }
 
@@ -366,12 +380,12 @@ func (a *Apt) signingKeyPath() string {
 // Delete removes an apt repository
 func (a *Apt) deleteApt(log *viaduct.Logger) error {
 	if viaduct.Cli.DryRun {
-		log.Info(a.Name)
+		log.Info("deleted", "name", a.Name)
 		return nil
 	}
 
 	if !viaduct.FileExists(a.path) {
-		log.Noop(a.Name)
+		log.Noop("up-to-date", "name", a.Name)
 		return nil
 	}
 
@@ -379,7 +393,7 @@ func (a *Apt) deleteApt(log *viaduct.Logger) error {
 		return err
 	}
 
-	log.Info(a.Name)
+	log.Info("deleted", "name", a.Name)
 
 	if a.Update {
 		return a.updateApt(log)

@@ -1,7 +1,6 @@
 package resources
 
 import (
-	"fmt"
 	"io/fs"
 	"os"
 	"os/user"
@@ -108,10 +107,8 @@ func (p *Permissions) resolveOwnership() (uid, gid int, err error) {
 }
 
 func applyChmod(log *viaduct.Logger, path string, mode os.FileMode) error {
-	chmodmsg := fmt.Sprintf("Permissions: %s -> %s", path, mode)
-
 	if viaduct.MatchChmod(path, mode) {
-		log.Noop(chmodmsg)
+		log.Noop("chmod-unchanged", "path", path, "mode", mode.String())
 		return nil
 	}
 
@@ -119,15 +116,13 @@ func applyChmod(log *viaduct.Logger, path string, mode os.FileMode) error {
 		return err
 	}
 
-	log.Info(chmodmsg)
+	log.Info("chmod", "path", path, "mode", mode.String())
 	return nil
 }
 
 func applyChown(log *viaduct.Logger, path string, uid, gid int) error {
-	chownmsg := fmt.Sprintf("Permissions: %s -> %d:%d", path, uid, gid)
-
 	if viaduct.MatchChown(path, uid, gid) {
-		log.Noop(chownmsg)
+		log.Noop("chown-unchanged", "path", path, "uid", strconv.Itoa(uid), "gid", strconv.Itoa(gid))
 		return nil
 	}
 
@@ -135,7 +130,7 @@ func applyChown(log *viaduct.Logger, path string, uid, gid int) error {
 		return err
 	}
 
-	log.Info(chownmsg)
+	log.Info("chown", "path", path, "uid", strconv.Itoa(uid), "gid", strconv.Itoa(gid))
 	return nil
 }
 
@@ -155,7 +150,6 @@ func (p *Permissions) setDirectoryPermissions(
 	}
 
 	if viaduct.IsDirectory(path) && recursiveChown {
-		chownmsg := fmt.Sprintf("Permissions: %s -> %d:%d (recursive)", path, uid, gid)
 		var wasUpdated bool
 
 		files, err := viaduct.ListFiles(path)
@@ -175,9 +169,9 @@ func (p *Permissions) setDirectoryPermissions(
 		}
 
 		if wasUpdated {
-			log.Info(chownmsg)
+			log.Info("chown-recursive", "path", path, "uid", strconv.Itoa(uid), "gid", strconv.Itoa(gid))
 		} else {
-			log.Noop(chownmsg)
+			log.Noop("chown-recursive-unchanged", "path", path, "uid", strconv.Itoa(uid), "gid", strconv.Itoa(gid))
 		}
 	} else {
 		if err := applyChown(log, path, uid, gid); err != nil {

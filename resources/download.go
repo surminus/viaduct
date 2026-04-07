@@ -31,6 +31,10 @@ func Wget(url, path string) *Download {
 	}
 }
 
+func (a *Download) Description() string {
+	return fmt.Sprintf("%s -> %s", a.URL, a.Path)
+}
+
 func (a *Download) Params() *viaduct.ResourceParams {
 	return viaduct.NewResourceParams()
 }
@@ -57,15 +61,14 @@ func (a *Download) Run(log *viaduct.Logger) error {
 
 func (a *Download) get(log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(a.Path)
-	logmsg := fmt.Sprintf("%s -> %s", a.URL, path)
 
 	if viaduct.Cli.DryRun {
-		log.Info(logmsg)
+		log.Info("downloaded", "url", a.URL, "path", path)
 		return nil
 	}
 
 	if viaduct.FileExists(path) && a.NotIfExists {
-		log.Noop(logmsg)
+		log.Noop("up-to-date", "url", a.URL, "path", path)
 		return nil
 	}
 
@@ -90,8 +93,7 @@ func (a *Download) get(log *viaduct.Logger) error {
 		return err
 	}
 
-	logmsg = fmt.Sprintf("%s -> %s (size: %s)", a.URL, path, humanize.Bytes(uint64(size)))
-	log.Info(logmsg)
+	log.Info("downloaded", "url", a.URL, "path", path, "size", humanize.Bytes(uint64(size)))
 
 	return a.setFilePermissions(
 		log,

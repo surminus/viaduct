@@ -35,6 +35,10 @@ func Echo(message string) *Execute {
 	return &Execute{Command: fmt.Sprintf("echo \"%s\"", message)}
 }
 
+func (e *Execute) Description() string {
+	return e.Command
+}
+
 func (e *Execute) Params() *viaduct.ResourceParams {
 	return viaduct.NewResourceParams()
 }
@@ -67,12 +71,12 @@ func (e *Execute) runExecute(log *viaduct.Logger) error {
 		setCommandOutput(ucmd)
 
 		if err := ucmd.Run(); err == nil {
-			log.Noop(e.Command)
+			log.Noop("skipped", "command", e.Command)
 			return nil
 		}
 	}
 
-	log.Info(e.Command, " -> started")
+	log.Info("started", "command", e.Command)
 	if viaduct.Cli.DryRun {
 		return nil
 	}
@@ -87,13 +91,13 @@ func (e *Execute) runExecute(log *viaduct.Logger) error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("command failed: %s", e.Command)
 	}
-	log.Info(e.Command, " -> finished")
+	log.Info("finished", "command", e.Command)
 
 	return nil
 }
 
 func setCommandOutput(cmd *exec.Cmd) {
-	if viaduct.Cli.Silent {
+	if viaduct.Cli.Silent || viaduct.Cli.JSON {
 		cmd.Stdout = nil
 		cmd.Stderr = nil
 		return
