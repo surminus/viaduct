@@ -5,10 +5,27 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strconv"
+	"sync"
 
 	"github.com/surminus/viaduct"
 )
+
+// pathMutexes serialises resources that do read-modify-write on a shared
+// file, keyed by path. Resources run concurrently and the global lock is
+// too coarse, so this gives same-file edits their own lock while leaving
+// edits to different files parallel.
+var pathMutexes sync.Map
+
+// lockPath acquires the lock for a file path and returns the unlock
+// function. The path is cleaned so equivalent paths share a lock.
+func lockPath(path string) func() {
+	mu, _ := pathMutexes.LoadOrStore(filepath.Clean(path), &sync.Mutex{})
+	m := mu.(*sync.Mutex)
+	m.Lock()
+	return m.Unlock
+}
 
 // runCommand runs a system command, directing output according to the
 // CLI flags
