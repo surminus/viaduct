@@ -247,6 +247,20 @@ func TestArchive(t *testing.T) {
 		assert.NoFileExists(t, filepath.Join(filepath.Dir(base), "outside"))
 	})
 
+	t.Run("absolute symlink target is skipped", func(t *testing.T) {
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "abs", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd", Mode: 0o777},
+		}, nil)
+
+		dest := t.TempDir()
+
+		a := &Archive{Path: path, Dest: dest}
+
+		err := a.Run(testLogger)
+		assert.NoError(t, err)
+		assert.NoFileExists(t, filepath.Join(dest, "abs"))
+	})
+
 	t.Run("symlink within dest is allowed", func(t *testing.T) {
 		path := newTestTarGzHeaders(t, []*tar.Header{
 			{Name: "real", Typeflag: tar.TypeReg, Mode: 0o644},
