@@ -27,6 +27,11 @@ grep -q "^Hello, viaduct!$" /opt/viaduct-test/greeting || fail "template not ren
 # Archive
 grep -q "^hello$" /opt/viaduct-test/extracted/file || fail "archive not extracted"
 
+# Line
+grep -q "^permanent$" /opt/viaduct-test/lines || fail "appended line missing"
+grep -q "^setting=enabled$" /opt/viaduct-test/lines || fail "setting line not replaced"
+[ "$(grep -c "^setting=" /opt/viaduct-test/lines)" = "1" ] || fail "setting line duplicated"
+
 # Execute
 [ -f /opt/viaduct-test/locked ] || fail "locked execute did not run"
 [ ! -f /opt/viaduct-test/should-not-exist ] || fail "unless guard did not prevent execution"

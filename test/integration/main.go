@@ -59,6 +59,12 @@ func main() {
 		Dest: "/opt/viaduct-test/extracted",
 	}, tarball)
 
+	// Line management on a file not otherwise managed: the append noops
+	// on the second run, and the replace falls back to appending on the
+	// first run
+	lines := m.Add(resources.AppendLine("/opt/viaduct-test/lines", "permanent"), dir)
+	m.Add(resources.ReplaceLine("/opt/viaduct-test/lines", "^setting=", "setting=enabled"), lines)
+
 	// Execute with a lock, and with an Unless guard
 	m.Add(resources.ExecLocked("touch /opt/viaduct-test/locked"), dir)
 	m.Add(resources.ExecUnless("touch /opt/viaduct-test/should-not-exist", "true"), dir)
