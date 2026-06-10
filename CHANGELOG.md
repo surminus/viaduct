@@ -2,6 +2,16 @@
 
 A configuration management framework written in Go.
 
+## v0.6.0
+
+### Added
+
+- `ChainFrom` and `ChainTo` methods on the manifest for composing a chain with
+  an existing resource: `ChainFrom` starts the chain after a resource, and
+  `ChainTo` makes a resource run after the chain
+- A `ResourceChain` return type for `Chain`, `ChainFrom` and `ChainTo`, with
+  nil-safe `Last` and `First` helpers for referencing the ends of a chain
+
 ## v0.5.2
 
 ### Added
