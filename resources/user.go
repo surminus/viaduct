@@ -90,7 +90,7 @@ func (u *User) create(log *viaduct.Logger) error {
 
 	if u.GID != 0 && !groupExists(u.Name) {
 		if err := runCommand("groupadd", "-g", strconv.Itoa(u.GID), u.Name); err != nil {
-			return fmt.Errorf("groupadd failed: %s", u.Name)
+			return fmt.Errorf("groupadd failed for %s: %w", u.Name, err)
 		}
 
 		log.Info("created", "group", u.Name, "gid", strconv.Itoa(u.GID))
@@ -117,7 +117,7 @@ func (u *User) create(log *viaduct.Logger) error {
 	args = append(args, "-s", u.Shell, u.Name)
 
 	if err := runCommand(args...); err != nil {
-		return fmt.Errorf("useradd failed: %s", u.Name)
+		return fmt.Errorf("useradd failed for %s: %w", u.Name, err)
 	}
 
 	log.Info("created", "user", u.Name)
@@ -148,7 +148,7 @@ func (u *User) update(log *viaduct.Logger) error {
 	}
 
 	if err := runCommand("usermod", "-a", "-G", strings.Join(missing, ","), u.Name); err != nil {
-		return fmt.Errorf("usermod failed: %s", u.Name)
+		return fmt.Errorf("usermod failed for %s: %w", u.Name, err)
 	}
 
 	log.Info("groups-added", "user", u.Name, "groups", strings.Join(missing, ","))
