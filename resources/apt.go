@@ -134,6 +134,26 @@ func AptUpdate() *Apt {
 	return &Apt{UpdateOnly: true}
 }
 
+// DistUpgrade performs an apt-get dist-upgrade
+func DistUpgrade() *Execute {
+	return ExecLocked("apt-get dist-upgrade -q -y")
+}
+
+// AptAutoremove removes packages that are no longer required
+func AptAutoremove() *Execute {
+	return ExecLocked("apt-get autoremove -q -y")
+}
+
+// AptHold marks packages as held back from upgrades
+func AptHold(names ...string) *Execute {
+	return ExecLocked("apt-mark hold " + strings.Join(names, " "))
+}
+
+// InstallDeb installs a deb package from a file using dpkg
+func InstallDeb(path string) *Execute {
+	return ExecLocked("dpkg -i " + path)
+}
+
 func (a *Apt) OperationName() string {
 	if a.Delete {
 		return "Delete"
