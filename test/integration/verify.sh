@@ -21,6 +21,14 @@ id -nG root | grep -qw daemon || fail "root not in daemon group"
 grep -q "^hello$" /opt/viaduct-test/file || fail "file content wrong"
 [ -L /opt/viaduct-test/link ] || fail "link missing"
 
+# Chain
+grep -q "^chained$" /opt/viaduct-chain/file || fail "chain file content wrong"
+[ -L /opt/viaduct-chain/link ] || fail "chain link missing"
+
+# CreateDirIfMissing
+[ -d /opt/viaduct-createp/nested ] || fail "createp parent dir not created"
+grep -q "^created with parents$" /opt/viaduct-createp/nested/file || fail "createp file content wrong"
+
 # Template
 grep -q "^Hello, viaduct!$" /opt/viaduct-test/greeting || fail "template not rendered"
 

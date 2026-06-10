@@ -44,6 +44,18 @@ func main() {
 	file := m.Add(resources.CreateFile("/opt/viaduct-test/file", "hello\n"), dir)
 	m.Add(resources.CreateLink("/opt/viaduct-test/link", "/opt/viaduct-test/file"), file)
 
+	// Chain wires a linear sequence where each link depends on the one before
+	// it, instead of declaring each dependency by hand
+	m.Chain(
+		resources.Dir("/opt/viaduct-chain"),
+		resources.CreateFile("/opt/viaduct-chain/file", "chained\n"),
+		resources.CreateLink("/opt/viaduct-chain/link", "/opt/viaduct-chain/file"),
+	)
+
+	// CreateDirIfMissing creates the parent directory tree when it does not
+	// already exist, without a separately declared Directory resource
+	m.Add(resources.CreateFileP("/opt/viaduct-createp/nested/file", "created with parents\n"))
+
 	// Template rendering
 	tmpl := m.Add(resources.CreateFile("/opt/viaduct-test/greeting.tmpl", "Hello, {{.name}}!\n"), dir)
 	m.Add(&resources.Template{
