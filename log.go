@@ -2,11 +2,22 @@ package viaduct
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"github.com/fatih/color"
 )
+
+// infoWriter returns the destination for non-error output. By default this is
+// STDERR, but the --stdout flag (or VIADUCT_STDOUT) routes it to STDOUT.
+// Errors always go to STDERR.
+func infoWriter() io.Writer {
+	if Cli.Stdout {
+		return os.Stdout
+	}
+	return os.Stderr
+}
 
 // LogEntry captures a single structured log call.
 type LogEntry struct {
@@ -99,7 +110,7 @@ func (l *Logger) Info(msg string, fields ...string) {
 		return
 	}
 
-	fmt.Fprintln(os.Stderr, formatLine(okTag, l.Resource, l.Action, msg, fields))
+	fmt.Fprintln(infoWriter(), formatLine(okTag, l.Resource, l.Action, msg, fields))
 }
 
 // Noop logs that a resource is already in the desired state.
@@ -114,7 +125,7 @@ func (l *Logger) Noop(msg string, fields ...string) {
 		return
 	}
 
-	fmt.Fprintln(os.Stderr, formatLine(noopTag, l.Resource, l.Action, msg, fields))
+	fmt.Fprintln(infoWriter(), formatLine(noopTag, l.Resource, l.Action, msg, fields))
 }
 
 // Warn logs a warning message. Suppressed only in Silent mode.
