@@ -115,20 +115,47 @@ func (m *Manifest) Add(attributes ResourceAttributes, deps ...*Resource) *Resour
 	return r
 }
 
+// ResourceChain is the ordered sequence of resources returned by Chain,
+// ChainFrom and ChainTo. Within the chain each resource depends on the one
+// before it; the first resource additionally depends on the resource passed
+// to ChainFrom, if any.
+type ResourceChain []*Resource
+
+// Last returns the final resource in the chain, or nil if the chain is empty.
+// It's the usual thing to depend on when wiring more work after a chain.
+func (c ResourceChain) Last() *Resource {
+	if len(c) == 0 {
+		return nil
+	}
+
+	return c[len(c)-1]
+}
+
+// First returns the first resource in the chain, or nil if the chain is empty.
+func (c ResourceChain) First() *Resource {
+	if len(c) == 0 {
+		return nil
+	}
+
+	return c[0]
+}
+
 // Chain adds a sequence of resources where each one depends on the resource
 // before it, wiring a -> b -> c in a single call. It returns the created
-// resources in the order they were given, so you can still branch off any
-// individual link.
+// resources in order, so you can still branch off any individual link.
 //
-// To hang a chain off a resource that already exists, wire the first link with
-// SetDep after the chain has been created:
-//
-//	chain := m.Chain(a, b, c)
-//	m.SetDep(chain[0], string(base.ResourceID))
-func (m *Manifest) Chain(attributes ...ResourceAttributes) []*Resource {
-	resources := make([]*Resource, 0, len(attributes))
+// To start a chain from a resource that already exists, use ChainFrom.
+func (m *Manifest) Chain(attributes ...ResourceAttributes) ResourceChain {
+	return m.ChainFrom(nil, attributes...)
+}
 
-	var prev *Resource
+// ChainFrom is like Chain, but the first resource in the chain depends on an
+// existing resource. from may be nil, in which case the chain has no initial
+// dependency and ChainFrom behaves exactly like Chain.
+func (m *Manifest) ChainFrom(from *Resource, attributes ...ResourceAttributes) ResourceChain {
+	resources := make(ResourceChain, 0, len(attributes))
+
+	prev := from
 	for _, a := range attributes {
 		var r *Resource
 		if prev == nil {
@@ -142,6 +169,24 @@ func (m *Manifest) Chain(attributes ...ResourceAttributes) []*Resource {
 	}
 
 	return resources
+}
+
+// ChainTo is like Chain, but an existing resource is made to depend on the
+// last resource in the chain, so it runs only once the whole chain has
+// completed. to may be nil, in which case ChainTo behaves exactly like Chain.
+//
+// The returned chain does not include to, mirroring how ChainFrom does not
+// include the resource it starts from.
+func (m *Manifest) ChainTo(to *Resource, attributes ...ResourceAttributes) ResourceChain {
+	chain := m.Chain(attributes...)
+
+	if to != nil {
+		if last := chain.Last(); last != nil {
+			m.SetDep(to, string(last.ResourceID))
+		}
+	}
+
+	return chain
 }
 
 func attrJSON(a any) string {

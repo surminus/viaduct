@@ -76,7 +76,30 @@ func main() {
 ```
 
 `Chain` returns the created resources in order, so you can still branch other
-resources off any individual link.
+resources off any individual link. The returned value also has `Last` and
+`First` helpers for safely grabbing the ends of the chain to depend on.
+
+To start a chain from a resource that already exists, use `ChainFrom`:
+
+```go
+func main() {
+        m := viaduct.New()
+
+        base := m.Add(&resources.Directory{Path: "/tmp/test"})
+
+        // The file depends on base, and the link depends on the file
+        chain := m.ChainFrom(base,
+                &resources.File{Path: "/tmp/test/foo"},
+                &resources.Link{Path: "/tmp/test/bar", Source: "/tmp/test/foo"},
+        )
+
+        // This runs only once the whole chain above has completed
+        m.Add(&resources.File{Path: "/tmp/test/done"}, chain.Last())
+}
+```
+
+`ChainTo` is the mirror of `ChainFrom`: it makes an existing resource run after
+the chain by wiring it onto the chain's last link for you.
 
 When you've added all the resources you need, we can apply them:
 
