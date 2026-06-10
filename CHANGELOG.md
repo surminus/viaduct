@@ -2,6 +2,16 @@
 
 A configuration management framework written in Go.
 
+## v0.5.2
+
+### Added
+
+- A `Chain` helper on the manifest for wiring a linear sequence of resources
+  where each one depends on the previous, in a single call
+- A `CreateDirIfMissing` option on the `File`, `Template`, `Link` and `Download`
+  resources to create the parent directory on demand, plus a `CreateFileP`
+  shorthand for files
+
 ## v0.5.1
 
 ### Added
