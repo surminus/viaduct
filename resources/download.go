@@ -19,6 +19,9 @@ type Download struct {
 
 	// NotIfExists will not download the file if it already exists
 	NotIfExists bool
+	// CreateDirIfMissing creates the parent directory if it does not already
+	// exist. The parent is created with 0755 and default ownership.
+	CreateDirIfMissing bool
 
 	// Permissions manages permissions for the downloaded content
 	Permissions
@@ -61,6 +64,12 @@ func (a *Download) Run(log *viaduct.Logger) error {
 
 func (a *Download) get(log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(a.Path)
+
+	if a.CreateDirIfMissing {
+		if err := ensureParentDir(log, path); err != nil {
+			return err
+		}
+	}
 
 	if viaduct.Cli.DryRun {
 		log.Info("downloaded", "url", a.URL, "path", path)

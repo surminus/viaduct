@@ -18,6 +18,10 @@ type Link struct {
 	Source string
 	// Delete will delete the symlink.
 	Delete bool
+	// CreateDirIfMissing creates the parent directory of the symlink if it
+	// does not already exist. The parent is created with 0755 and default
+	// ownership.
+	CreateDirIfMissing bool
 }
 
 // CreateLink will create a new symlink.
@@ -81,6 +85,12 @@ func (l *Link) createLink(log *viaduct.Logger) error {
 	}
 
 	path := viaduct.ExpandPath(l.Path)
+
+	if l.CreateDirIfMissing {
+		if err := ensureParentDir(log, path); err != nil {
+			return err
+		}
+	}
 
 	if viaduct.Cli.DryRun {
 		log.Info("created", "source", source, "path", path)

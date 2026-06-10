@@ -43,6 +43,36 @@ func TestFile(t *testing.T) {
 		}
 	})
 
+	t.Run("create with missing parent dir", func(t *testing.T) {
+		t.Parallel()
+
+		dir := "test/acceptance/file/createp"
+		f := CreateFileP(dir+"/nested/create.txt", "Test Content")
+
+		err := f.PreflightChecks(testLogger)
+		assert.NoError(t, err)
+
+		// Clear any leftover state from an interrupted previous run so the
+		// precondition below is reliable.
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+
+		// The parent directory should not exist yet.
+		assert.Equal(t, false, viaduct.DirExists(dir))
+
+		err = f.Run(testLogger)
+		assert.NoError(t, err)
+
+		assert.Equal(t, true, viaduct.FileExists(f.Path))
+		assert.Equal(t, f.Content, viaduct.FileContents(f.Path))
+
+		err = os.RemoveAll(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
 	t.Run("delete", func(t *testing.T) {
 		t.Parallel()
 

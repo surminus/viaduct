@@ -27,6 +27,34 @@ func lockPath(path string) func() {
 	return m.Unlock
 }
 
+// ensureParentDir creates the parent directory of the given path if it does
+// not already exist. It backs the CreateDirIfMissing option on the
+// path-writing resources, letting a resource make its own parent without a
+// separately declared Directory resource.
+//
+// The parent is created with 0755 and default ownership. If you need the
+// parent managed with specific permissions or ownership, declare a Directory
+// resource (or use Chain) instead. path is expected to be already expanded.
+func ensureParentDir(log *viaduct.Logger, path string) error {
+	dir := filepath.Dir(path)
+
+	if viaduct.DirExists(dir) {
+		return nil
+	}
+
+	if viaduct.Cli.DryRun {
+		log.Info("created-parent", "path", dir)
+		return nil
+	}
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+
+	log.Info("created-parent", "path", dir)
+	return nil
+}
+
 // runCommand runs a system command, directing output according to the
 // CLI flags
 func runCommand(args ...string) error {
