@@ -98,7 +98,7 @@ func (a *Archive) Run(log *viaduct.Logger) error {
 		return err
 	}
 
-	count, err := a.extract(apath, dest)
+	count, err := a.extract(log, apath, dest)
 	if err != nil {
 		return err
 	}
@@ -138,7 +138,7 @@ func archiveFormat(p string) (string, error) {
 	}
 }
 
-func (a *Archive) extract(apath, dest string) (int, error) {
+func (a *Archive) extract(log *viaduct.Logger, apath, dest string) (int, error) {
 	format, err := archiveFormat(apath)
 	if err != nil {
 		return 0, err
@@ -167,10 +167,10 @@ func (a *Archive) extract(apath, dest string) (int, error) {
 		reader = bzip2.NewReader(file)
 	}
 
-	return a.extractTar(reader, dest)
+	return a.extractTar(log, reader, dest)
 }
 
-func (a *Archive) extractTar(reader io.Reader, dest string) (int, error) {
+func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string) (int, error) {
 	tr := tar.NewReader(reader)
 
 	var count int
@@ -199,6 +199,13 @@ func (a *Archive) extractTar(reader io.Reader, dest string) (int, error) {
 			}
 			count++
 		case tar.TypeSymlink:
+			// Reject symlinks whose target escapes dest. Otherwise a
+			// later entry could be written through the symlink to a
+			// path outside the destination (a tar-slip).
+			if !symlinkWithinDest(dest, target, hdr.Linkname) {
+				log.Warn("skipped-unsafe-symlink", "name", hdr.Name, "target", hdr.Linkname)
+				continue
+			}
 			if err := os.RemoveAll(target); err != nil {
 				return count, err
 			}
@@ -206,10 +213,48 @@ func (a *Archive) extractTar(reader io.Reader, dest string) (int, error) {
 				return count, err
 			}
 			count++
+		case tar.TypeLink:
+			// Hardlinks point at another entry in the archive, which
+			// must already have been extracted to be linkable.
+			source, ok := a.target(dest, hdr.Linkname)
+			if !ok || !viaduct.FileExists(source) {
+				log.Warn("skipped-hardlink", "name", hdr.Name, "target", hdr.Linkname)
+				continue
+			}
+			if err := os.RemoveAll(target); err != nil {
+				return count, err
+			}
+			if err := os.Link(source, target); err != nil {
+				return count, err
+			}
+			count++
+		case tar.TypeXGlobalHeader:
+			// pax global header, carries no file content
+		default:
+			log.Warn("skipped-entry", "name", hdr.Name, "type", string(rune(hdr.Typeflag)))
 		}
 	}
 
 	return count, nil
+}
+
+// symlinkWithinDest reports whether a symlink at linkPath pointing to
+// linkname would resolve to a location inside dest. Absolute targets and
+// targets that climb above dest are rejected.
+func symlinkWithinDest(dest, linkPath, linkname string) bool {
+	var resolved string
+	if filepath.IsAbs(linkname) {
+		resolved = filepath.Clean(linkname)
+	} else {
+		resolved = filepath.Clean(filepath.Join(filepath.Dir(linkPath), linkname))
+	}
+
+	rel, err := filepath.Rel(dest, resolved)
+	if err != nil {
+		return false
+	}
+
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func (a *Archive) extractZip(apath, dest string) (int, error) {
