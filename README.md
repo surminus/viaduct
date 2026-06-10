@@ -79,6 +79,25 @@ go build -o viaduct
 
 See the example in the [examples](examples/basic) directory.
 
+## Resources
+
+The [resources](https://pkg.go.dev/github.com/surminus/viaduct/resources)
+package covers the common building blocks:
+
+- `File`, `Directory` and `Link` for files, directories and symlinks
+- `Template` for rendering Go templates from disk to a file
+- `Line` for editing individual lines in a file that isn't fully managed
+- `Package` and `Apt` for installing packages and managing apt repositories
+- `User` for users and groups, and `Service` for systemd units
+- `Archive` for extracting tar and zip archives
+- `Sysctl` for writing and applying kernel parameters
+- `Download` and `Git` for fetching files and cloning repositories
+- `Execute` for running arbitrary commands
+
+Most resources have shortcut constructors, such as `resources.Dir`,
+`resources.Pkg` and `resources.SystemUser`. See the package docs for the full
+set.
+
 ## CLI
 
 The compiled binary comes with runtime flags:
