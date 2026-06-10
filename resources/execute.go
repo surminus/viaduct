@@ -19,6 +19,11 @@ type Execute struct {
 	// Unless is another command to run, which if exits cleanly signifies
 	// that we should not run the execute command. Optional.
 	Unless string
+
+	// Lock ensures the command does not run at the same time as other
+	// resources holding the global lock, such as Package. Useful for
+	// commands that need the dpkg lock, like apt-get or dpkg. Optional.
+	Lock bool
 }
 
 // Exec is a shortcut for running a command
@@ -31,6 +36,11 @@ func ExecUnless(command, unless string) *Execute {
 	return &Execute{Command: command, Unless: unless}
 }
 
+// ExecLocked is like Exec, but takes the global lock
+func ExecLocked(command string) *Execute {
+	return &Execute{Command: command, Lock: true}
+}
+
 func Echo(message string) *Execute {
 	return &Execute{Command: fmt.Sprintf("echo \"%s\"", message)}
 }
@@ -40,7 +50,7 @@ func (e *Execute) Description() string {
 }
 
 func (e *Execute) Params() *viaduct.ResourceParams {
-	return viaduct.NewResourceParams()
+	return &viaduct.ResourceParams{GlobalLock: e.Lock}
 }
 
 func (e *Execute) PreflightChecks(log *viaduct.Logger) error {
