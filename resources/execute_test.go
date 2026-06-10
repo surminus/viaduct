@@ -33,3 +33,9 @@ func TestExecute(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestExecuteLock(t *testing.T) {
+	assert.False(t, Exec("true").Params().GlobalLock)
+	assert.True(t, (&Execute{Command: "true", Lock: true}).Params().GlobalLock)
+	assert.True(t, ExecLocked("true").Params().GlobalLock)
+}
