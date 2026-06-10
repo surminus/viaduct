@@ -38,6 +38,35 @@ func TestLink(t *testing.T) {
 		}
 	})
 
+	t.Run("create with missing parent dir", func(t *testing.T) {
+		t.Parallel()
+
+		dir := "test/acceptance/link/createp"
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+
+		l := &Link{
+			Source:             "test/acceptance/link/source.txt",
+			Path:               dir + "/nested/create.txt",
+			CreateDirIfMissing: true,
+		}
+		if err := l.PreflightChecks(testLogger); err != nil {
+			t.Fatal(err)
+		}
+
+		assert.Equal(t, false, viaduct.DirExists(dir))
+
+		err := l.Run(testLogger)
+		assert.NoError(t, err)
+
+		assert.Equal(t, true, viaduct.LinkExists(l.Path))
+
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+	})
+
 	t.Run("delete", func(t *testing.T) {
 		t.Parallel()
 

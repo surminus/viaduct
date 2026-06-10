@@ -20,6 +20,10 @@ type File struct {
 	Content string
 	// Delete will delete the file rather than create it if set to true.
 	Delete bool
+	// CreateDirIfMissing creates the parent directory if it does not already
+	// exist, rather than relying on a separately declared Directory resource.
+	// The parent is created with 0755 and default ownership.
+	CreateDirIfMissing bool
 
 	// Permissions manages permissions for the file
 	Permissions
@@ -33,6 +37,13 @@ func Touch(path string) *File {
 // CreateFile writes content to the specified path
 func CreateFile(path, content string) *File {
 	return &File{Path: path, Content: content}
+}
+
+// CreateFileP writes content to the specified path, creating the parent
+// directory if it does not already exist. It is the equivalent of running
+// "mkdir -p" before writing the file.
+func CreateFileP(path, content string) *File {
+	return &File{Path: path, Content: content, CreateDirIfMissing: true}
 }
 
 // DeleteFile will delete the specified file
@@ -110,6 +121,12 @@ func (f *File) Run(log *viaduct.Logger) error {
 // Create creates or updates a file
 func (f *File) createFile(log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(f.Path)
+
+	if f.CreateDirIfMissing {
+		if err := ensureParentDir(log, path); err != nil {
+			return err
+		}
+	}
 
 	if viaduct.Cli.DryRun {
 		log.Info("created", "path", path)

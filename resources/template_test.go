@@ -66,6 +66,20 @@ func TestTemplate(t *testing.T) {
 		assert.Error(t, err)
 	})
 
+	t.Run("creates missing parent dir", func(t *testing.T) {
+		tmpl := newTestTemplate(t, "hello\n")
+		// Point Dest at a subdirectory that does not exist yet.
+		tmpl.Dest = filepath.Join(filepath.Dir(tmpl.Dest), "nested", "out")
+		tmpl.CreateDirIfMissing = true
+
+		err := tmpl.Run(testLogger)
+		assert.NoError(t, err)
+
+		content, err := os.ReadFile(tmpl.Dest)
+		assert.NoError(t, err)
+		assert.Equal(t, "hello\n", string(content))
+	})
+
 	t.Run("missing source errors", func(t *testing.T) {
 		tmpl := newTestTemplate(t, "")
 		tmpl.Source = filepath.Join(t.TempDir(), "nonexistent")

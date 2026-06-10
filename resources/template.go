@@ -24,6 +24,10 @@ type Template struct {
 	// variable that does not exist in this map is an error.
 	Variables map[string]string
 
+	// CreateDirIfMissing creates the parent directory of Dest if it does not
+	// already exist. The parent is created with 0755 and default ownership.
+	CreateDirIfMissing bool
+
 	// Permissions manages permissions for the rendered file
 	Permissions
 }
@@ -61,6 +65,12 @@ func (t *Template) OperationName() string {
 
 func (t *Template) Run(log *viaduct.Logger) error {
 	if viaduct.Cli.DryRun {
+		if t.CreateDirIfMissing {
+			if err := ensureParentDir(log, viaduct.ExpandPath(t.Dest)); err != nil {
+				return err
+			}
+		}
+
 		log.Info("created", "path", viaduct.ExpandPath(t.Dest))
 		return nil
 	}
@@ -77,7 +87,7 @@ func (t *Template) Run(log *viaduct.Logger) error {
 
 	// Delegate writing to the File resource, which handles content
 	// comparison and permissions
-	file := &File{Path: t.Dest, Content: content, Permissions: t.Permissions}
+	file := &File{Path: t.Dest, Content: content, CreateDirIfMissing: t.CreateDirIfMissing, Permissions: t.Permissions}
 
 	return file.createFile(log)
 }
