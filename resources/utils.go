@@ -3,11 +3,21 @@ package resources
 import (
 	"io/fs"
 	"os"
+	"os/exec"
 	"os/user"
 	"strconv"
 
 	"github.com/surminus/viaduct"
 )
+
+// runCommand runs a system command, directing output according to the
+// CLI flags
+func runCommand(args ...string) error {
+	// nolint:gosec
+	cmd := exec.Command(args[0], args[1:]...)
+	setCommandOutput(cmd)
+	return cmd.Run()
+}
 
 // Permissions can be used with some resources to manage how they set
 // permissions on files
