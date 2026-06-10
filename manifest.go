@@ -115,6 +115,35 @@ func (m *Manifest) Add(attributes ResourceAttributes, deps ...*Resource) *Resour
 	return r
 }
 
+// Chain adds a sequence of resources where each one depends on the resource
+// before it, wiring a -> b -> c in a single call. It returns the created
+// resources in the order they were given, so you can still branch off any
+// individual link.
+//
+// To hang a chain off a resource that already exists, wire the first link with
+// SetDep after the chain has been created:
+//
+//	chain := m.Chain(a, b, c)
+//	m.SetDep(chain[0], string(base.ResourceID))
+func (m *Manifest) Chain(attributes ...ResourceAttributes) []*Resource {
+	resources := make([]*Resource, 0, len(attributes))
+
+	var prev *Resource
+	for _, a := range attributes {
+		var r *Resource
+		if prev == nil {
+			r = m.Add(a)
+		} else {
+			r = m.Add(a, prev)
+		}
+
+		resources = append(resources, r)
+		prev = r
+	}
+
+	return resources
+}
+
 func attrJSON(a any) string {
 	str, err := json.MarshalIndent(a, "", "  ")
 	if err != nil {
