@@ -2,6 +2,29 @@
 
 A configuration management framework written in Go.
 
+## v0.5.0
+
+### Added
+
+- A new `User` resource for managing users and groups
+- A new `Service` resource for managing systemd services
+- A new `Archive` resource for extracting tar and zip archives, with strip and
+  pick options for pulling single binaries out of release tarballs
+- A new `Template` resource for rendering Go templates from disk
+- A new `Sysctl` resource for writing and applying kernel parameters
+- A new `Line` resource for editing individual lines in a file that isn't fully
+  managed by `File`
+- A `Lock` option on the `Execute` resource, and an `ExecLocked` helper, for
+  taking the global lock
+- Locked apt and dpkg helpers: `DistUpgrade`, `AptAutoremove`, `AptHold` and
+  `InstallDeb`
+- Docker-based integration tests that run across Ubuntu, Debian, Fedora and Arch
+
+### Changed
+
+- Pinned GitHub Actions to commit SHAs and restricted the workflow token
+  permissions
+
 ## v0.3.1
 
 ### Added
