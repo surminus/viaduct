@@ -40,6 +40,12 @@ func (s *Sysctl) PreflightChecks(log *viaduct.Logger) error {
 		return fmt.Errorf("required parameter: Name")
 	}
 
+	// Name becomes a filename under /etc/sysctl.d, so reject anything
+	// that could escape that directory.
+	if s.Name != filepath.Base(s.Name) || s.Name == "." || s.Name == ".." {
+		return fmt.Errorf("name must be a plain filename, not a path: %s", s.Name)
+	}
+
 	if len(s.Values) == 0 {
 		return fmt.Errorf("required parameter: Values")
 	}
@@ -100,7 +106,7 @@ func (s *Sysctl) Run(log *viaduct.Logger) error {
 	}
 
 	if err := runCommand("sysctl", "--system"); err != nil {
-		return fmt.Errorf("sysctl --system failed")
+		return fmt.Errorf("sysctl --system failed: %w", err)
 	}
 
 	log.Info("applied", "path", s.path)
