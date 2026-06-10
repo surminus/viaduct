@@ -242,12 +242,13 @@ func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string)
 // linkname would resolve to a location inside dest. Absolute targets and
 // targets that climb above dest are rejected.
 func symlinkWithinDest(dest, linkPath, linkname string) bool {
-	var resolved string
+	// Absolute targets point outside the extraction entirely, so reject
+	// them rather than reasoning about where they land.
 	if filepath.IsAbs(linkname) {
-		resolved = filepath.Clean(linkname)
-	} else {
-		resolved = filepath.Clean(filepath.Join(filepath.Dir(linkPath), linkname))
+		return false
 	}
+
+	resolved := filepath.Clean(filepath.Join(filepath.Dir(linkPath), linkname))
 
 	rel, err := filepath.Rel(dest, resolved)
 	if err != nil {
