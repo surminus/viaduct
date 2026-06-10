@@ -2,6 +2,13 @@
 
 A configuration management framework written in Go.
 
+## v0.5.1
+
+### Added
+
+- A `--stdout` flag and `VIADUCT_STDOUT` env var to log non-error output to
+  STDOUT instead of STDERR. Errors still go to STDERR.
+
 ## v0.5.0
 
 ### Added
