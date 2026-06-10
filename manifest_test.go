@@ -157,6 +157,50 @@ func TestAddResource(t *testing.T) {
 	})
 }
 
+func TestChain(t *testing.T) {
+	t.Parallel()
+
+	t.Run("wires each link to the previous one", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		chain := m.Chain(
+			newTestResource("a"),
+			newTestResource("b"),
+			newTestResource("c"),
+		)
+
+		assert.Len(t, chain, 3)
+
+		// The first link has no dependencies.
+		assert.Empty(t, chain[0].DependsOn)
+
+		// Each subsequent link depends only on the one before it.
+		assert.Equal(t, []ResourceID{chain[0].ResourceID}, chain[1].DependsOn)
+		assert.Equal(t, []ResourceID{chain[1].ResourceID}, chain[2].DependsOn)
+	})
+
+	t.Run("empty chain returns no resources", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		chain := m.Chain()
+
+		assert.Empty(t, chain)
+		assert.Empty(t, m.resources)
+	})
+
+	t.Run("single link has no dependencies", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		chain := m.Chain(newTestResource("only"))
+
+		assert.Len(t, chain, 1)
+		assert.Empty(t, chain[0].DependsOn)
+	})
+}
+
 func TestCollectFailures(t *testing.T) {
 	t.Parallel()
 

@@ -58,6 +58,26 @@ func main() {
 }
 ```
 
+When you have a linear sequence where each resource depends on the previous
+one, you can wire the whole thing in a single call with `Chain` rather than
+declaring each dependency by hand:
+
+```go
+func main() {
+        m := viaduct.New()
+
+        // The file waits for the directory, and the symlink waits for the file
+        m.Chain(
+                &resources.Directory{Path: "/tmp/test"},
+                &resources.File{Path: "/tmp/test/foo"},
+                &resources.Link{Path: "/tmp/test/bar", Source: "/tmp/test/foo"},
+        )
+}
+```
+
+`Chain` returns the created resources in order, so you can still branch other
+resources off any individual link.
+
 When you've added all the resources you need, we can apply them:
 
 ```go
