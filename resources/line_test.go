@@ -1,8 +1,12 @@
 package resources
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -169,6 +173,46 @@ func TestLine(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NoFileExists(t, l.Path)
 	})
+}
+
+func TestLineConcurrentSameFile(t *testing.T) {
+	// Many Line resources appending to the same file concurrently must
+	// not lose any line to a read-modify-write race.
+	path := filepath.Join(t.TempDir(), "shared")
+
+	const n = 20
+
+	var wg sync.WaitGroup
+	wg.Add(n)
+
+	for i := range n {
+		go func(i int) {
+			defer wg.Done()
+
+			l := &Line{Path: path, Line: fmt.Sprintf("line-%02d", i)}
+			if err := l.PreflightChecks(testLogger); err != nil {
+				t.Error(err)
+				return
+			}
+
+			if err := l.Run(testLogger); err != nil {
+				t.Error(err)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	content, err := os.ReadFile(path)
+	assert.NoError(t, err)
+
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	sort.Strings(lines)
+	assert.Len(t, lines, n)
+
+	for i := range n {
+		assert.Equal(t, fmt.Sprintf("line-%02d", i), lines[i])
+	}
 }
 
 func TestLineHelpers(t *testing.T) {

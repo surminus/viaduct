@@ -112,6 +112,10 @@ func (l *Line) updateLine(log *viaduct.Logger) error {
 		return nil
 	}
 
+	// Serialise edits to this file so a concurrent Line resource on the
+	// same path can't clobber our read-modify-write.
+	defer lockPath(path)()
+
 	if !viaduct.FileExists(path) {
 		if err := writeLines(path, []string{l.Line}); err != nil {
 			return err
@@ -179,6 +183,10 @@ func (l *Line) deleteLine(log *viaduct.Logger) error {
 		log.Info("deleted", "path", path)
 		return nil
 	}
+
+	// Serialise edits to this file so a concurrent Line resource on the
+	// same path can't clobber our read-modify-write.
+	defer lockPath(path)()
 
 	if !viaduct.FileExists(path) {
 		log.Noop("up-to-date", "path", path)
