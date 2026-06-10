@@ -136,7 +136,24 @@ func (s *Service) setEnabled(log *viaduct.Logger, enable bool) error {
 		return nil
 	}
 
-	if s.isEnabled() == enable {
+	state := s.enableState()
+
+	// A masked unit cannot be enabled, and systemctl errors with an
+	// opaque message, so fail with a clear one instead.
+	if enable && state == "masked" {
+		return fmt.Errorf("cannot enable masked service %s, unmask it first", s.Name)
+	}
+
+	// Static and indirect units have no [Install] section and cannot be
+	// enabled or disabled, so treat them as already in the desired state
+	// rather than running systemctl every time.
+	if state == "static" || state == "indirect" {
+		log.Noop(verb+"d", "service", s.Name, "state", state)
+		return nil
+	}
+
+	enabled := state == "enabled" || state == "enabled-runtime" || state == "alias"
+	if enabled == enable {
 		log.Noop(verb+"d", "service", s.Name)
 		return nil
 	}
@@ -186,8 +203,14 @@ func (s *Service) runAction(log *viaduct.Logger) error {
 	return nil
 }
 
-func (s *Service) isEnabled() bool {
-	return exec.Command("systemctl", "is-enabled", "--quiet", s.Name).Run() == nil
+// enableState returns the systemctl enablement state of the unit, such as
+// "enabled", "disabled", "static" or "masked". Returns an empty string if
+// the state cannot be determined.
+func (s *Service) enableState() string {
+	// is-enabled prints the state to stdout and exits non-zero for some
+	// states (disabled, masked), so the exit code is ignored.
+	out, _ := exec.Command("systemctl", "is-enabled", s.Name).Output()
+	return strings.TrimSpace(string(out))
 }
 
 func (s *Service) isActive() bool {
