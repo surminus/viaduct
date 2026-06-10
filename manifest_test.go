@@ -201,6 +201,104 @@ func TestChain(t *testing.T) {
 	})
 }
 
+func TestChainFrom(t *testing.T) {
+	t.Parallel()
+
+	t.Run("first link depends on the starting resource", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		base := m.Add(newTestResource("base"))
+		chain := m.ChainFrom(base,
+			newTestResource("a"),
+			newTestResource("b"),
+		)
+
+		assert.Len(t, chain, 2)
+		assert.Equal(t, []ResourceID{base.ResourceID}, chain[0].DependsOn)
+		assert.Equal(t, []ResourceID{chain[0].ResourceID}, chain[1].DependsOn)
+	})
+
+	t.Run("nil starting resource behaves like Chain", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		chain := m.ChainFrom(nil,
+			newTestResource("a"),
+			newTestResource("b"),
+		)
+
+		assert.Len(t, chain, 2)
+		assert.Empty(t, chain[0].DependsOn)
+		assert.Equal(t, []ResourceID{chain[0].ResourceID}, chain[1].DependsOn)
+	})
+}
+
+func TestChainTo(t *testing.T) {
+	t.Parallel()
+
+	t.Run("target depends on the last link", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		target := m.Add(newTestResource("target"))
+		chain := m.ChainTo(target,
+			newTestResource("a"),
+			newTestResource("b"),
+		)
+
+		assert.Len(t, chain, 2)
+		assert.Empty(t, chain[0].DependsOn)
+		assert.Equal(t, []ResourceID{chain[0].ResourceID}, chain[1].DependsOn)
+
+		// The target is not part of the returned chain, but it now depends
+		// on the chain's last link.
+		stored := m.resources[target.ResourceID]
+		assert.Equal(t, []ResourceID{chain.Last().ResourceID}, stored.DependsOn)
+	})
+
+	t.Run("nil target behaves like Chain", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		chain := m.ChainTo(nil,
+			newTestResource("a"),
+			newTestResource("b"),
+		)
+
+		assert.Len(t, chain, 2)
+		assert.Empty(t, chain[0].DependsOn)
+		assert.Equal(t, []ResourceID{chain[0].ResourceID}, chain[1].DependsOn)
+	})
+}
+
+func TestResourceChain(t *testing.T) {
+	t.Parallel()
+
+	t.Run("first and last return the ends of the chain", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		chain := m.Chain(
+			newTestResource("a"),
+			newTestResource("b"),
+			newTestResource("c"),
+		)
+
+		assert.Equal(t, chain[0], chain.First())
+		assert.Equal(t, chain[2], chain.Last())
+	})
+
+	t.Run("first and last are nil for an empty chain", func(t *testing.T) {
+		t.Parallel()
+
+		var chain ResourceChain
+
+		assert.Nil(t, chain.First())
+		assert.Nil(t, chain.Last())
+	})
+}
+
 func TestCollectFailures(t *testing.T) {
 	t.Parallel()
 
