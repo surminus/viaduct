@@ -2,6 +2,15 @@
 
 A configuration management framework written in Go.
 
+## v0.6.1
+
+### Fixed
+
+- The `Download` resource no longer leaks the open file descriptor after
+  writing. It now closes the file before setting permissions, which avoids
+  `ETXTBSY` errors when a downstream resource execs the binary immediately. On
+  failure the partial file is closed and removed
+
 ## v0.6.0
 
 ### Added
