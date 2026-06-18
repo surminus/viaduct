@@ -89,16 +89,30 @@ func (a *Download) get(log *viaduct.Logger) error {
 	var client http.Client
 	resp, err := client.Get(a.URL)
 	if err != nil {
+		file.Close()
+		os.Remove(path)
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
+		file.Close()
+		os.Remove(path)
 		return fmt.Errorf("request received status code %d", resp.StatusCode)
 	}
 
 	size, err := io.Copy(file, resp.Body)
 	if err != nil {
+		file.Close()
+		os.Remove(path)
+		return err
+	}
+
+	// Close explicitly before chmod/chown rather than deferring: the file
+	// must be closed so a downstream resource can exec it immediately (an
+	// open write fd causes ETXTBSY), and closing here surfaces any delayed
+	// write errors that can appear on network filesystems.
+	if err := file.Close(); err != nil {
 		return err
 	}
 
