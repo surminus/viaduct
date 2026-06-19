@@ -1,6 +1,8 @@
 package resources
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,6 +24,10 @@ type Download struct {
 	// CreateDirIfMissing creates the parent directory if it does not already
 	// exist. The parent is created with 0755 and default ownership.
 	CreateDirIfMissing bool
+
+	// Checksum is the expected SHA256 hex digest of the downloaded file.
+	// When set, the download is verified after writing and fails on mismatch.
+	Checksum string
 
 	// Permissions manages permissions for the downloaded content
 	Permissions
@@ -117,6 +123,19 @@ func (a *Download) get(log *viaduct.Logger) error {
 	}
 
 	log.Info("downloaded", "url", a.URL, "path", path, "size", humanize.Bytes(uint64(size)))
+
+	if a.Checksum != "" {
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		sum := sha256.Sum256(contents)
+		if got := hex.EncodeToString(sum[:]); got != a.Checksum {
+			os.Remove(path)
+			return fmt.Errorf("checksum mismatch for %s: expected %s, got %s", path, a.Checksum, got)
+		}
+	}
 
 	return a.setFilePermissions(
 		log,

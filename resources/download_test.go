@@ -50,6 +50,51 @@ func TestDown(t *testing.T) {
 		}
 	})
 
+	t.Run("matching checksum", func(t *testing.T) {
+		// Not parallel: gock intercepts the global transport.
+		defer gock.Off()
+
+		testurl := "http://test-checksum-ok.com"
+
+		gock.New(testurl).
+			Get("/").
+			Reply(200).
+			BodyString("OK")
+
+		d := newTestDownload(t, testurl, "test/acceptance/download/checksum-ok.txt")
+		d.Checksum = "565339bc4d33d72817b583024112eb7f5cdf3e5eef0252d6ec1b9c9a94e12bb3"
+
+		err := d.Run(testLogger)
+		assert.NoError(t, err)
+
+		assert.Equal(t, true, viaduct.FileExists(d.Path))
+
+		if err := os.RemoveAll(d.Path); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("mismatching checksum", func(t *testing.T) {
+		// Not parallel: gock intercepts the global transport.
+		defer gock.Off()
+
+		testurl := "http://test-checksum-bad.com"
+
+		gock.New(testurl).
+			Get("/").
+			Reply(200).
+			BodyString("OK")
+
+		d := newTestDownload(t, testurl, "test/acceptance/download/checksum-bad.txt")
+		d.Checksum = "0000000000000000000000000000000000000000000000000000000000000000"
+
+		err := d.Run(testLogger)
+		assert.Error(t, err)
+
+		// The mismatched file should be removed.
+		assert.Equal(t, false, viaduct.FileExists(d.Path))
+	})
+
 	t.Run("create with missing parent dir", func(t *testing.T) {
 		// Not parallel: gock intercepts the global transport, so running
 		// alongside the other gock-based subtest would clobber its mocks.
