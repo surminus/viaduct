@@ -10,10 +10,16 @@ fail() {
 # Package
 command -v curl >/dev/null || fail "curl not installed"
 
-# Package purge, on the platforms the config exercises it
+# Package purge and hold, on the platforms the config exercises them
 if command -v dpkg >/dev/null; then
 	if command -v hello >/dev/null; then
 		fail "hello was installed but not purged"
+	fi
+
+	apt-mark showhold | grep -qx bash || fail "bash is not held"
+
+	if apt-mark showhold | grep -qx dash; then
+		fail "dash was not released"
 	fi
 fi
 

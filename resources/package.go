@@ -24,6 +24,15 @@ type Package struct {
 	// configuration, like "apt-get purge". Not every package manager has an
 	// equivalent, so this is only supported on Debian and Arch derivatives.
 	Purge bool
+
+	// Hold marks the specified packages as held back, so the package manager
+	// will not upgrade them, like "apt-mark hold". It does not install them:
+	// chain this after a Pkg if the packages need installing too. Only
+	// supported on Debian derivatives.
+	Hold bool
+
+	// Unhold releases a hold, letting the packages be upgraded again.
+	Unhold bool
 }
 
 func (p *Package) Description() string {
@@ -52,6 +61,18 @@ func (p *Package) PreflightChecks(log *viaduct.Logger) error {
 		return fmt.Errorf("purge is not supported on %s", viaduct.Attribute.Platform.ID)
 	}
 
+	if p.Hold && p.Unhold {
+		return fmt.Errorf("cannot set both Hold and Unhold")
+	}
+
+	if (p.Hold || p.Unhold) && (p.Uninstall || p.Purge) {
+		return fmt.Errorf("cannot hold and uninstall the same packages")
+	}
+
+	if (p.Hold || p.Unhold) && !holdSupported(viaduct.Attribute.Platform.ID) {
+		return fmt.Errorf("holding packages is not supported on %s", viaduct.Attribute.Platform.ID)
+	}
+
 	// Set optional defaults here
 	return nil
 }
@@ -61,6 +82,18 @@ func (p *Package) PreflightChecks(log *viaduct.Logger) error {
 func purgeSupported(platform string) bool {
 	switch platform {
 	case "debian", "ubuntu", "linuxmint", "arch", "manjaro":
+		return true
+	default:
+		return false
+	}
+}
+
+// holdSupported reports whether the platform has a package hold that Viaduct
+// knows how to manage. dnf needs the versionlock plugin and pacman holds live
+// in IgnorePkg in pacman.conf, so neither is covered yet.
+func holdSupported(platform string) bool {
+	switch platform {
+	case "debian", "ubuntu", "linuxmint":
 		return true
 	default:
 		return false
@@ -98,8 +131,44 @@ func PurgePkgs(names ...string) *Package {
 	}
 }
 
+// HoldPkg is a shortcut for holding a package back from upgrades
+func HoldPkg(name string) *Package {
+	return &Package{
+		Names: []string{name},
+		Hold:  true,
+	}
+}
+
+// HoldPkgs is a shortcut for holding multiple packages back from upgrades
+func HoldPkgs(names ...string) *Package {
+	return &Package{
+		Names: names,
+		Hold:  true,
+	}
+}
+
+// UnholdPkg is a shortcut for releasing a held package
+func UnholdPkg(name string) *Package {
+	return &Package{
+		Names:  []string{name},
+		Unhold: true,
+	}
+}
+
+// UnholdPkgs is a shortcut for releasing held packages
+func UnholdPkgs(names ...string) *Package {
+	return &Package{
+		Names:  names,
+		Unhold: true,
+	}
+}
+
 func (p *Package) OperationName() string {
 	switch {
+	case p.Hold:
+		return "Hold"
+	case p.Unhold:
+		return "Unhold"
 	case p.Purge:
 		return "Purge"
 	case p.Uninstall:
@@ -110,11 +179,14 @@ func (p *Package) OperationName() string {
 }
 
 func (p *Package) Run(log *viaduct.Logger) error {
-	if p.Uninstall || p.Purge {
+	switch {
+	case p.Hold, p.Unhold:
+		return p.hold(log)
+	case p.Uninstall, p.Purge:
 		return p.uninstall(log)
+	default:
+		return p.install(log)
 	}
-
-	return p.install(log)
 }
 
 func (p *Package) install(log *viaduct.Logger) error {
@@ -138,6 +210,63 @@ func (p *Package) uninstall(log *viaduct.Logger) error {
 	}
 
 	return removePkg(viaduct.Attribute.Platform.ID, p.Names, p.Verbose, p.Purge)
+}
+
+// hold marks packages as held back, or releases them, leaving alone any that
+// are already in the state we want
+func (p *Package) hold(log *viaduct.Logger) error {
+	held, err := heldPackages()
+	if err != nil {
+		return err
+	}
+
+	change := holdsToChange(p.Names, held, p.Hold)
+	if len(change) == 0 {
+		log.Noop("up-to-date", "packages", strings.Join(p.Names, ", "))
+		return nil
+	}
+
+	action := "hold"
+	if p.Unhold {
+		action = "unhold"
+	}
+
+	log.Info(action, "packages", strings.Join(change, ", "))
+
+	if viaduct.Cli.DryRun {
+		return nil
+	}
+
+	return runPkgCmd(append([]string{"apt-mark", action}, change...), p.Verbose)
+}
+
+// holdsToChange returns the packages whose hold state does not match what was
+// asked for
+func holdsToChange(names []string, held map[string]bool, want bool) []string {
+	var change []string
+
+	for _, name := range names {
+		if held[name] != want {
+			change = append(change, name)
+		}
+	}
+
+	return change
+}
+
+// heldPackages returns the set of packages currently marked as held back
+func heldPackages() (map[string]bool, error) {
+	out, err := exec.Command("apt-mark", "showhold").Output()
+	if err != nil {
+		return nil, fmt.Errorf("apt-mark showhold failed: %w", err)
+	}
+
+	held := make(map[string]bool)
+	for _, name := range strings.Fields(string(out)) {
+		held[name] = true
+	}
+
+	return held, nil
 }
 
 func installPkg(platform string, pkgs []string, verbose bool) error {

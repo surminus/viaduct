@@ -91,3 +91,46 @@ func TestRemoveArgs(t *testing.T) {
 		assert.EqualError(t, err, "unrecognised distribution: plan9")
 	})
 }
+
+func TestHoldShortcuts(t *testing.T) {
+	assert.True(t, HoldPkg("docker-ce").Hold)
+	assert.Equal(t, []string{"docker-ce"}, HoldPkg("docker-ce").Names)
+	assert.True(t, HoldPkgs("docker-ce", "containerd.io").Hold)
+
+	assert.True(t, UnholdPkg("docker-ce").Unhold)
+	assert.True(t, UnholdPkgs("docker-ce", "containerd.io").Unhold)
+
+	assert.Equal(t, "Hold", HoldPkg("docker-ce").OperationName())
+	assert.Equal(t, "Unhold", UnholdPkg("docker-ce").OperationName())
+}
+
+func TestHoldsToChange(t *testing.T) {
+	held := map[string]bool{"curl": true, "git": true}
+
+	t.Run("holding skips what is already held", func(t *testing.T) {
+		assert.Equal(t, []string{"vim"}, holdsToChange([]string{"curl", "vim"}, held, true))
+		assert.Empty(t, holdsToChange([]string{"curl", "git"}, held, true))
+	})
+
+	t.Run("unholding only touches what is held", func(t *testing.T) {
+		assert.Equal(t, []string{"curl"}, holdsToChange([]string{"curl", "vim"}, held, false))
+		assert.Empty(t, holdsToChange([]string{"vim"}, held, false))
+	})
+
+	t.Run("nothing held yet", func(t *testing.T) {
+		assert.Equal(t, []string{"curl"}, holdsToChange([]string{"curl"}, map[string]bool{}, true))
+		assert.Empty(t, holdsToChange([]string{"curl"}, map[string]bool{}, false))
+	})
+}
+
+func TestHoldSupported(t *testing.T) {
+	for _, platform := range []string{"debian", "ubuntu", "linuxmint"} {
+		assert.True(t, holdSupported(platform), platform)
+	}
+
+	// dnf needs the versionlock plugin and pacman holds live in pacman.conf,
+	// so asking for a hold there is rejected in preflight
+	for _, platform := range []string{"fedora", "centos", "arch", "manjaro"} {
+		assert.False(t, holdSupported(platform), platform)
+	}
+}

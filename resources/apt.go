@@ -152,7 +152,9 @@ func AptAutoremove() *Execute {
 	return aptExec("apt-get", "autoremove", "-q", "-y")
 }
 
-// AptHold marks packages as held back from upgrades
+// AptHold marks packages as held back from upgrades. The Hold option on the
+// Package resource does the same thing and skips packages that are already
+// held, so prefer that unless you specifically want the command to run.
 func AptHold(names ...string) *Execute {
 	return aptExec(append([]string{"apt-mark", "hold"}, names...)...)
 }

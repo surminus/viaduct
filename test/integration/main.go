@@ -33,14 +33,26 @@ func main() {
 		m.Add(resources.Pkg("curl"))
 	}
 
-	// Install a package and purge it again. Only the Debian derivatives are
-	// covered here because "hello" is not packaged everywhere, and Fedora has
-	// no purge at all
+	// Install a package and purge it again, and hold a package back from
+	// upgrades. Only the Debian derivatives are covered here because "hello"
+	// is not packaged everywhere, Fedora has no purge at all, and holds are
+	// only implemented for apt-mark
 	switch viaduct.Attribute.Platform.ID {
 	case "debian", "ubuntu", "linuxmint":
 		m.ChainFrom(update,
 			resources.Pkg("hello"),
 			resources.PurgePkg("hello"),
+		)
+
+		// Hold packages nothing else here installs, because apt-get install
+		// refuses to touch a held package: holding one we also install would
+		// break the moment the archive had a newer version of it. bash stays
+		// held, so the second run exercises the noop, and dash is held and
+		// released again to cover both directions
+		m.Add(resources.HoldPkg("bash"))
+		m.Chain(
+			resources.HoldPkg("dash"),
+			resources.UnholdPkg("dash"),
 		)
 	}
 
