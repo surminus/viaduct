@@ -55,6 +55,55 @@ func ensureParentDir(log *viaduct.Logger, path string) error {
 	return nil
 }
 
+// writeManagedFile writes content to path when it differs from what is
+// already there, then applies permissions. File and Template share it so a
+// rendered template goes through the same create-or-update lifecycle as a
+// managed file, without either resource reaching into the other.
+//
+// The caller is responsible for having run preflight checks, since the mode
+// and ownership in perms are resolved there.
+func writeManagedFile(
+	log *viaduct.Logger,
+	path, content string,
+	perms *Permissions,
+	createDirIfMissing bool,
+) error {
+	path = viaduct.ExpandPath(path)
+
+	if createDirIfMissing {
+		if err := ensureParentDir(log, path); err != nil {
+			return err
+		}
+	}
+
+	if viaduct.Cli.DryRun {
+		log.Info("created", "path", path)
+		return nil
+	}
+
+	shouldWriteFile := true
+	if viaduct.FileExists(path) {
+		existing, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		shouldWriteFile = string(existing) != content
+	}
+
+	if shouldWriteFile {
+		if err := os.WriteFile(path, []byte(content), perms.Mode); err != nil {
+			return err
+		}
+
+		log.Info("created", "path", path)
+	} else {
+		log.Noop("up-to-date", "path", path)
+	}
+
+	return perms.setFilePermissions(log, path)
+}
+
 // runCommand runs a system command, directing output according to the
 // CLI flags
 func runCommand(args ...string) error {

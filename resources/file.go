@@ -120,45 +120,7 @@ func (f *File) Run(log *viaduct.Logger) error {
 
 // Create creates or updates a file
 func (f *File) createFile(log *viaduct.Logger) error {
-	path := viaduct.ExpandPath(f.Path)
-
-	if f.CreateDirIfMissing {
-		if err := ensureParentDir(log, path); err != nil {
-			return err
-		}
-	}
-
-	if viaduct.Cli.DryRun {
-		log.Info("created", "path", path)
-		return nil
-	}
-
-	var shouldWriteFile bool
-	if viaduct.FileExists(path) {
-		if content, err := os.ReadFile(path); err == nil {
-			if string(content) != f.Content {
-				shouldWriteFile = true
-			}
-		} else {
-			return err
-		}
-	} else {
-		shouldWriteFile = true
-	}
-
-	// If we want to run it as sudo, then we create a temporary file, write
-	// the content, and then copy the file into place.
-	if shouldWriteFile {
-		err := os.WriteFile(path, []byte(f.Content), f.Mode)
-		if err != nil {
-			return err
-		}
-		log.Info("created", "path", path)
-	} else {
-		log.Noop("up-to-date", "path", path)
-	}
-
-	return f.setFilePermissions(log, path)
+	return writeManagedFile(log, f.Path, f.Content, &f.Permissions, f.CreateDirIfMissing)
 }
 
 // Delete deletes a file

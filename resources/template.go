@@ -85,11 +85,10 @@ func (t *Template) Run(log *viaduct.Logger) error {
 		return err
 	}
 
-	// Delegate writing to the File resource, which handles content
-	// comparison and permissions
-	file := &File{Path: t.Dest, Content: content, CreateDirIfMissing: t.CreateDirIfMissing, Permissions: t.Permissions}
-
-	return file.createFile(log)
+	// Writing goes through the same helper as the File resource, so a
+	// rendered template gets the same content comparison and permission
+	// handling
+	return writeManagedFile(log, t.Dest, content, &t.Permissions, t.CreateDirIfMissing)
 }
 
 func (t *Template) render(source string) (string, error) {
