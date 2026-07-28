@@ -131,7 +131,7 @@ package covers the common building blocks:
 - `Template` for rendering Go templates from disk to a file
 - `Line` for editing individual lines in a file that isn't fully managed
 - `Package` and `Apt` for installing packages and managing apt repositories
-- `User` for users and groups, and `Service` for systemd units
+- `User` and `Group` for users and groups, and `Service` for systemd units
 - `Archive` for extracting tar and zip archives
 - `Sysctl` for writing and applying kernel parameters
 - `Download` and `Git` for fetching files and cloning repositories

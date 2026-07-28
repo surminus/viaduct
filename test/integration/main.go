@@ -39,6 +39,12 @@ func main() {
 	m.Add(&resources.User{Name: "appuser", UID: 1500, GID: 1500, Shell: "/bin/sh"})
 	m.Add(&resources.User{Name: "root", Groups: []string{"daemon"}})
 
+	// Groups on their own: one with a fixed GID, and one created then joined
+	// by a user
+	m.Add(&resources.Group{Name: "testgrp", GID: 1600})
+	appgrp := m.Add(resources.SystemGroup("appgrp"))
+	m.Add(&resources.User{Name: "grpuser", Groups: []string{"appgrp"}}, appgrp)
+
 	// Files, directories and links
 	dir := m.Add(resources.Dir("/opt/viaduct-test"))
 	file := m.Add(resources.CreateFile("/opt/viaduct-test/file", "hello\n"), dir)

@@ -190,7 +190,15 @@ func lookupUser(name string) (*user.User, bool) {
 	return usr, err == nil
 }
 
+// lookupGroup returns the group and whether it exists
+func lookupGroup(name string) (*user.Group, bool) {
+	grp, err := user.LookupGroup(name)
+
+	return grp, err == nil
+}
+
 func groupExists(name string) bool {
-	_, err := user.LookupGroup(name)
-	return err == nil
+	_, ok := lookupGroup(name)
+
+	return ok
 }

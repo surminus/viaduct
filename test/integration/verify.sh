@@ -17,6 +17,11 @@ getent passwd testsvc | grep -q "/bin/false" || fail "testsvc shell is not /bin/
 [ "$(id -g appuser)" = "1500" ] || fail "appuser has wrong gid"
 id -nG root | grep -qw daemon || fail "root not in daemon group"
 
+# Group
+[ "$(getent group testgrp | cut -d: -f3)" = "1600" ] || fail "testgrp has wrong gid"
+getent group appgrp >/dev/null || fail "appgrp group missing"
+id -nG grpuser | grep -qw appgrp || fail "grpuser not in appgrp group"
+
 # File, Directory, Link
 grep -q "^hello$" /opt/viaduct-test/file || fail "file content wrong"
 [ -L /opt/viaduct-test/link ] || fail "link missing"
