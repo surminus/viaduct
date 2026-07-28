@@ -73,8 +73,10 @@ func (u *User) OperationName() string {
 }
 
 func (u *User) Run(log *viaduct.Logger) error {
-	if userExists(u.Name) {
-		return u.update(log)
+	// The looked up user is passed on rather than looked up again, so a run
+	// works from a single view of the passwd database
+	if usr, ok := lookupUser(u.Name); ok {
+		return u.update(log, usr)
 	}
 
 	return u.create(log)
@@ -126,13 +128,13 @@ func (u *User) create(log *viaduct.Logger) error {
 }
 
 // update assigns supplementary groups to an existing user
-func (u *User) update(log *viaduct.Logger) error {
+func (u *User) update(log *viaduct.Logger, usr *user.User) error {
 	if len(u.Groups) == 0 {
 		log.Noop("exists", "user", u.Name)
 		return nil
 	}
 
-	missing, err := u.missingGroups()
+	missing, err := u.missingGroups(usr)
 	if err != nil {
 		return err
 	}
@@ -158,12 +160,7 @@ func (u *User) update(log *viaduct.Logger) error {
 
 // missingGroups returns the supplementary groups the user does not yet
 // belong to
-func (u *User) missingGroups() ([]string, error) {
-	usr, err := user.Lookup(u.Name)
-	if err != nil {
-		return nil, err
-	}
-
+func (u *User) missingGroups(usr *user.User) ([]string, error) {
 	gids, err := usr.GroupIds()
 	if err != nil {
 		return nil, err
@@ -186,9 +183,11 @@ func (u *User) missingGroups() ([]string, error) {
 	return missing, nil
 }
 
-func userExists(name string) bool {
-	_, err := user.Lookup(name)
-	return err == nil
+// lookupUser returns the user and whether they exist
+func lookupUser(name string) (*user.User, bool) {
+	usr, err := user.Lookup(name)
+
+	return usr, err == nil
 }
 
 func groupExists(name string) bool {
