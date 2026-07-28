@@ -2,6 +2,7 @@ package viaduct
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -10,13 +11,15 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 const (
-	// dependencyTimeout is how long a resource will wait for its
-	// dependencies before giving up.
-	dependencyTimeout = 5 * time.Minute
+	// defaultResourceTimeout is how long a single resource is given to run
+	// before the run gives up on it. It bounds one resource's own work, so a
+	// manifest can take as long as it likes overall.
+	defaultResourceTimeout = 5 * time.Minute
 
 	// dependencyPollInterval is how often to check dependency status.
 	dependencyPollInterval = 10 * time.Millisecond
@@ -36,11 +39,46 @@ const (
 type Manifest struct {
 	resources map[ResourceID]Resource
 	collector *ResultCollector
+
+	// resourceTimeout is the manifest-wide timeout for a single resource.
+	// Zero uses defaultResourceTimeout.
+	resourceTimeout time.Duration
+
+	// abandoned holds the first resource the run gave up on, if any.
+	abandoned atomic.Pointer[ResourceID]
 }
 
 func New() *Manifest {
 	return &Manifest{
 		resources: make(map[ResourceID]Resource),
+	}
+}
+
+// SetResourceTimeout sets how long each resource in this manifest is given to
+// run before the run gives up on it. The default is five minutes.
+//
+// The timeout applies to a single resource rather than to the run, so a manifest
+// can take as long as it likes so long as no individual resource overruns. Raise
+// it for a resource that is legitimately slow, such as a large download or a
+// clone of a big repository, with WithTimeout.
+//
+// Be aware that a resource cannot be cancelled, so a timeout stops the run
+// waiting for it and reports it as failed while the operation itself carries on:
+// whatever it was part way through, such as a download or a package install, is
+// left as it is.
+//
+// The --resource-timeout flag overrides this, and WithTimeout overrides it for
+// a single resource. A negative duration means no timeout.
+func (m *Manifest) SetResourceTimeout(d time.Duration) {
+	m.resourceTimeout = d
+}
+
+// WithTimeout sets how long a single resource is given to run, overriding the
+// manifest setting.
+func (m *Manifest) WithTimeout(r *Resource, d time.Duration) {
+	if v, ok := m.resources[r.ResourceID]; ok {
+		v.Timeout = d
+		m.resources[r.ResourceID] = v
 	}
 }
 
@@ -330,21 +368,13 @@ func (m *Manifest) Run() {
 func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, globalLock *sync.RWMutex) {
 	defer wg.Done()
 
-	err := m.dependencyCheck(&r, lock)
-	if err != nil {
-		m.setStatus(&r, lock, DependencyFailed)
-		m.setError(&r, lock, err)
+	if err := m.abandonedErr(); err != nil {
+		m.fail(&r, lock, DependencyFailed, err)
+		return
+	}
 
-		if m.collector != nil {
-			m.collector.Add(ResourceResult{
-				ResourceID:   string(r.ResourceID),
-				ResourceKind: string(r.ResourceKind),
-				Description:  r.Attributes.Description(),
-				Operation:    r.Attributes.OperationName(),
-				Status:       string(DependencyFailed),
-				Error:        err.Error(),
-			})
-		}
+	if err := m.dependencyCheck(&r, lock); err != nil {
+		m.fail(&r, lock, DependencyFailed, err)
 		return
 	}
 
@@ -353,9 +383,26 @@ func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, glo
 		defer globalLock.Unlock()
 	}
 
-	// Run the resource operation
-	logger, runErr := r.run()
+	// The lock is released when a resource is abandoned, because holding it
+	// would block every other lock holder for the rest of the run. That means
+	// whatever was waiting for it has to check again: an abandoned operation
+	// still holds the real lock, dpkg's or passwd's, so starting the next one
+	// now would just fail against it.
+	if err := m.abandonedErr(); err != nil {
+		m.fail(&r, lock, DependencyFailed, err)
+		return
+	}
+
+	// Run the resource operation, bounded by its own timeout
+	logger, runErr := r.run(m.timeoutFor(&r))
 	if runErr != nil {
+		if errors.Is(runErr, errAbandoned) {
+			// The operation is still going and the machine is in a state we no
+			// longer know, so nothing else should start
+			id := r.ResourceID
+			m.abandoned.CompareAndSwap(nil, &id)
+		}
+
 		m.setStatus(&r, lock, Failed)
 		m.setError(&r, lock, runErr)
 	} else {
@@ -382,12 +429,48 @@ func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, glo
 	}
 }
 
+// abandonedErr reports why nothing further should start, once the run has given
+// up on a resource that is still running.
+func (m *Manifest) abandonedErr() error {
+	if id := m.abandoned.Load(); id != nil {
+		return fmt.Errorf("not started: the run gave up on %s, which may still be running", *id)
+	}
+
+	return nil
+}
+
+// fail records a resource failure, along with its result when collecting for
+// JSON output.
+func (m *Manifest) fail(r *Resource, lock *sync.RWMutex, status Status, err error) {
+	m.setStatus(r, lock, status)
+	m.setError(r, lock, err)
+
+	if m.collector != nil {
+		m.collector.Add(ResourceResult{
+			ResourceID:   string(r.ResourceID),
+			ResourceKind: string(r.ResourceKind),
+			Description:  r.Attributes.Description(),
+			Operation:    r.Attributes.OperationName(),
+			Status:       string(status),
+			Error:        err.Error(),
+		})
+	}
+}
+
+// dependencyCheck blocks until every dependency of the resource has succeeded,
+// returning an error if one of them failed.
+//
+// There is no timeout on the wait itself, because waiting is not what goes
+// wrong: every resource is bounded by its own timeout, and dependency cycles
+// are rejected before the run starts, so a dependency always reaches a
+// terminal status eventually. Timing out here would only fail whichever
+// resource happened to be waiting on the slow one, which is the least useful
+// place to report it.
 func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
 	if len(r.DependsOn) == 0 {
 		return nil
 	}
 
-	deadline := time.After(dependencyTimeout)
 	ticker := time.NewTicker(dependencyPollInterval)
 	defer ticker.Stop()
 
@@ -416,11 +499,24 @@ func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
 			return nil
 		}
 
-		select {
-		case <-deadline:
-			return fmt.Errorf("resource %s timed out waiting for dependencies", string(r.ResourceID))
-		case <-ticker.C:
-		}
+		<-ticker.C
+	}
+}
+
+// timeoutFor returns how long a resource is given to run. The
+// --resource-timeout flag wins, so a slow run can be rescued without
+// recompiling, then the resource, then the manifest, then the default. A
+// negative duration means no timeout.
+func (m *Manifest) timeoutFor(r *Resource) time.Duration {
+	switch {
+	case Cli.ResourceTimeout != 0:
+		return Cli.ResourceTimeout
+	case r.Timeout != 0:
+		return r.Timeout
+	case m.resourceTimeout != 0:
+		return m.resourceTimeout
+	default:
+		return defaultResourceTimeout
 	}
 }
 

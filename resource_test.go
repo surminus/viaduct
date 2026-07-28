@@ -1,6 +1,8 @@
 package viaduct
 
 import (
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,6 +11,14 @@ import (
 type testResourceType struct {
 	Value    string
 	WithLock bool
+
+	// block holds Run until it is released, standing in for a resource that
+	// takes longer than its timeout allows
+	block     chan struct{}
+	blockOnce sync.Once
+
+	// ran records whether the operation was started at all
+	ran atomic.Bool
 }
 
 func (t *testResourceType) Description() string {
@@ -32,7 +42,18 @@ func (t *testResourceType) PreflightChecks(log *Logger) error {
 }
 
 func (t *testResourceType) Run(log *Logger) error {
+	t.ran.Store(true)
+
+	if t.block != nil {
+		<-t.block
+	}
+
 	return nil
+}
+
+// release lets a blocking test resource finish
+func (t *testResourceType) release() {
+	t.blockOnce.Do(func() { close(t.block) })
 }
 
 func newTestResource(value string) *testResourceType {
@@ -41,6 +62,12 @@ func newTestResource(value string) *testResourceType {
 
 func newTestResourceWithLock(value string) *testResourceType {
 	return &testResourceType{Value: value, WithLock: true}
+}
+
+// newBlockingTestResource returns a resource whose Run does not finish until
+// release is called
+func newBlockingTestResource(value string) *testResourceType {
+	return &testResourceType{Value: value, block: make(chan struct{})}
 }
 
 var testResource = newTestResource("test")

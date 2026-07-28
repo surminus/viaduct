@@ -3,6 +3,7 @@ package viaduct
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -16,6 +17,23 @@ func TestInfoWriter(t *testing.T) {
 
 	Cli.Stdout = true
 	assert.Equal(t, os.Stdout, infoWriter())
+}
+
+func TestEnvDuration(t *testing.T) {
+	const name = "VIADUCT_RESOURCE_TIMEOUT_TEST"
+
+	t.Run("unset means no timeout", func(t *testing.T) {
+		os.Unsetenv(name)
+		assert.Zero(t, envDuration(name))
+	})
+
+	t.Run("parsed", func(t *testing.T) {
+		t.Setenv(name, "90s")
+		assert.Equal(t, 90*time.Second, envDuration(name))
+
+		t.Setenv(name, "-1s")
+		assert.Equal(t, -time.Second, envDuration(name))
+	})
 }
 
 func TestEnvBool(t *testing.T) {

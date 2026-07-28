@@ -4,10 +4,17 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 )
+
+// errAbandoned is returned when a resource is still running once its timeout
+// has passed. The operation carries on, so the run treats it as a reason to
+// stop rather than as an ordinary failure.
+var errAbandoned = errors.New("timed out")
 
 // ResourceKind is the kind of resource, such as "File" or "Package".
 type ResourceKind string
@@ -27,6 +34,9 @@ type Resource struct {
 	// GlobalLock will mean the resource will not run at the same time
 	// as other resources that have this set to true.
 	GlobalLock bool
+	// Timeout overrides how long this resource is given to run. Zero uses
+	// the manifest setting, and a negative duration means no timeout.
+	Timeout time.Duration `json:"Timeout,omitempty"`
 	// Error contains any errors raised during a run.
 	Error `json:"Error"`
 }
@@ -142,9 +152,35 @@ func (r *Resource) preflight() error {
 	return r.Attributes.PreflightChecks(log)
 }
 
-func (r *Resource) run() (*Logger, error) {
+// run performs the resource operation, giving up on it if it takes longer than
+// the timeout. A timeout of zero or less lets it run for as long as it takes.
+//
+// A resource operation cannot be cancelled, since Run takes no context, so an
+// abandoned resource carries on in the background: giving up means the run
+// stops waiting for it and reports it as failed, not that whatever it was
+// doing has stopped.
+func (r *Resource) run(timeout time.Duration) (*Logger, error) {
 	log := NewLogger(string(r.ResourceKind), r.Attributes.OperationName())
-	return log, r.Attributes.Run(log)
+
+	if timeout <= 0 {
+		return log, r.Attributes.Run(log)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- r.Attributes.Run(log)
+	}()
+
+	select {
+	case err := <-done:
+		return log, err
+	case <-time.After(timeout):
+		return log, fmt.Errorf(
+			"%w after %s: the operation was abandoned and may still be running. Raise the limit with WithTimeout, SetResourceTimeout or --resource-timeout",
+			errAbandoned,
+			timeout,
+		)
+	}
 }
 
 func (r *Resource) Failed() bool {

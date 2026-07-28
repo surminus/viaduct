@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/fatih/color"
 )
@@ -43,8 +44,19 @@ type Logger struct {
 	// jsonMode buffers entries instead of printing.
 	jsonMode bool
 
+	// mu guards entries. A resource that outlives its timeout keeps logging
+	// after the run has moved on, so writes can overlap a read.
+	mu sync.Mutex
+
 	// entries collects log entries in JSON mode.
 	entries []LogEntry
+}
+
+// addEntry buffers an entry in JSON mode.
+func (l *Logger) addEntry(level, msg string, fields []string) {
+	l.mu.Lock()
+	l.entries = append(l.entries, newEntry(level, msg, fields))
+	l.mu.Unlock()
 }
 
 // Log emits a user-level message.
@@ -96,13 +108,19 @@ func NewSilentLogger() *Logger {
 
 // Entries returns the buffered log entries (for JSON mode).
 func (l *Logger) Entries() []LogEntry {
-	return l.entries
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	out := make([]LogEntry, len(l.entries))
+	copy(out, l.entries)
+
+	return out
 }
 
 // Info logs that an action was taken. Suppressed in Quiet and Silent modes.
 func (l *Logger) Info(msg string, fields ...string) {
 	if l.jsonMode {
-		l.entries = append(l.entries, newEntry("OK", msg, fields))
+		l.addEntry("OK", msg, fields)
 		return
 	}
 
@@ -117,7 +135,7 @@ func (l *Logger) Info(msg string, fields ...string) {
 // Suppressed in Quiet and Silent modes.
 func (l *Logger) Noop(msg string, fields ...string) {
 	if l.jsonMode {
-		l.entries = append(l.entries, newEntry("NOOP", msg, fields))
+		l.addEntry("NOOP", msg, fields)
 		return
 	}
 
@@ -131,7 +149,7 @@ func (l *Logger) Noop(msg string, fields ...string) {
 // Warn logs a warning message. Suppressed only in Silent mode.
 func (l *Logger) Warn(msg string, fields ...string) {
 	if l.jsonMode {
-		l.entries = append(l.entries, newEntry("WARN", msg, fields))
+		l.addEntry("WARN", msg, fields)
 		return
 	}
 
@@ -145,7 +163,7 @@ func (l *Logger) Warn(msg string, fields ...string) {
 // Error logs an error message. Suppressed only in Silent mode.
 func (l *Logger) Error(msg string, fields ...string) {
 	if l.jsonMode {
-		l.entries = append(l.entries, newEntry("ERR", msg, fields))
+		l.addEntry("ERR", msg, fields)
 		return
 	}
 
@@ -159,7 +177,7 @@ func (l *Logger) Error(msg string, fields ...string) {
 // Fatal logs an error message and exits.
 func (l *Logger) Fatal(msg string, fields ...string) {
 	if l.jsonMode {
-		l.entries = append(l.entries, newEntry("FATAL", msg, fields))
+		l.addEntry("FATAL", msg, fields)
 		os.Exit(1)
 	}
 

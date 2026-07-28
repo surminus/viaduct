@@ -2,7 +2,9 @@ package viaduct
 
 import (
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -349,6 +351,210 @@ func TestDependencyCycle(t *testing.T) {
 
 		assert.NoError(t, m.dependencyCycle())
 	})
+}
+
+func TestDependencyCheck(t *testing.T) {
+	t.Run("returns immediately without dependencies", func(t *testing.T) {
+		m := New()
+		r := m.Add(newTestResource("a"))
+
+		var lock sync.RWMutex
+		assert.NoError(t, m.dependencyCheck(r, &lock))
+	})
+
+	t.Run("waits for a dependency to succeed", func(t *testing.T) {
+		m := New()
+		a := m.Add(newTestResource("a"))
+		b := m.Add(newTestResource("b"), a)
+
+		var lock sync.RWMutex
+
+		go func() {
+			time.Sleep(20 * time.Millisecond)
+			m.setStatus(a, &lock, Success)
+		}()
+
+		r := m.resources[b.ResourceID]
+		assert.NoError(t, m.dependencyCheck(&r, &lock))
+	})
+
+	t.Run("fails when a dependency failed", func(t *testing.T) {
+		m := New()
+		a := m.Add(newTestResource("a"))
+		b := m.Add(newTestResource("b"), a)
+
+		var lock sync.RWMutex
+		m.setStatus(a, &lock, Failed)
+
+		r := m.resources[b.ResourceID]
+		err := m.dependencyCheck(&r, &lock)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "upstream dependency")
+	})
+
+	t.Run("waits as long as a slow dependency takes", func(t *testing.T) {
+		m := New()
+		a := m.Add(newTestResource("a"))
+		b := m.Add(newTestResource("b"), a)
+
+		// Each resource is bounded by its own timeout, so waiting behind a
+		// slow one is never a failure however long the run takes
+		m.SetResourceTimeout(10 * time.Millisecond)
+
+		var lock sync.RWMutex
+
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			m.setStatus(a, &lock, Success)
+		}()
+
+		r := m.resources[b.ResourceID]
+		assert.NoError(t, m.dependencyCheck(&r, &lock))
+	})
+}
+
+func TestResourceTimeout(t *testing.T) {
+	t.Run("gives up on a resource that overruns", func(t *testing.T) {
+		blocked := newBlockingTestResource("a")
+		defer blocked.release()
+
+		m := New()
+		r := m.Add(blocked)
+		m.SetResourceTimeout(20 * time.Millisecond)
+
+		var lock sync.RWMutex
+		var wg sync.WaitGroup
+
+		wg.Add(1)
+		m.apply(*r, &wg, &lock, &sync.RWMutex{})
+		wg.Wait()
+
+		// The failure is reported against the resource that overran, rather
+		// than against whatever happened to be waiting for it
+		stored := m.resources[r.ResourceID]
+		assert.Equal(t, Failed, stored.Status)
+		assert.Contains(t, stored.Message, "timed out after 20ms")
+		assert.Contains(t, stored.Message, "may still be running")
+	})
+
+	t.Run("dependents fail once a resource is abandoned", func(t *testing.T) {
+		blocked := newBlockingTestResource("a")
+		defer blocked.release()
+
+		m := New()
+		a := m.Add(blocked)
+		b := m.Add(newTestResource("b"), a)
+		m.SetResourceTimeout(20 * time.Millisecond)
+
+		var lock sync.RWMutex
+		var wg sync.WaitGroup
+
+		wg.Add(2)
+		go m.apply(m.resources[a.ResourceID], &wg, &lock, &sync.RWMutex{})
+		go m.apply(m.resources[b.ResourceID], &wg, &lock, &sync.RWMutex{})
+		wg.Wait()
+
+		assert.Equal(t, Failed, m.resources[a.ResourceID].Status)
+		assert.Equal(t, DependencyFailed, m.resources[b.ResourceID].Status)
+
+		// Both are reported, with the overrun as the root of the failure
+		failures := collectFailures(m.resources)
+		assert.Len(t, failures, 1)
+		assert.Equal(t, string(a.ResourceID), failures[0].ResourceID)
+		assert.Len(t, failures[0].Dependents, 1)
+	})
+
+	t.Run("nothing else starts once a resource is abandoned", func(t *testing.T) {
+		blocked := newBlockingTestResource("a")
+		defer blocked.release()
+
+		later := newTestResource("b")
+
+		m := New()
+		a := m.Add(blocked)
+		b := m.Add(later)
+		m.SetResourceTimeout(20 * time.Millisecond)
+
+		var lock sync.RWMutex
+		var wg sync.WaitGroup
+
+		wg.Add(2)
+		m.apply(m.resources[a.ResourceID], &wg, &lock, &sync.RWMutex{})
+		m.apply(m.resources[b.ResourceID], &wg, &lock, &sync.RWMutex{})
+		wg.Wait()
+
+		// The abandoned operation is still running and still holds whatever it
+		// locked, so the rest of the run does not go near it
+		assert.False(t, later.ran.Load())
+		assert.Equal(t, DependencyFailed, m.resources[b.ResourceID].Status)
+		assert.Contains(t, m.resources[b.ResourceID].Message, "not started")
+		assert.Contains(t, m.resources[b.ResourceID].Message, string(a.ResourceID))
+	})
+
+	t.Run("a resource within its timeout succeeds", func(t *testing.T) {
+		m := New()
+		r := m.Add(newTestResource("a"))
+		m.SetResourceTimeout(time.Minute)
+
+		var lock sync.RWMutex
+		var wg sync.WaitGroup
+
+		wg.Add(1)
+		m.apply(*r, &wg, &lock, &sync.RWMutex{})
+		wg.Wait()
+
+		assert.Equal(t, Success, m.resources[r.ResourceID].Status)
+		assert.NoError(t, m.resources[r.ResourceID].Err)
+	})
+
+	t.Run("a negative timeout gives a resource as long as it takes", func(t *testing.T) {
+		slow := newBlockingTestResource("a")
+
+		m := New()
+		r := m.Add(slow)
+		m.SetResourceTimeout(-1)
+
+		var lock sync.RWMutex
+		var wg sync.WaitGroup
+
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			slow.release()
+		}()
+
+		wg.Add(1)
+		m.apply(*r, &wg, &lock, &sync.RWMutex{})
+		wg.Wait()
+
+		assert.Equal(t, Success, m.resources[r.ResourceID].Status)
+	})
+}
+
+func TestTimeoutFor(t *testing.T) {
+	orig := Cli.ResourceTimeout
+	defer func() { Cli.ResourceTimeout = orig }()
+
+	Cli.ResourceTimeout = 0
+
+	m := New()
+	r := m.Add(newTestResource("a"))
+
+	// The default applies when nothing has been set
+	assert.Equal(t, defaultResourceTimeout, m.timeoutFor(r))
+
+	// The manifest overrides the default
+	m.SetResourceTimeout(time.Minute)
+	assert.Equal(t, time.Minute, m.timeoutFor(r))
+
+	// The resource overrides the manifest
+	m.WithTimeout(r, 2*time.Minute)
+	stored := m.resources[r.ResourceID]
+	assert.Equal(t, 2*time.Minute, m.timeoutFor(&stored))
+
+	// The flag overrides everything, so a slow run can be rescued without
+	// recompiling the configuration
+	Cli.ResourceTimeout = 3 * time.Minute
+	assert.Equal(t, 3*time.Minute, m.timeoutFor(&stored))
 }
 
 func TestCollectFailures(t *testing.T) {
