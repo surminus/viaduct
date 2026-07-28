@@ -68,6 +68,27 @@ func TestWithLock(t *testing.T) {
 	assert.Equal(t, expected, m.resources)
 }
 
+func TestWithLockKey(t *testing.T) {
+	t.Parallel()
+
+	m := New()
+	r := m.Add(testResource)
+	m.WithLockKey(r, PackageLock)
+
+	expected := map[ResourceID]Resource{
+		r.ResourceID: {
+			Attributes:   testResource,
+			GlobalLock:   true,
+			LockKey:      PackageLock,
+			ResourceID:   r.ResourceID,
+			Status:       Pending,
+			ResourceKind: ResourceKind("testResourceType"),
+		},
+	}
+
+	assert.Equal(t, expected, m.resources)
+}
+
 func TestAddResource(t *testing.T) {
 	t.Parallel()
 
@@ -126,6 +147,28 @@ func TestAddResource(t *testing.T) {
 
 		err = m.addResource(sameResource, sameAttributes)
 		assert.Error(t, err)
+	})
+
+	t.Run("keyed lock from params", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		p := newTestResourceWithLockKey("test", PasswdLock)
+		r, err := newResource(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = r.setKind(p)
+		assert.NoError(t, err)
+
+		err = m.addResource(r, p)
+		assert.NoError(t, err)
+
+		for _, res := range m.resources {
+			assert.True(t, res.GlobalLock)
+			assert.Equal(t, PasswdLock, res.LockKey)
+		}
 	})
 
 	t.Run("automatic global lock", func(t *testing.T) {
@@ -426,7 +469,7 @@ func TestResourceTimeout(t *testing.T) {
 		var wg sync.WaitGroup
 
 		wg.Add(1)
-		m.apply(*r, &wg, &lock, &sync.RWMutex{})
+		m.apply(*r, &wg, &lock, newLockSet())
 		wg.Wait()
 
 		// The failure is reported against the resource that overran, rather
@@ -450,8 +493,8 @@ func TestResourceTimeout(t *testing.T) {
 		var wg sync.WaitGroup
 
 		wg.Add(2)
-		go m.apply(m.resources[a.ResourceID], &wg, &lock, &sync.RWMutex{})
-		go m.apply(m.resources[b.ResourceID], &wg, &lock, &sync.RWMutex{})
+		go m.apply(m.resources[a.ResourceID], &wg, &lock, newLockSet())
+		go m.apply(m.resources[b.ResourceID], &wg, &lock, newLockSet())
 		wg.Wait()
 
 		assert.Equal(t, Failed, m.resources[a.ResourceID].Status)
@@ -478,9 +521,11 @@ func TestResourceTimeout(t *testing.T) {
 		var lock sync.RWMutex
 		var wg sync.WaitGroup
 
+		locks := newLockSet()
+
 		wg.Add(2)
-		m.apply(m.resources[a.ResourceID], &wg, &lock, &sync.RWMutex{})
-		m.apply(m.resources[b.ResourceID], &wg, &lock, &sync.RWMutex{})
+		m.apply(m.resources[a.ResourceID], &wg, &lock, locks)
+		m.apply(m.resources[b.ResourceID], &wg, &lock, locks)
 		wg.Wait()
 
 		// The abandoned operation is still running and still holds whatever it
@@ -500,7 +545,7 @@ func TestResourceTimeout(t *testing.T) {
 		var wg sync.WaitGroup
 
 		wg.Add(1)
-		m.apply(*r, &wg, &lock, &sync.RWMutex{})
+		m.apply(*r, &wg, &lock, newLockSet())
 		wg.Wait()
 
 		assert.Equal(t, Success, m.resources[r.ResourceID].Status)
@@ -523,7 +568,7 @@ func TestResourceTimeout(t *testing.T) {
 		}()
 
 		wg.Add(1)
-		m.apply(*r, &wg, &lock, &sync.RWMutex{})
+		m.apply(*r, &wg, &lock, newLockSet())
 		wg.Wait()
 
 		assert.Equal(t, Success, m.resources[r.ResourceID].Status)

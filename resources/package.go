@@ -26,7 +26,9 @@ func (p *Package) Description() string {
 }
 
 func (p *Package) Params() *viaduct.ResourceParams {
-	return viaduct.NewResourceParamsWithLock()
+	// Package managers take their own lock, and their maintainer scripts write
+	// the passwd database, so the package lock covers both
+	return viaduct.NewResourceParamsWithLockKey(viaduct.PackageLock)
 }
 
 // PreflightChecks sets default values for the parameters for a particular

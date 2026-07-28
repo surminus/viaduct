@@ -44,8 +44,8 @@ func (u *User) Description() string {
 
 func (u *User) Params() *viaduct.ResourceParams {
 	// useradd and friends lock the passwd and group databases, so avoid
-	// running alongside other locking resources
-	return viaduct.NewResourceParamsWithLock()
+	// running alongside other resources that write them
+	return viaduct.NewResourceParamsWithLockKey(viaduct.PasswdLock)
 }
 
 // PreflightChecks sets default values for the parameters for a particular

@@ -34,6 +34,10 @@ type Resource struct {
 	// GlobalLock will mean the resource will not run at the same time
 	// as other resources that have this set to true.
 	GlobalLock bool
+	// LockKey narrows the lock to a single domain, so the resource only
+	// waits for other resources using the same key. Empty means the
+	// resource is serialised against every other lock holder.
+	LockKey string `json:"LockKey,omitempty"`
 	// Timeout overrides how long this resource is given to run. Zero uses
 	// the manifest setting, and a negative duration means no timeout.
 	Timeout time.Duration `json:"Timeout,omitempty"`
@@ -52,6 +56,12 @@ type ResourceParams struct {
 	// GlobalLock can be set to ensure that the resource uses a global
 	// lock during operations
 	GlobalLock bool
+
+	// LockKey names the domain the lock applies to, such as PackageLock or
+	// PasswdLock. The resource then only waits for other resources using the
+	// same key, rather than for every lock holder in the run. Setting a key
+	// implies a lock.
+	LockKey string
 }
 
 // NewResourceParams creates a new ResourceParams.
@@ -60,9 +70,17 @@ func NewResourceParams() *ResourceParams {
 }
 
 // NewResourceParamsWithLock creates a new ResourceParams, but with
-// a global lock applied.
+// a global lock applied. The resource is serialised against every other lock
+// holder in the run: prefer NewResourceParamsWithLockKey when you know which
+// domain the resource contends on.
 func NewResourceParamsWithLock() *ResourceParams {
 	return &ResourceParams{GlobalLock: true}
+}
+
+// NewResourceParamsWithLockKey creates a new ResourceParams with a lock that
+// only applies to the given domain, such as PackageLock or PasswdLock.
+func NewResourceParamsWithLockKey(key string) *ResourceParams {
+	return &ResourceParams{GlobalLock: true, LockKey: key}
 }
 
 // ResourceAttributes implement different resource types, such as File or

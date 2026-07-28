@@ -106,9 +106,25 @@ func (m *Manifest) SetDep(r *Resource, name string) {
 	}
 }
 
+// WithLock serialises the resource against every other lock holder in the
+// run. Use WithLockKey when you know which domain the resource contends on.
 func (m *Manifest) WithLock(r *Resource) {
 	if v, ok := m.resources[r.ResourceID]; ok {
 		v.GlobalLock = true
+		// Escalating to the keyless lock has to drop any key the resource
+		// already had, or it stays confined to that domain
+		v.LockKey = ""
+		m.resources[r.ResourceID] = v
+	}
+}
+
+// WithLockKey takes a lock that only applies to the given domain, such as
+// PackageLock or PasswdLock, so the resource only waits for other resources
+// using the same key.
+func (m *Manifest) WithLockKey(r *Resource, key string) {
+	if v, ok := m.resources[r.ResourceID]; ok {
+		v.GlobalLock = true
+		v.LockKey = key
 		m.resources[r.ResourceID] = v
 	}
 }
@@ -117,8 +133,9 @@ func (m *Manifest) addResource(r *Resource, a ResourceAttributes) (err error) {
 	// Set attributes
 	r.Attributes = a
 
-	if a.Params().GlobalLock {
+	if params := a.Params(); params.GlobalLock || params.LockKey != "" {
 		r.GlobalLock = true
+		r.LockKey = params.LockKey
 	}
 
 	// Create a string representation of our resource
@@ -283,13 +300,15 @@ func (m *Manifest) Run() {
 		os.Exit(1)
 	}
 
-	var lock, globalLock sync.RWMutex
+	var lock sync.RWMutex
 	var wg sync.WaitGroup
+
+	locks := newLockSet()
 
 	wg.Add(len(m.resources))
 
 	for _, resource := range m.resources {
-		go m.apply(resource, &wg, &lock, &globalLock)
+		go m.apply(resource, &wg, &lock, locks)
 	}
 
 	wg.Wait()
@@ -365,7 +384,7 @@ func (m *Manifest) Run() {
 	}
 }
 
-func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, globalLock *sync.RWMutex) {
+func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, locks *lockSet) {
 	defer wg.Done()
 
 	if err := m.abandonedErr(); err != nil {
@@ -379,15 +398,15 @@ func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, glo
 	}
 
 	if r.GlobalLock {
-		globalLock.Lock()
-		defer globalLock.Unlock()
+		release := locks.acquire(r.LockKey)
+		defer release()
 	}
 
 	// The lock is released when a resource is abandoned, because holding it
-	// would block every other lock holder for the rest of the run. That means
-	// whatever was waiting for it has to check again: an abandoned operation
-	// still holds the real lock, dpkg's or passwd's, so starting the next one
-	// now would just fail against it.
+	// would block everything sharing the key for the rest of the run. That
+	// means whatever was waiting for it has to check again: an abandoned
+	// operation still holds the real lock, dpkg's or passwd's, so starting the
+	// next one now would just fail against it.
 	if err := m.abandonedErr(); err != nil {
 		m.fail(&r, lock, DependencyFailed, err)
 		return

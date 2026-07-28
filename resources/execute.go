@@ -21,9 +21,14 @@ type Execute struct {
 	Unless string
 
 	// Lock ensures the command does not run at the same time as other
-	// resources holding the global lock, such as Package. Useful for
-	// commands that need the dpkg lock, like apt-get or dpkg. Optional.
+	// resources holding a lock, such as Package. Useful for commands that
+	// need the dpkg lock, like apt-get or dpkg. Optional.
 	Lock bool
+
+	// LockKey narrows the lock to a single domain, such as
+	// viaduct.PackageLock, so the command only waits for other resources
+	// using the same key. Implies Lock. Optional.
+	LockKey string
 }
 
 // Exec is a shortcut for running a command
@@ -50,7 +55,7 @@ func (e *Execute) Description() string {
 }
 
 func (e *Execute) Params() *viaduct.ResourceParams {
-	return &viaduct.ResourceParams{GlobalLock: e.Lock}
+	return &viaduct.ResourceParams{GlobalLock: e.Lock || e.LockKey != "", LockKey: e.LockKey}
 }
 
 func (e *Execute) PreflightChecks(log *viaduct.Logger) error {

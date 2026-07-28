@@ -70,7 +70,13 @@ func (a *Apt) Description() string {
 // Params allows the resource to dynamically set options that will be passed
 // at compile time
 func (a *Apt) Params() *viaduct.ResourceParams {
-	return &viaduct.ResourceParams{GlobalLock: a.Update || a.UpdateOnly}
+	// Only the update takes the package lock; writing a sources file
+	// contends with nothing
+	if a.Update || a.UpdateOnly {
+		return viaduct.NewResourceParamsWithLockKey(viaduct.PackageLock)
+	}
+
+	return viaduct.NewResourceParams()
 }
 
 // PreflightChecks sets default values for the parameters for a particular
