@@ -423,6 +423,55 @@ func TestCollectFailures(t *testing.T) {
 		assert.Len(t, failures, 2)
 	})
 
+	t.Run("dependency failure with no root is listed on its own", func(t *testing.T) {
+		t.Parallel()
+
+		// A resource that gave up waiting has no failed dependency to blame,
+		// so it has to be reported in its own right
+		resources := map[ResourceID]Resource{
+			"file-1": {
+				ResourceID:   "file-1",
+				ResourceKind: "File",
+				Status:       Success,
+				Attributes:   testResource,
+			},
+			"exec-1": {
+				ResourceID:   "exec-1",
+				ResourceKind: "Execute",
+				Status:       DependencyFailed,
+				DependsOn:    []ResourceID{"file-1"},
+				Attributes:   testResource,
+				Error:        Error{Err: fmt.Errorf("gave up waiting"), Message: "gave up waiting"},
+			},
+		}
+
+		failures := collectFailures(resources)
+		assert.Len(t, failures, 1)
+		assert.Equal(t, "exec-1", failures[0].ResourceID)
+		assert.Equal(t, "gave up waiting", failures[0].Error)
+	})
+
+	t.Run("error without a status is still reported", func(t *testing.T) {
+		t.Parallel()
+
+		// Whether a run failed and what gets reported come from the same
+		// place, so a resource cannot fail a run without being named
+		resources := map[ResourceID]Resource{
+			"exec-1": {
+				ResourceID:   "exec-1",
+				ResourceKind: "Execute",
+				Status:       Pending,
+				Attributes:   testResource,
+				Error:        Error{Err: fmt.Errorf("something went wrong"), Message: "something went wrong"},
+			},
+		}
+
+		failures := collectFailures(resources)
+		assert.Len(t, failures, 1)
+		assert.Equal(t, "exec-1", failures[0].ResourceID)
+		assert.Equal(t, "something went wrong", failures[0].Error)
+	})
+
 	t.Run("no failures returns empty", func(t *testing.T) {
 		t.Parallel()
 

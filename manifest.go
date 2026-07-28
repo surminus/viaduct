@@ -250,23 +250,15 @@ func (m *Manifest) Run() {
 
 	timeTaken := time.Since(start).Round(time.Second).String()
 
-	var withErrors bool
-	for _, resource := range m.resources {
-		if resource.Err != nil {
-			withErrors = true
-			break
-		}
-	}
+	// Whether the run failed and what gets reported come from the same place,
+	// so a resource can never fail the run without being named.
+	failures := collectFailures(m.resources)
+	withErrors := len(failures) > 0
 
 	if Cli.JSON {
 		status := "success"
 		if withErrors {
 			status = "failed"
-		}
-
-		var failures []failureSummary
-		if withErrors {
-			failures = collectFailures(m.resources)
 		}
 
 		output := RunOutput{
@@ -293,7 +285,6 @@ func (m *Manifest) Run() {
 		}
 
 		if withErrors {
-			failures := collectFailures(m.resources)
 			printFailuresTree(failures, l)
 		}
 	}
@@ -333,6 +324,7 @@ func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, glo
 
 	err := m.dependencyCheck(&r, lock)
 	if err != nil {
+		m.setStatus(&r, lock, DependencyFailed)
 		m.setError(&r, lock, err)
 
 		if m.collector != nil {
@@ -404,7 +396,6 @@ func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
 			}
 
 			if d.Failed() {
-				m.setStatus(r, lock, DependencyFailed)
 				return fmt.Errorf("upstream dependency %s returned an error", d.ResourceID)
 			}
 
@@ -528,11 +519,14 @@ func collectFailures(resources map[ResourceID]Resource) []failureSummary {
 	depFailed := make(map[ResourceID]Resource)
 
 	for _, r := range resources {
-		switch r.Status {
-		case Failed:
-			roots = append(roots, r)
-		case DependencyFailed:
+		switch {
+		case r.Status == DependencyFailed:
 			depFailed[r.ResourceID] = r
+		case r.Status == Failed, r.Err != nil:
+			// A resource that recorded an error without a status is still a
+			// failure, and reporting it as a root is better than dropping it
+			// and leaving the run to fail with nothing to look at.
+			roots = append(roots, r)
 		}
 	}
 
