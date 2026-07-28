@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"syscall"
 
 	"github.com/surminus/viaduct"
 )
@@ -102,6 +104,28 @@ func writeManagedFile(
 	}
 
 	return perms.setFilePermissions(log, path)
+}
+
+// ownership is the user and group that own a path
+type ownership struct {
+	uid int
+	gid int
+}
+
+// fileOwnership returns who owns a path, so a resource managing one side of the
+// ownership can leave the other side as it is
+func fileOwnership(path string) (ownership, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return ownership{}, err
+	}
+
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return ownership{}, fmt.Errorf("cannot read ownership of %s", path)
+	}
+
+	return ownership{uid: int(stat.Uid), gid: int(stat.Gid)}, nil
 }
 
 // runCommand runs a system command, directing output according to the

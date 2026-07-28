@@ -25,6 +25,15 @@ type File struct {
 	// The parent is created with 0755 and default ownership.
 	CreateDirIfMissing bool
 
+	// PermissionsOnly manages the mode and ownership of a file whose content
+	// belongs to something else, leaving that content alone. The file has to
+	// exist already.
+	//
+	// Only what is set is applied: nothing is defaulted, so a Mode on its own
+	// leaves ownership as it is, and a User on its own leaves the mode and the
+	// group as they are.
+	PermissionsOnly bool
+
 	// Permissions manages permissions for the file
 	Permissions
 }
@@ -51,6 +60,13 @@ func DeleteFile(path string) *File {
 	return &File{Path: path, Delete: true}
 }
 
+// SetPermissions manages the mode of an existing file without touching its
+// content or its ownership. Set User, Group or the numeric equivalents on the
+// resource itself to manage ownership too.
+func SetPermissions(path string, mode os.FileMode) *File {
+	return &File{Path: path, PermissionsOnly: true, Permissions: Permissions{Mode: mode}}
+}
+
 func (f *File) Description() string {
 	return f.Path
 }
@@ -65,11 +81,34 @@ func (f *File) PreflightChecks(log *viaduct.Logger) error {
 		return fmt.Errorf("required parameter: Path")
 	}
 
+	if f.PermissionsOnly {
+		if f.Content != "" {
+			return fmt.Errorf("cannot set both Content and PermissionsOnly")
+		}
+
+		if f.Delete {
+			return fmt.Errorf("cannot set both Delete and PermissionsOnly")
+		}
+
+		// Nothing is defaulted here, because defaulting the ownership would
+		// mean taking ownership of a file the caller only asked to chmod
+		if f.Mode == 0 && !f.managesOwnership() {
+			return fmt.Errorf("PermissionsOnly needs one of Mode, User, Group, UID or GID")
+		}
+
+		return nil
+	}
+
 	if f.Mode == 0 {
 		f.Mode = 0o644
 	}
 
 	return f.preflightPermissions(pfile)
+}
+
+// managesOwnership reports whether any ownership was asked for
+func (f *File) managesOwnership() bool {
+	return f.User != "" || f.Group != "" || f.UID != 0 || f.GID != 0
 }
 
 // EmbeddedFile is a small helper function to helper reading
@@ -103,17 +142,23 @@ func NewTemplate(files embed.FS, path string, variables interface{}) string {
 }
 
 func (f *File) OperationName() string {
-	if f.Delete {
+	switch {
+	case f.Delete:
 		return "Delete"
+	case f.PermissionsOnly:
+		return "Update"
+	default:
+		return "Create"
 	}
-
-	return "Create"
 }
 
 func (f *File) Run(log *viaduct.Logger) error {
-	if f.Delete {
+	switch {
+	case f.Delete:
 		return f.deleteFile(log)
-	} else {
+	case f.PermissionsOnly:
+		return f.setPermissions(log)
+	default:
 		return f.createFile(log)
 	}
 }
@@ -121,6 +166,55 @@ func (f *File) Run(log *viaduct.Logger) error {
 // Create creates or updates a file
 func (f *File) createFile(log *viaduct.Logger) error {
 	return writeManagedFile(log, f.Path, f.Content, &f.Permissions, f.CreateDirIfMissing)
+}
+
+// setPermissions applies the mode and ownership to a file that already exists,
+// leaving its content alone
+func (f *File) setPermissions(log *viaduct.Logger) error {
+	path := viaduct.ExpandPath(f.Path)
+
+	if viaduct.Cli.DryRun {
+		log.Info("permissions-managed", "path", path)
+		return nil
+	}
+
+	// There is no content to fall back on, so a missing file is an error
+	// rather than something to create
+	if !viaduct.FileExists(path) {
+		return fmt.Errorf("file does not exist: %s", path)
+	}
+
+	if f.managesOwnership() {
+		uid, gid, err := f.resolveOwnership()
+		if err != nil {
+			return err
+		}
+
+		// Whichever side was not asked for keeps the owner it has, so setting
+		// a User does not hand the group to root
+		current, err := fileOwnership(path)
+		if err != nil {
+			return err
+		}
+
+		if f.User == "" && f.UID == 0 {
+			uid = current.uid
+		}
+
+		if f.Group == "" && f.GID == 0 {
+			gid = current.gid
+		}
+
+		if err := applyChown(log, path, uid, gid); err != nil {
+			return err
+		}
+	}
+
+	if f.Mode != 0 {
+		return applyChmod(log, path, f.Mode)
+	}
+
+	return nil
 }
 
 // Delete deletes a file

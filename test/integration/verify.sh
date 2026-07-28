@@ -34,6 +34,10 @@ grep -q "^chained$" /opt/viaduct-chain/file || fail "chain file content wrong"
 [ -d /opt/viaduct-createp/nested ] || fail "createp parent dir not created"
 grep -q "^created with parents$" /opt/viaduct-createp/nested/file || fail "createp file content wrong"
 
+# File permissions without content
+[ "$(stat -c %a /opt/viaduct-test/unmanaged)" = "600" ] || fail "unmanaged file has wrong mode"
+grep -q "^unmanaged$" /opt/viaduct-test/unmanaged || fail "unmanaged file content was overwritten"
+
 # Template
 grep -q "^Hello, viaduct!$" /opt/viaduct-test/greeting || fail "template not rendered"
 

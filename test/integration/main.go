@@ -62,6 +62,11 @@ func main() {
 	// already exist, without a separately declared Directory resource
 	m.Add(resources.CreateFileP("/opt/viaduct-createp/nested/file", "created with parents\n"))
 
+	// Permissions can be managed on a file whose content belongs to
+	// something else, here a file written by an Execute rather than by File
+	unmanaged := m.Add(resources.Exec("echo unmanaged > /opt/viaduct-test/unmanaged"), dir)
+	m.Add(resources.SetPermissions("/opt/viaduct-test/unmanaged", 0o600), unmanaged)
+
 	// Template rendering
 	tmpl := m.Add(resources.CreateFile("/opt/viaduct-test/greeting.tmpl", "Hello, {{.name}}!\n"), dir)
 	m.Add(&resources.Template{
