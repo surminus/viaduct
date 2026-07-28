@@ -19,6 +19,11 @@ type Package struct {
 
 	// Uninstall will uninstall the specified packages.
 	Uninstall bool
+
+	// Purge uninstalls the specified packages and removes their
+	// configuration, like "apt-get purge". Not every package manager has an
+	// equivalent, so this is only supported on Debian and Arch derivatives.
+	Purge bool
 }
 
 func (p *Package) Description() string {
@@ -43,8 +48,23 @@ func (p *Package) PreflightChecks(log *viaduct.Logger) error {
 		return fmt.Errorf("package resource must be run as root")
 	}
 
+	if p.Purge && !purgeSupported(viaduct.Attribute.Platform.ID) {
+		return fmt.Errorf("purge is not supported on %s", viaduct.Attribute.Platform.ID)
+	}
+
 	// Set optional defaults here
 	return nil
+}
+
+// purgeSupported reports whether the platform's package manager can remove a
+// package's configuration along with the package itself
+func purgeSupported(platform string) bool {
+	switch platform {
+	case "debian", "ubuntu", "linuxmint", "arch", "manjaro":
+		return true
+	default:
+		return false
+	}
 }
 
 // P is shortcut for declaring a new Package resource
@@ -61,20 +81,40 @@ func Pkgs(names ...string) *Package {
 	}
 }
 
-func (p *Package) OperationName() string {
-	if p.Uninstall {
-		return "Uninstall"
+// PurgePkg is a shortcut for purging a package and its configuration
+func PurgePkg(name string) *Package {
+	return &Package{
+		Names: []string{name},
+		Purge: true,
 	}
+}
 
-	return "Install"
+// PurgePkgs is a shortcut for purging multiple packages and their
+// configuration
+func PurgePkgs(names ...string) *Package {
+	return &Package{
+		Names: names,
+		Purge: true,
+	}
+}
+
+func (p *Package) OperationName() string {
+	switch {
+	case p.Purge:
+		return "Purge"
+	case p.Uninstall:
+		return "Uninstall"
+	default:
+		return "Install"
+	}
 }
 
 func (p *Package) Run(log *viaduct.Logger) error {
-	if p.Uninstall {
+	if p.Uninstall || p.Purge {
 		return p.uninstall(log)
-	} else {
-		return p.install(log)
 	}
+
+	return p.install(log)
 }
 
 func (p *Package) install(log *viaduct.Logger) error {
@@ -87,41 +127,76 @@ func (p *Package) install(log *viaduct.Logger) error {
 }
 
 func (p *Package) uninstall(log *viaduct.Logger) error {
-	log.Info("uninstalling", "packages", strings.Join(p.Names, ", "))
+	if p.Purge {
+		log.Info("purging", "packages", strings.Join(p.Names, ", "))
+	} else {
+		log.Info("uninstalling", "packages", strings.Join(p.Names, ", "))
+	}
+
 	if viaduct.Cli.DryRun {
 		return nil
 	}
 
-	return removePkg(viaduct.Attribute.Platform.ID, p.Names, p.Verbose)
+	return removePkg(viaduct.Attribute.Platform.ID, p.Names, p.Verbose, p.Purge)
 }
 
 func installPkg(platform string, pkgs []string, verbose bool) error {
+	args, err := installArgs(platform, pkgs)
+	if err != nil {
+		return err
+	}
+
+	return runPkgCmd(args, verbose)
+}
+
+func removePkg(platform string, pkgs []string, verbose, purge bool) error {
+	args, err := removeArgs(platform, pkgs, purge)
+	if err != nil {
+		return err
+	}
+
+	return runPkgCmd(args, verbose)
+}
+
+// installArgs builds the command that installs packages on a platform
+func installArgs(platform string, pkgs []string) ([]string, error) {
 	switch platform {
 	case "debian", "ubuntu", "linuxmint":
-		return aptGetCmd("install", pkgs, verbose)
+		return aptGetArgs("install", pkgs), nil
 	case "fedora", "centos":
-		return dnfCmd("install", pkgs, verbose)
+		return dnfArgs("install", pkgs), nil
 	case "arch", "manjaro":
-		return pacmanCmd("-S", pkgs, verbose)
+		return pacmanArgs("-S", pkgs), nil
 	default:
-		return fmt.Errorf("unrecognised distribution: %s", viaduct.Attribute.Platform.ID)
+		return nil, fmt.Errorf("unrecognised distribution: %s", platform)
 	}
 }
 
-func removePkg(platform string, pkgs []string, verbose bool) error {
+// removeArgs builds the command that removes packages on a platform, purging
+// their configuration too when asked
+func removeArgs(platform string, pkgs []string, purge bool) ([]string, error) {
 	switch platform {
 	case "debian", "ubuntu", "linuxmint":
-		return aptGetCmd("remove", pkgs, verbose)
+		if purge {
+			return aptGetArgs("purge", pkgs), nil
+		}
+
+		return aptGetArgs("remove", pkgs), nil
 	case "fedora", "centos":
-		return dnfCmd("remove", pkgs, verbose)
+		return dnfArgs("remove", pkgs), nil
 	case "arch", "manjaro":
-		return pacmanCmd("-R", pkgs, verbose)
+		// -n drops the configuration rather than leaving .pacsave files
+		if purge {
+			return pacmanArgs("-Rn", pkgs), nil
+		}
+
+		return pacmanArgs("-R", pkgs), nil
 	default:
-		return fmt.Errorf("unrecognised distribution: %s", viaduct.Attribute.Platform.ID)
+		return nil, fmt.Errorf("unrecognised distribution: %s", platform)
 	}
 }
 
-func installCmd(args []string, verbose bool) (err error) {
+func runPkgCmd(args []string, verbose bool) (err error) {
 	// nolint:gosec
 	cmd := exec.Command(args[0], args[1:]...)
 
@@ -140,30 +215,24 @@ func installCmd(args []string, verbose bool) (err error) {
 	return err
 }
 
-func aptGetCmd(command string, packages []string, verbose bool) error {
+func aptGetArgs(command string, packages []string) []string {
 	args := []string{"apt-get", command, "-y"}
 
-	args = append(args, packages...)
-
-	return installCmd(args, verbose)
+	return append(args, packages...)
 }
 
-func dnfCmd(command string, packages []string, verbose bool) error {
+func dnfArgs(command string, packages []string) []string {
 	args := []string{"dnf", command, "-y"}
 
-	args = append(args, packages...)
-
-	return installCmd(args, verbose)
+	return append(args, packages...)
 }
 
-func pacmanCmd(command string, packages []string, verbose bool) error {
+func pacmanArgs(command string, packages []string) []string {
 	args := []string{"pacman", command, "--noconfirm"}
 
 	if command == "-S" {
 		args = append(args, "--needed")
 	}
 
-	args = append(args, packages...)
-
-	return installCmd(args, verbose)
+	return append(args, packages...)
 }

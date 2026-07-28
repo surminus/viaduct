@@ -33,6 +33,17 @@ func main() {
 		m.Add(resources.Pkg("curl"))
 	}
 
+	// Install a package and purge it again. Only the Debian derivatives are
+	// covered here because "hello" is not packaged everywhere, and Fedora has
+	// no purge at all
+	switch viaduct.Attribute.Platform.ID {
+	case "debian", "ubuntu", "linuxmint":
+		m.ChainFrom(update,
+			resources.Pkg("hello"),
+			resources.PurgePkg("hello"),
+		)
+	}
+
 	// Users: a system user, a user with an explicit UID/GID, and adding
 	// supplementary groups to an existing user
 	m.Add(resources.SystemUser("testsvc"))

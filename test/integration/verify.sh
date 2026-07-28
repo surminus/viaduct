@@ -10,6 +10,13 @@ fail() {
 # Package
 command -v curl >/dev/null || fail "curl not installed"
 
+# Package purge, on the platforms the config exercises it
+if command -v dpkg >/dev/null; then
+	if command -v hello >/dev/null; then
+		fail "hello was installed but not purged"
+	fi
+fi
+
 # User
 id testsvc >/dev/null || fail "testsvc user missing"
 getent passwd testsvc | grep -q "/bin/false" || fail "testsvc shell is not /bin/false"
