@@ -299,6 +299,58 @@ func TestResourceChain(t *testing.T) {
 	})
 }
 
+func TestDependencyCycle(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no cycle in a chain", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		m.Chain(
+			newTestResource("a"),
+			newTestResource("b"),
+			newTestResource("c"),
+		)
+
+		assert.NoError(t, m.dependencyCycle())
+	})
+
+	t.Run("detects a cycle between two resources", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		a := m.Add(newTestResource("a"))
+		b := m.Add(newTestResource("b"), a)
+		m.SetDep(a, string(b.ResourceID))
+
+		err := m.dependencyCycle()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "dependency cycle detected")
+		assert.Contains(t, err.Error(), string(a.ResourceID))
+		assert.Contains(t, err.Error(), string(b.ResourceID))
+	})
+
+	t.Run("detects a resource depending on itself", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		a := m.Add(newTestResource("a"))
+		m.SetDep(a, string(a.ResourceID))
+
+		assert.Error(t, m.dependencyCycle())
+	})
+
+	t.Run("ignores dependencies that are not in the manifest", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		a := m.Add(newTestResource("a"))
+		m.SetDep(a, "does-not-exist")
+
+		assert.NoError(t, m.dependencyCycle())
+	})
+}
+
 func TestCollectFailures(t *testing.T) {
 	t.Parallel()
 

@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -208,6 +209,13 @@ func (m *Manifest) Run() {
 
 	if Cli.JSON {
 		m.collector = newResultCollector()
+	}
+
+	// A cycle can never make progress, so fail before any resource does work
+	// rather than waiting for the dependency timeout to notice.
+	if err := m.dependencyCycle(); err != nil {
+		l.Error("dependency-cycle", "error", err.Error())
+		os.Exit(1)
 	}
 
 	var preflightFailed bool
@@ -414,6 +422,82 @@ func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+// dependencyCycle returns an error describing a cycle in the dependency graph,
+// if there is one. Dependencies on resources that aren't in the manifest are
+// ignored, matching how they are skipped during a run.
+func (m *Manifest) dependencyCycle() error {
+	const (
+		unvisited = iota
+		visiting
+		visited
+	)
+
+	state := make(map[ResourceID]int, len(m.resources))
+	var path []ResourceID
+
+	var walk func(id ResourceID) []ResourceID
+	walk = func(id ResourceID) []ResourceID {
+		state[id] = visiting
+		path = append(path, id)
+
+		for _, dep := range sortedIDs(m.resources[id].DependsOn) {
+			if _, ok := m.resources[dep]; !ok {
+				continue
+			}
+
+			switch state[dep] {
+			case visiting:
+				// Trim the path back to where the cycle starts, and close it.
+				for i, p := range path {
+					if p == dep {
+						return append(append([]ResourceID(nil), path[i:]...), dep)
+					}
+				}
+			case unvisited:
+				if cycle := walk(dep); cycle != nil {
+					return cycle
+				}
+			}
+		}
+
+		path = path[:len(path)-1]
+		state[id] = visited
+
+		return nil
+	}
+
+	ids := make([]ResourceID, 0, len(m.resources))
+	for id := range m.resources {
+		ids = append(ids, id)
+	}
+
+	// Walk in a stable order so the reported cycle doesn't change between runs.
+	for _, id := range sortedIDs(ids) {
+		if state[id] != unvisited {
+			continue
+		}
+
+		if cycle := walk(id); cycle != nil {
+			names := make([]string, 0, len(cycle))
+			for _, id := range cycle {
+				names = append(names, string(id))
+			}
+
+			return fmt.Errorf("dependency cycle detected: %s", strings.Join(names, " -> "))
+		}
+	}
+
+	return nil
+}
+
+func sortedIDs(ids []ResourceID) []ResourceID {
+	out := make([]ResourceID, len(ids))
+	copy(out, ids)
+	slices.Sort(out)
+
+	return out
 }
 
 func (m *Manifest) setStatus(r *Resource, lock *sync.RWMutex, s Status) {
