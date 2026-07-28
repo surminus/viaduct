@@ -1,7 +1,9 @@
 package resources
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -142,22 +144,30 @@ func AptUpdate() *Apt {
 
 // DistUpgrade performs an apt-get dist-upgrade
 func DistUpgrade() *Execute {
-	return ExecLocked("apt-get dist-upgrade -q -y")
+	return aptExec("apt-get", "dist-upgrade", "-q", "-y")
 }
 
 // AptAutoremove removes packages that are no longer required
 func AptAutoremove() *Execute {
-	return ExecLocked("apt-get autoremove -q -y")
+	return aptExec("apt-get", "autoremove", "-q", "-y")
 }
 
 // AptHold marks packages as held back from upgrades
 func AptHold(names ...string) *Execute {
-	return ExecLocked("apt-mark hold " + strings.Join(names, " "))
+	return aptExec(append([]string{"apt-mark", "hold"}, names...)...)
 }
 
 // InstallDeb installs a deb package from a file using dpkg
 func InstallDeb(path string) *Execute {
-	return ExecLocked("dpkg -i " + path)
+	return aptExec("dpkg", "-i", viaduct.ExpandPath(path))
+}
+
+// aptExec builds a command that runs without a shell, so package names and
+// paths containing spaces or shell metacharacters are passed through
+// unmangled. It takes the package lock rather than the global one, so it
+// serialises against other package work only.
+func aptExec(args ...string) *Execute {
+	return &Execute{Args: args, LockKey: viaduct.PackageLock}
 }
 
 func (a *Apt) OperationName() string {
@@ -198,9 +208,7 @@ func (a *Apt) updateApt(log *viaduct.Logger) error {
 
 	log.Info("updating")
 
-	command := []string{"apt-get", "update", "-y"}
-
-	cmd := exec.Command("bash", "-c", strings.Join(command, " "))
+	cmd := exec.Command("apt-get", "update", "-y")
 	cmd.Stderr = aptStderr()
 
 	if err := cmd.Run(); err != nil {
@@ -346,7 +354,9 @@ func (a *Apt) sourceContent(log *viaduct.Logger) (string, error) {
 	return strings.Join(content, "\n"), nil
 }
 
-// receiveSigningKey will fetch a signing key
+// receiveSigningKey will fetch a signing key. The commands run without a
+// shell, so a URL or key ID containing shell metacharacters is passed through
+// as a literal argument rather than being interpreted.
 func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
 	if viaduct.FileExists(a.signingKeyPath()) {
 		log.Noop("signing-key-exists", "path", a.signingKeyPath())
@@ -354,49 +364,78 @@ func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
 	}
 
 	if a.SigningKeyURL != "" {
-		command := []string{"curl", "-sS", a.SigningKeyURL, "|", "gpg", "--dearmor", "|", "tee", a.signingKeyPath()}
-
-		cmd := exec.Command("bash", "-c", strings.Join(command, " "))
+		// -f so an HTTP error is an error: without it curl exits 0 and the 404
+		// body goes through gpg --dearmor, which passes non-armoured input
+		// straight through, and the error page is installed as the keyring. The
+		// existence check above then treats it as valid on every later run
+		// nolint:gosec
+		cmd := exec.Command("curl", "-sSfL", a.SigningKeyURL)
 		cmd.Stderr = aptStderr()
 
-		if err := cmd.Run(); err != nil {
+		key, err := cmd.Output()
+		if err != nil {
+			return fmt.Errorf("could not fetch signing key from %s: %w", a.SigningKeyURL, err)
+		}
+
+		if err := writeCommandOutput(a.signingKeyPath(), bytes.NewReader(key), "gpg", "--dearmor"); err != nil {
 			return err
 		}
 	}
 
 	if a.SigningKey != "" {
 		// First we fetch the key using GPG
-		command := []string{"gpg", "--recv-keys", "--keyserver", "keyserver.ubuntu.com", a.SigningKey}
-
-		cmd := exec.Command("bash", "-c", strings.Join(command, " "))
-		cmd.Stderr = aptStderr()
-
-		if err := cmd.Run(); err != nil {
-			return err
-		}
-
-		// Then we export the key to disk
-		command = []string{"gpg", "--export", a.SigningKey, "|", "tee", a.signingKeyPath()}
-
-		cmd = exec.Command("bash", "-c", strings.Join(command, " "))
-		cmd.Stderr = aptStderr()
-
-		if err := cmd.Run(); err != nil {
+		if err := runCommand("gpg", "--recv-keys", "--keyserver", "keyserver.ubuntu.com", a.SigningKey); err != nil {
 			return err
 		}
 
 		// Ensure that the key is deleted from GPG
 		defer func() {
-			command = []string{"gpg", "--delete-keys", "--yes", a.SigningKey}
-			cmd = exec.Command("bash", "-c", strings.Join(command, " "))
-			cmd.Env = []string{"DEBIAN_FRONTEND=noninteractive"}
 			//nolint:errcheck
-			cmd.Run()
+			runCommand("gpg", "--delete-keys", "--yes", a.SigningKey)
 		}()
+
+		// Then we export the key to disk
+		if err := writeCommandOutput(a.signingKeyPath(), nil, "gpg", "--export", a.SigningKey); err != nil {
+			return err
+		}
 	}
 
 	log.Info("signing-key-fetched", "path", a.signingKeyPath())
 	return nil
+}
+
+// writeCommandOutput runs a command and writes its standard output to path.
+// The content goes to a temporary file that is moved into place, so a command
+// that fails part way through does not leave a truncated file behind for the
+// next run to treat as valid.
+func writeCommandOutput(path string, stdin io.Reader, args ...string) error {
+	tmp := path + ".viaduct-tmp"
+
+	f, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+
+	// nolint:gosec
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Stdin = stdin
+	cmd.Stdout = f
+	cmd.Stderr = aptStderr()
+
+	if runErr := cmd.Run(); runErr != nil {
+		f.Close()
+		os.Remove(tmp)
+
+		return runErr
+	}
+
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+
+		return err
+	}
+
+	return os.Rename(tmp, path)
 }
 
 func (a *Apt) signingKeyPath() string {
