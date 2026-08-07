@@ -2,6 +2,16 @@
 
 A configuration management framework written in Go.
 
+## v0.7.1
+
+### Added
+
+- A `NoRecursive` option on `Directory`, with a `DirShallow` shortcut, to apply
+  the ownership to the directory itself rather than to everything inside it.
+  The default is unchanged, but recursing is wrong when the directory is only a
+  container for paths owned by something else, and fails outright when one of
+  those paths cannot be chowned, such as a read-only mount
+
 ## v0.7.0
 
 ### Added
