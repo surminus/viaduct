@@ -2,6 +2,7 @@ package resources
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -37,6 +38,47 @@ func TestDirectory(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	})
+
+	t.Run("no recursive chown", func(t *testing.T) {
+		t.Parallel()
+
+		if os.Geteuid() == 0 {
+			t.Skip("root walks a directory regardless of its permissions")
+		}
+
+		path := "test/acceptance/directory/test_no_recursive_chown"
+		// A path the ownership cannot be applied to stands in for the real
+		// case, such as a read-only mount
+		unreachable := filepath.Join(path, "unreachable")
+
+		err := os.MkdirAll(unreachable, 0o755)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = os.Chmod(unreachable, 0o000)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Cleanup(func() {
+			_ = os.Chmod(unreachable, 0o755)
+			_ = os.RemoveAll(path)
+		})
+
+		recursive := newTestDirectory(t, path)
+		assert.Error(t, recursive.Run(testLogger))
+
+		shallow := DirShallow(path)
+		err = shallow.PreflightChecks(testLogger)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		assert.NoError(t, shallow.Run(testLogger))
+		assert.Equal(t, true, viaduct.DirExists(path))
+		assert.Equal(t, true, viaduct.MatchChmod(path, DefaultDirectoryPermissions))
 	})
 
 	t.Run("delete", func(t *testing.T) {

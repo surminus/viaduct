@@ -85,6 +85,15 @@ func main() {
 	// already exist, without a separately declared Directory resource
 	m.Add(resources.CreateFileP("/opt/viaduct-createp/nested/file", "created with parents\n"))
 
+	// NoRecursive applies the ownership to the directory itself, so the file
+	// inside it keeps the owner it already has
+	shallowFile := m.Add(resources.CreateFileP("/opt/viaduct-shallow/owned", "owned by root\n"))
+	m.Add(&resources.Directory{
+		Path:        "/opt/viaduct-shallow",
+		NoRecursive: true,
+		Permissions: resources.Permissions{UID: 1500, GID: 1500},
+	}, shallowFile)
+
 	// Permissions can be managed on a file whose content belongs to
 	// something else, here a file written by an Execute rather than by File
 	unmanaged := m.Add(resources.Exec("echo unmanaged > /opt/viaduct-test/unmanaged"), dir)

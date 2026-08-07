@@ -14,6 +14,11 @@ type Directory struct {
 	// Delete removes the directory if set to true.
 	Delete bool
 
+	// NoRecursive applies the ownership to the directory itself, leaving
+	// whatever is inside it alone. The default is to apply it to the whole
+	// tree.
+	NoRecursive bool
+
 	// Permissions manages permissions for the directory
 	Permissions
 }
@@ -21,6 +26,12 @@ type Directory struct {
 // Dir creates a new directory
 func Dir(path string) *Directory {
 	return &Directory{Path: path}
+}
+
+// DirShallow creates a directory whose ownership applies to the directory
+// itself, leaving whatever is inside it as it is
+func DirShallow(path string) *Directory {
+	return &Directory{Path: path, NoRecursive: true}
 }
 
 func (d *Directory) Description() string {
@@ -80,7 +91,7 @@ func (d *Directory) createDirectory(log *viaduct.Logger) error {
 	return d.setDirectoryPermissions(
 		log,
 		path,
-		true,
+		!d.NoRecursive,
 	)
 }
 
