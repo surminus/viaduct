@@ -305,9 +305,17 @@ func (m *Manifest) Run() {
 
 	locks := newLockSet()
 
-	wg.Add(len(m.resources))
-
+	// Take a copy before starting anything, because each resource writes its
+	// status back into m.resources as it runs. Ranging over the map while
+	// those writes happen is a fatal concurrent map iteration and write.
+	resources := make([]Resource, 0, len(m.resources))
 	for _, resource := range m.resources {
+		resources = append(resources, resource)
+	}
+
+	wg.Add(len(resources))
+
+	for _, resource := range resources {
 		go m.apply(resource, &wg, &lock, locks)
 	}
 

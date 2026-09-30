@@ -791,3 +791,24 @@ func TestCollectFailures(t *testing.T) {
 		assert.Empty(t, failures)
 	})
 }
+
+func TestRun(t *testing.T) {
+	t.Parallel()
+
+	t.Run("resources finishing while others are still starting", func(t *testing.T) {
+		t.Parallel()
+
+		// Enough resources that the first ones finish, and write their status
+		// back, before the last ones have been started
+		m := New()
+		for i := range 1000 {
+			m.Add(newTestResource(fmt.Sprintf("resource-%d", i)))
+		}
+
+		m.Run()
+
+		for _, r := range m.resources {
+			assert.Equal(t, Success, r.Status, r.ResourceID)
+		}
+	})
+}
