@@ -33,7 +33,7 @@ func TestExecute(t *testing.T) {
 		e.Command = "false"
 
 		err := e.Run(testLogger)
-		assert.Error(t, err)
+		assert.ErrorContains(t, err, "exit status 1")
 	})
 
 	t.Run("runs unless in the working directory", func(t *testing.T) {

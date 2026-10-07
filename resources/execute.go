@@ -121,7 +121,7 @@ func (e *Execute) runExecute(log *viaduct.Logger) error {
 	cmd.Dir = e.WorkingDirectory
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("command failed: %s", e.Description())
+		return fmt.Errorf("command failed: %s: %w", e.Description(), err)
 	}
 	log.Info("finished", "command", e.Description())
 
