@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -33,6 +34,16 @@ func TestExecute(t *testing.T) {
 
 		err := e.Run(testLogger)
 		assert.Error(t, err)
+	})
+
+	t.Run("runs unless in the working directory", func(t *testing.T) {
+		dir := t.TempDir()
+		assert.NoError(t, os.WriteFile(filepath.Join(dir, "done"), nil, 0o600))
+
+		e := ExecUnless("false", "test -f done")
+		e.WorkingDirectory = dir
+
+		assert.NoError(t, e.Run(testLogger))
 	})
 }
 

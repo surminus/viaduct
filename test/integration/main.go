@@ -124,6 +124,15 @@ func main() {
 	m.Add(resources.ExecLocked("touch /opt/viaduct-test/locked"), dir)
 	m.Add(resources.ExecUnless("touch /opt/viaduct-test/should-not-exist", "true"), dir)
 
+	// Unless guards with a relative path, which only find the guard file
+	// when they run in WorkingDirectory
+	guard := m.Add(resources.Exec("touch /opt/viaduct-test/guard"), dir)
+	m.Add(&resources.Execute{
+		Command:          "touch exec-unless-relative",
+		WorkingDirectory: "/opt/viaduct-test",
+		Unless:           "test -f guard",
+	}, guard)
+
 	// Sysctl: /proc/sys is read-only during a container build, so use the
 	// current runtime value. This exercises writing the config file and
 	// the noop path of the apply

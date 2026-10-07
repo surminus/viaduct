@@ -70,6 +70,9 @@ grep -q "^setting=enabled$" /opt/viaduct-test/lines || fail "setting line not re
 [ -f /opt/viaduct-test/locked ] || fail "locked execute did not run"
 [ ! -f /opt/viaduct-test/should-not-exist ] || fail "unless guard did not prevent execution"
 
+# Unless in WorkingDirectory
+[ ! -f /opt/viaduct-test/exec-unless-relative ] || fail "execute unless guard did not run in working directory"
+
 # Sysctl
 [ -f /etc/sysctl.d/99-viaduct-test.conf ] || fail "sysctl config missing"
 grep -q "vm.swappiness" /etc/sysctl.d/99-viaduct-test.conf || fail "sysctl config content wrong"

@@ -26,7 +26,7 @@ type Execute struct {
 
 	// Unless is another command to run, which if exits cleanly signifies
 	// that we should not run the execute command. It runs through bash in the
-	// same way as Command. Optional.
+	// same way as Command, in WorkingDirectory. Optional.
 	Unless string
 
 	// Lock ensures the command does not run at the same time as other
@@ -106,15 +106,9 @@ func (e *Execute) Run(log *viaduct.Logger) error {
 
 // Run runs the given command
 func (e *Execute) runExecute(log *viaduct.Logger) error {
-	if e.Unless != "" {
-		// nolint:gosec
-		ucmd := exec.Command("bash", "-c", e.Unless)
-		setCommandOutput(ucmd)
-
-		if err := ucmd.Run(); err == nil {
-			log.Noop("skipped", "command", e.Description())
-			return nil
-		}
+	if unlessSucceeds(e.Unless, e.WorkingDirectory) {
+		log.Noop("skipped", "command", e.Description())
+		return nil
 	}
 
 	log.Info("started", "command", e.Description())
@@ -144,6 +138,23 @@ func (e *Execute) command() *exec.Cmd {
 
 	// nolint:gosec
 	return exec.Command("bash", "-c", e.Command)
+}
+
+// unlessSucceeds runs an Unless guard through bash in dir, reporting whether
+// it exited cleanly. An empty guard never succeeds, so the resource runs. The
+// guard shares the resource's working directory so a relative path in it
+// checks the same place the resource acts on.
+func unlessSucceeds(unless, dir string) bool {
+	if unless == "" {
+		return false
+	}
+
+	// nolint:gosec
+	cmd := exec.Command("bash", "-c", unless)
+	setCommandOutput(cmd)
+	cmd.Dir = dir
+
+	return cmd.Run() == nil
 }
 
 func setCommandOutput(cmd *exec.Cmd) {
