@@ -70,8 +70,13 @@ grep -q "^setting=enabled$" /opt/viaduct-test/lines || fail "setting line not re
 [ -f /opt/viaduct-test/locked ] || fail "locked execute did not run"
 [ ! -f /opt/viaduct-test/should-not-exist ] || fail "unless guard did not prevent execution"
 
+# Shell
+grep -q "^from a heredoc$" /opt/viaduct-test/heredoc || fail "sh heredoc not written"
+[ "$(wc -l < /opt/viaduct-test/pipeline)" = "3" ] || fail "bash pipeline not written"
+
 # Unless in WorkingDirectory
 [ ! -f /opt/viaduct-test/exec-unless-relative ] || fail "execute unless guard did not run in working directory"
+[ ! -f /opt/viaduct-test/shell-unless-relative ] || fail "shell unless guard did not run in working directory"
 
 # Sysctl
 [ -f /etc/sysctl.d/99-viaduct-test.conf ] || fail "sysctl config missing"

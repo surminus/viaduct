@@ -135,7 +135,7 @@ package covers the common building blocks:
 - `Archive` for extracting tar and zip archives
 - `Sysctl` for writing and applying kernel parameters
 - `Download` and `Git` for fetching files and cloning repositories
-- `Execute` for running arbitrary commands
+- `Execute` for running arbitrary commands, and `Shell` for multi-line scripts
 
 Most resources have shortcut constructors, such as `resources.Dir`,
 `resources.Pkg` and `resources.SystemUser`. See the package docs for the full

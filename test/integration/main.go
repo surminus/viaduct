@@ -124,11 +124,27 @@ func main() {
 	m.Add(resources.ExecLocked("touch /opt/viaduct-test/locked"), dir)
 	m.Add(resources.ExecUnless("touch /opt/viaduct-test/should-not-exist", "true"), dir)
 
+	// Shell scripts, with an indented heredoc under sh and a pipeline under
+	// bash
+	m.Add(resources.Sh(`
+		cat > /opt/viaduct-test/heredoc <<EOF
+		from a heredoc
+		EOF
+	`), dir)
+	m.Add(resources.Bash(`
+		echo one two three | tr ' ' '\n' > /opt/viaduct-test/pipeline
+	`), dir)
+
 	// Unless guards with a relative path, which only find the guard file
 	// when they run in WorkingDirectory
 	guard := m.Add(resources.Exec("touch /opt/viaduct-test/guard"), dir)
 	m.Add(&resources.Execute{
 		Command:          "touch exec-unless-relative",
+		WorkingDirectory: "/opt/viaduct-test",
+		Unless:           "test -f guard",
+	}, guard)
+	m.Add(&resources.Shell{
+		Script:           "touch shell-unless-relative",
 		WorkingDirectory: "/opt/viaduct-test",
 		Unless:           "test -f guard",
 	}, guard)
