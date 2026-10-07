@@ -2,6 +2,34 @@
 
 A configuration management framework written in Go.
 
+## v0.8.0
+
+### Added
+
+- A new `Shell` resource for running multi-line scripts, with `Bash` and `Sh`
+  shortcuts. The script runs in strict mode by default, stopping at the first
+  failing command or unset variable, and under bash failing a pipeline when any
+  part of it fails. `NoStrict` turns this off. Indentation shared by every line
+  is removed first, so a script can be written as an indented raw string and
+  heredocs inside it still work
+
+### Changed
+
+- **`Execute` runs its `Unless` guard in `WorkingDirectory`.** It used to run in
+  viaduct's own working directory, so a guard with a relative path, such as
+  `test -f build/out`, checked the wrong place and the command ran on every
+  converge. A guard that relied on the old behaviour needs an absolute path
+- The error from a failed `Execute` includes the underlying cause, such as
+  `exit status 1` or a missing working directory
+- Dependencies are updated, including `go-git/go-git/v5` to v5.19.3 and
+  `golang.org/x/crypto` to v0.57.0
+
+### Fixed
+
+- A run could crash with a fatal concurrent map iteration and write when a
+  resource finished quickly, such as an up-to-date directory, while the
+  manifest was still starting the others
+
 ## v0.7.1
 
 ### Added
