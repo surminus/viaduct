@@ -80,6 +80,21 @@ func TestLogger(t *testing.T) {
 		assert.False(t, ok)
 	})
 
+	t.Run("changed is set by Info only", func(t *testing.T) {
+		l := NewLogger(nil, "File", "Create")
+		l.Noop("up-to-date")
+		l.Warn("odd")
+		l.Error("failed")
+		assert.False(t, l.Changed())
+
+		w := l.Writer(Stdout)
+		fmt.Fprintln(w, "output")
+		assert.False(t, l.Changed(), "command output is not a change")
+
+		l.Info("created")
+		assert.True(t, l.Changed())
+	})
+
 	t.Run("odd fields", func(t *testing.T) {
 		assert.Equal(t, []Field{{"a", 1}, {"b", ""}}, fieldsOf([]any{"a", 1, "b"}))
 		assert.Equal(t, []Field{{"1", 2}}, fieldsOf([]any{1, 2}))
@@ -143,6 +158,7 @@ func TestNilLogger(t *testing.T) {
 		l.Warn("c")
 		l.Error("d")
 		l.progress("e")
+		assert.False(t, l.Changed())
 
 		w := l.Writer(Stdout)
 		fmt.Fprintln(w, "dropped")
@@ -245,12 +261,13 @@ func TestJSONCollector(t *testing.T) {
 	fmt.Fprintln(l.Writer(Stdout), "dropped")
 	NewLogger(h, "Viaduct", "Run").progress("dropped")
 
-	got := c.resources(Report{Results: []Result{{ID: "a", Kind: "File", Status: StatusSuccess, Final: true}}})
+	got := c.resources(Report{Results: []Result{{ID: "a", Kind: "File", Status: StatusSuccess, Changed: true, Final: true}}})
 	require.Len(t, got, 1)
 	assert.Equal(t, []LogEntry{
 		{Level: "OK", Message: "created", Fields: map[string]string{"path": "/tmp/a"}},
 		{Level: "NOOP", Message: "up-to-date"},
 	}, got[0].Log)
+	assert.True(t, got[0].Changed)
 }
 
 func TestEnvDuration(t *testing.T) {

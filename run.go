@@ -372,7 +372,9 @@ func (c *jsonCollector) resources(report Report) []ResourceResult {
 			Description:  r.Description,
 			Operation:    r.Operation,
 			Status:       string(r.Status),
+			Changed:      r.Changed,
 			Cause:        string(r.Cause),
+			Duration:     r.Duration.String(),
 			Log:          c.entries[r.ID],
 		}
 
@@ -397,7 +399,9 @@ type ResourceResult struct {
 	Description  string     `json:"description"`
 	Operation    string     `json:"operation"`
 	Status       string     `json:"status"`
+	Changed      bool       `json:"changed"`
 	Cause        string     `json:"cause,omitempty"`
+	Duration     string     `json:"duration"`
 	Error        string     `json:"error,omitempty"`
 	Log          []LogEntry `json:"log,omitempty"`
 }

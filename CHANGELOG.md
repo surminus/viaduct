@@ -37,7 +37,11 @@ resources needs no change. Beyond that:
   one per line, with a `stream` field of `stdout` or `stderr`. A line ends at
   `\n`, `\r` or `\r\n`, so progress output arrives a step at a time, and a
   line longer than 64 KiB is split
+- Each `Result` has `Changed`, which is true when the resource logged a change
+  with `Info`. `Options.OnResult` is called with each result as the resource
+  finishes, and never concurrently. `Report.Failed` returns the failures
 - `AddNamed`, which adds a resource under a name rather than a generated ID
+- `--json` output includes `changed` and `duration` for each resource
 - `Result.Cause` names the resource whose failure stopped a
   `StatusDependencyFailed` resource from running, and `--json` reports it as
   `cause`

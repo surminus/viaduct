@@ -3,7 +3,10 @@ package viaduct
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -205,6 +208,54 @@ func (c *changingResource) Run(log *Logger) error {
 }
 
 func TestApplyResults(t *testing.T) {
+	t.Run("changed is reported per resource", func(t *testing.T) {
+		m := New()
+		changes := m.Add(&changingResource{testResourceType{Value: "a"}})
+		quiet := m.Add(newTestResource("b"))
+
+		report, err := m.Apply(context.Background(), Options{})
+		require.NoError(t, err)
+
+		byID := map[ResourceID]Result{}
+		for _, r := range report.Results {
+			byID[r.ID] = r
+		}
+
+		assert.True(t, byID[changes.ResourceID].Changed)
+		assert.False(t, byID[quiet.ResourceID].Changed)
+	})
+
+	t.Run("OnResult is called once per resource, never concurrently", func(t *testing.T) {
+		m := New()
+		for i := range 50 {
+			m.Add(newTestResource(fmt.Sprintf("r-%d", i)))
+		}
+
+		var (
+			running atomic.Int32
+			overlap atomic.Bool
+			got     []Result
+		)
+
+		report, err := m.Apply(context.Background(), Options{
+			OnResult: func(r Result) {
+				if running.Add(1) > 1 {
+					overlap.Store(true)
+				}
+
+				got = append(got, r)
+				time.Sleep(time.Millisecond)
+
+				running.Add(-1)
+			},
+		})
+		require.NoError(t, err)
+
+		assert.False(t, overlap.Load())
+		assert.Equal(t, report.Results, got)
+		assert.Empty(t, report.Failed())
+	})
+
 	t.Run("events are attributed to the resource", func(t *testing.T) {
 		rec := &recorder{}
 

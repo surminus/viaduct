@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -155,6 +156,8 @@ type Logger struct {
 	kind        ResourceKind
 	operation   string
 	description string
+
+	changed *atomic.Bool
 }
 
 // NewLogger returns a logger that sends events to h, attributed to the given
@@ -167,6 +170,7 @@ func NewLogger(h Handler, kind, operation string) *Logger {
 		handler:   serialise(h),
 		kind:      ResourceKind(kind),
 		operation: operation,
+		changed:   &atomic.Bool{},
 	}
 }
 
@@ -179,12 +183,23 @@ func newResourceLogger(ctx context.Context, h Handler, r *Resource, operation st
 		kind:        r.ResourceKind,
 		operation:   operation,
 		description: r.Attributes.Description(),
+		changed:     &atomic.Bool{},
 	}
 }
 
+// Changed reports whether anything was logged with Info.
+func (l *Logger) Changed() bool {
+	return l != nil && l.changed.Load()
+}
+
 // Info logs a change the resource made, or in a dry run, a change it would
-// have made.
+// have made. It marks the resource as changed.
 func (l *Logger) Info(msg string, fields ...any) {
+	if l == nil {
+		return
+	}
+
+	l.changed.Store(true)
 	l.emit(LevelChanged, msg, fields)
 }
 

@@ -32,6 +32,10 @@ type Options struct {
 	// NewTextHandler gives the same output as Run.
 	Handler Handler
 
+	// OnResult is called with the result of each attempt at a resource as
+	// it finishes. It is never called concurrently. Optional.
+	OnResult func(Result)
+
 	// ResourceTimeout overrides how long each resource is given to run,
 	// ahead of WithTimeout and SetResourceTimeout. Zero leaves it to them,
 	// and a negative duration means no timeout.
@@ -85,6 +89,10 @@ type Result struct {
 	Description string
 	Status      Status
 
+	// Changed is true when the resource logged a change, or in a dry run,
+	// a change it would have made.
+	Changed bool
+
 	// Err is why the resource failed. It is nil otherwise.
 	Err error
 
@@ -107,10 +115,12 @@ type Result struct {
 	Duration time.Duration
 }
 
-// results collects results from resources running concurrently.
+// results collects results from resources running concurrently, passing each
+// one on to the OnResult callback.
 type results struct {
-	mu   sync.Mutex
-	list []Result
+	mu       sync.Mutex
+	list     []Result
+	onResult func(Result)
 }
 
 func (rs *results) add(r Result) {
@@ -118,6 +128,10 @@ func (rs *results) add(r Result) {
 	defer rs.mu.Unlock()
 
 	rs.list = append(rs.list, r)
+
+	if rs.onResult != nil {
+		rs.onResult(r)
+	}
 }
 
 func (rs *results) all() []Result {
@@ -157,7 +171,7 @@ func newRun(m *Manifest, o Options) *run {
 		m:       m,
 		options: o,
 		handler: serialise(o.Handler),
-		results: &results{},
+		results: &results{onResult: o.OnResult},
 		locks:   newLockSet(),
 		states:  make(map[*Resource]*resourceState, len(m.order)),
 	}
@@ -275,6 +289,7 @@ func (rn *run) preflight(ctx context.Context, l *Logger) error {
 
 		result := rn.newResult(r, "Preflight")
 		result.Status = StatusFailed
+		result.Changed = log.Changed()
 		result.Err = err
 		result.Final = true
 		result.Start = start
@@ -354,6 +369,7 @@ func (rn *run) attempt(ctx context.Context, r *Resource, n int) (Result, bool) {
 
 	result := rn.newResult(r, r.Attributes.OperationName())
 	result.Status = StatusSuccess
+	result.Changed = log.Changed()
 	result.Err = runErr
 	result.Attempt = n
 	result.Start = start
