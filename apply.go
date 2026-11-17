@@ -439,9 +439,12 @@ func (rn *run) attempt(ctx context.Context, r *Resource, n int) (Result, bool) {
 		return Result{}, false
 	}
 
+	held := &heldLock{set: rn.locks, holding: r.GlobalLock, check: rn.notAbandoned}
+	defer held.finish()
+
 	start := time.Now()
 	log := newResourceLogger(ctx, rn.handler, r, r.Attributes.OperationName())
-	runErr := r.run(ctx, log, rn.timeoutFor(r))
+	runErr := r.run(context.WithValue(ctx, heldLockKey{}, held), log, rn.timeoutFor(r))
 
 	result := rn.newResult(r, r.Attributes.OperationName())
 	result.Status = StatusSuccess
@@ -508,6 +511,15 @@ func (rn *run) finished(r *Resource) bool {
 	default:
 		return false
 	}
+}
+
+// notAbandoned returns abandonedErr once a resource has been abandoned.
+func (rn *run) notAbandoned() error {
+	if a := rn.abandoned.Load(); a != nil {
+		return abandonedErr(a)
+	}
+
+	return nil
 }
 
 // abandonedErr is why nothing further may start after a resource was
@@ -581,7 +593,7 @@ func (rn *run) timeoutFor(r *Resource) time.Duration {
 // outside a manifest, logging to log. It is for a custom resource that builds
 // on others once it knows a value only available part way through a run, such
 // as a device path. It uses the Env in ctx and takes none of the manifest's
-// locks, timeouts or retries.
+// locks, timeouts or retries: take a lock around it with Lock.
 func ApplyOne(ctx context.Context, a ResourceAttributes, log *Logger) error {
 	if err := a.PreflightChecks(ctx, log); err != nil {
 		return fmt.Errorf("%s: preflight checks: %w", a.Description(), err)

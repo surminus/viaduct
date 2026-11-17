@@ -1,6 +1,8 @@
 package viaduct
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"sync"
 )
@@ -20,7 +22,123 @@ const (
 	// PasswdLock is for anything that writes the passwd or group databases,
 	// such as useradd, usermod or groupadd.
 	PasswdLock LockKey = "passwd"
+
+	// FstabLock is for anything that edits /etc/fstab or changes what is
+	// mounted, such as Mount and Swap.
+	FstabLock LockKey = "fstab"
+
+	// NetworkLock is for anything that changes the host's network
+	// identity or configuration, such as Hostname.
+	NetworkLock LockKey = "network"
 )
+
+// errLockHeld is returned by Lock for a resource that already holds a lock.
+var errLockHeld = errors.New("the resource already holds a lock")
+
+// errResourceFinished is returned by Lock once the resource's attempt has
+// finished, such as one that was abandoned while still running.
+var errResourceFinished = errors.New("the resource has finished")
+
+// Lock takes a lock part way through a resource's Run, and returns the
+// function that releases it. It is the lock ResourceParams asks for, so the
+// resource waits for others holding key, and an empty key excludes every
+// other lock holder. The lock is released when the resource finishes if
+// unlock has not been called. Waiting for the lock counts towards the
+// resource's timeout. A resource that already holds a lock, from its
+// ResourceParams or an earlier call, gets an error. Outside Apply, Lock takes
+// nothing.
+func Lock(ctx context.Context, key LockKey) (unlock func(), err error) {
+	h, _ := ctx.Value(heldLockKey{}).(*heldLock)
+	if h == nil {
+		return func() {}, nil
+	}
+
+	return h.take(ctx, key)
+}
+
+type heldLockKey struct{}
+
+// heldLock is the lock one attempt at a resource holds, from its params or
+// from Lock. Locks are not reentrant, so a second one is refused rather
+// than left to deadlock.
+type heldLock struct {
+	set *lockSet
+
+	// check is called once the lock is taken, and an error releases it
+	// again. The run uses it to stop anything starting after a resource
+	// was abandoned, as it does for a lock from ResourceParams.
+	check func() error
+
+	mu      sync.Mutex
+	holding bool
+	done    bool
+	release func()
+}
+
+func (h *heldLock) take(ctx context.Context, key LockKey) (func(), error) {
+	h.mu.Lock()
+	if h.done {
+		h.mu.Unlock()
+		return nil, errResourceFinished
+	}
+
+	if h.holding {
+		h.mu.Unlock()
+		return nil, errLockHeld
+	}
+	h.holding = true
+	h.mu.Unlock()
+
+	release, err := h.set.acquireContext(ctx, key)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if err != nil {
+		h.holding = false
+		return nil, err
+	}
+
+	// The attempt may have finished, such as by being abandoned, while this
+	// waited. Nothing would release the lock after that.
+	if h.done {
+		release()
+		return nil, errResourceFinished
+	}
+
+	if h.check != nil {
+		if err := h.check(); err != nil {
+			release()
+			h.holding = false
+
+			return nil, err
+		}
+	}
+
+	h.release = release
+
+	return h.unlock, nil
+}
+
+func (h *heldLock) unlock() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.release != nil {
+		h.release()
+		h.release = nil
+		h.holding = false
+	}
+}
+
+// finish releases a lock taken with Lock and stops any more being taken.
+func (h *heldLock) finish() {
+	h.mu.Lock()
+	h.done = true
+	h.mu.Unlock()
+
+	h.unlock()
+}
 
 // lockDomains lists the keys a lock key covers, for domains that are not
 // actually independent of each other.
@@ -96,6 +214,22 @@ func (l *lockSet) acquire(key LockKey) func() {
 		}
 
 		l.global.RUnlock()
+	}
+}
+
+// acquireContext is acquire that gives up when ctx is done. The locks are
+// then released as soon as they are taken.
+func (l *lockSet) acquireContext(ctx context.Context, key LockKey) (func(), error) {
+	got := make(chan func(), 1)
+
+	go func() { got <- l.acquire(key) }()
+
+	select {
+	case release := <-got:
+		return release, nil
+	case <-ctx.Done():
+		go func() { (<-got)() }()
+		return nil, ctx.Err()
 	}
 }
 

@@ -31,6 +31,8 @@ resources needs no change. Beyond that:
 
 ### Added
 
+- `FstabLock` and `NetworkLock`, alongside `PackageLock` and `PasswdLock`
+
 - `Apply(ctx, Options)` runs a manifest and returns a `Report` with a `Result`
   for every resource, and an error, rather than printing and exiting. The
   error wraps `ErrInvalidManifest`, `ErrPreflightFailed` or `ErrRunFailed`.
@@ -77,6 +79,9 @@ resources needs no change. Beyond that:
 - `ApplyOne`, which runs a resource's preflight checks and then the resource,
   so a custom resource can use others once it knows a value only available
   part way through a run
+- `Lock`, which takes a lock part way through a resource, such as
+  `FstabLock` around the steps of a custom resource that need it, rather than
+  for its whole run
 - `ResourceParams.Timeout`, for a resource that needs longer than the manifest
   allows, or a negative duration for none. `WithTimeout` and the
   `ResourceTimeout` option override it
@@ -137,8 +142,8 @@ resources needs no change. Beyond that:
   recursively no longer fails when a file disappears part way through
 - `ExpandPath` only expands `~` and `~/...`, and leaves every other path as it
   is
-- **Lock keys have their own type, `LockKey`.** `PackageLock` and
-  `PasswdLock` are `LockKey` constants, and `WithLockKey`,
+- **Lock keys have their own type, `LockKey`.** `PackageLock`, `PasswdLock`,
+  `FstabLock` and `NetworkLock` are `LockKey` constants, and `WithLockKey`,
   `NewResourceParamsWithLockKey` and the `LockKey` fields take one. A
   custom key is written as `viaduct.LockKey("name")`
 - **Status constants have a `Status` prefix.** `Pending`, `Success`, `Failed`
