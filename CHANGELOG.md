@@ -33,15 +33,25 @@ resources needs no change. Beyond that:
   `LevelWarn`, `LevelError`), the resource ID, kind, operation and
   description, a message and fields. `Options.Handler` receives them, and is
   never called concurrently. `NewTextHandler` gives the output `Run` prints
-- `Logger.Writer` reports what is written to it as `LevelOutput` events,
-  one per line, with a `stream` field of `stdout` or `stderr`. A line ends at
-  `\n`, `\r` or `\r\n`, so progress output arrives a step at a time, and a
-  line longer than 64 KiB is split
+- Command output is reported as `LevelOutput` events, one per line, with a
+  `stream` field of `stdout` or `stderr`. `Logger.Writer` does the same for a
+  custom resource's own commands. A line ends at `\n`, `\r` or `\r\n`, so
+  progress output arrives a step at a time, and a line longer than 64 KiB is
+  split. A background process left holding a
+  command's output open no longer stops the resource finishing, but its
+  output stops being collected two seconds after the command exits, and
+  anything it writes after that fails. Redirect the output of a process that
+  is meant to keep running, such as with `nohup ... >/var/log/x.log 2>&1 &`
 - Each `Result` has `Changed`, which is true when the resource logged a change
   with `Info`. `Options.OnResult` is called with each result as the resource
   finishes, and never concurrently. `Report.Failed` returns the failures
 - `AddNamed`, which adds a resource under a name rather than a generated ID
 - `--json` output includes `changed` and `duration` for each resource
+- `Command`, with `Run` and `Output`, runs a program through the `Runner`,
+  logging its output, or discarding it with a nil `Logger`. `ExecRunner` runs
+  each command in its own process group, which is sent SIGTERM when the
+  context is cancelled, and SIGKILL if it has not stopped 30 seconds later. `ExitCode` reads the exit
+  status from an error, and `ExitError` is the one a fake runner returns
 - `Result.Cause` names the resource whose failure stopped a
   `StatusDependencyFailed` resource from running, and `--json` reports it as
   `cause`

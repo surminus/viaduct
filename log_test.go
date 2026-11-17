@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -163,6 +164,21 @@ func TestNilLogger(t *testing.T) {
 		w := l.Writer(Stdout)
 		fmt.Fprintln(w, "dropped")
 		require.NoError(t, w.Close())
+	})
+
+	t.Run("commands discard their output", func(t *testing.T) {
+		runner := RunnerFunc(func(_ context.Context, c Command) error {
+			_, _ = io.WriteString(c.Stdout, "out\n")
+			_, _ = io.WriteString(c.Stderr, "err\n")
+			return nil
+		})
+		ctx := WithEnv(context.Background(), Env{Runner: runner})
+
+		require.NoError(t, Command{Name: "true"}.Run(ctx, nil))
+
+		out, err := Command{Name: "true"}.Output(ctx, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "out\n", string(out))
 	})
 }
 
