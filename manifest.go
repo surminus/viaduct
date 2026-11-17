@@ -116,6 +116,13 @@ func (m *Manifest) WithTimeout(r *Resource, d time.Duration) {
 	}
 }
 
+// WithRetry tries a resource again when it fails, following the policy.
+func (m *Manifest) WithRetry(r *Resource, p RetryPolicy) {
+	if r, ok := m.lookup("WithRetry", r); ok {
+		r.retry = &p
+	}
+}
+
 // SetName replaces a resource's generated ID with a name, which must be unique
 // within the manifest.
 func (m *Manifest) SetName(r *Resource, name string) {

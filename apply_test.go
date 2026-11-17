@@ -183,6 +183,27 @@ func TestApply(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("the same manifest applied twice gives independent reports", func(t *testing.T) {
+		flaky := &flakyResource{failures: 1}
+
+		m := New()
+		f := m.Add(flaky)
+		after := m.Add(newTestResource("after"), f)
+
+		first, err := m.Apply(context.Background(), Options{})
+		require.ErrorIs(t, err, ErrRunFailed)
+
+		second, err := m.Apply(context.Background(), Options{})
+		require.NoError(t, err, "nothing from the first run carries over")
+
+		require.Len(t, first.Results, 2)
+		assert.Equal(t, StatusDependencyFailed, byID(first)[after.ResourceID].Status)
+
+		require.Len(t, second.Results, 2)
+		assert.Equal(t, StatusSuccess, byID(second)[f.ResourceID].Status)
+		assert.Equal(t, StatusSuccess, byID(second)[after.ResourceID].Status)
+	})
+
 }
 
 // tmpUser creates the temporary directory, recording where it was

@@ -58,6 +58,9 @@ type Resource struct {
 
 	// invalid marks a resource that could not be added to the manifest.
 	invalid bool
+
+	// retry is the retry policy.
+	retry *RetryPolicy
 }
 
 // ResourceParams are a set of options that each resource can set

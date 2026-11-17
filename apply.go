@@ -352,13 +352,54 @@ func (rn *run) apply(ctx context.Context, r *Resource) {
 		return
 	}
 
-	result, ran := rn.attempt(ctx, r, 1)
-	if !ran {
-		return
+	var policy RetryPolicy
+	if r.retry != nil {
+		policy = r.retry.withDefaults()
 	}
 
-	result.Final = true
-	rn.record(r, result)
+	first := time.Now()
+
+	for attempt := 1; ; attempt++ {
+		result, ran := rn.attempt(ctx, r, attempt)
+		if !ran {
+			return
+		}
+
+		final := result.Status != StatusFailed ||
+			attempt >= policy.Attempts ||
+			IsPermanent(result.Err) ||
+			errors.Is(result.Err, errAbandoned) ||
+			ctx.Err() != nil
+
+		var wait time.Duration
+		if !final {
+			wait = policy.backoff(attempt)
+
+			if policy.MaxElapsed > 0 && time.Since(first)+wait > policy.MaxElapsed {
+				final = true
+			}
+		}
+
+		result.Final = final
+
+		if final {
+			rn.record(r, result)
+			return
+		}
+
+		rn.results.add(result)
+
+		// The lock is not held while waiting.
+		select {
+		case <-ctx.Done():
+			result.Err = fmt.Errorf("%w, and stopped before trying again: %w", result.Err, ctx.Err())
+			result.Final = true
+			rn.record(r, result)
+
+			return
+		case <-time.After(wait):
+		}
+	}
 }
 
 // attempt runs one attempt at a resource, holding its lock. It reports false

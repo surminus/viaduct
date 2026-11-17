@@ -76,6 +76,14 @@ resources needs no change. Beyond that:
 - `ResourceParams.Timeout`, for a resource that needs longer than the manifest
   allows, or a negative duration for none. `WithTimeout` and the
   `ResourceTimeout` option override it
+- **Retries.** `WithRetry` tries a failed resource
+  again following a `RetryPolicy`: a number of attempts, with exponential
+  backoff and jitter between `Initial` and `Max`, and an optional `MaxElapsed`.
+  The resource's lock is released while it waits. An error wrapped with
+  `Permanent` is not retried, and nor is a resource abandoned after its
+  timeout. One that stops when its timeout passes is retried. Each attempt
+  has its own `Result`, with `Attempt` and `Final`, and `Report.Final`
+  returns the last result of each resource
 - `Result.Cause` names the resource whose failure stopped a
   `StatusDependencyFailed` resource from running, and `--json` reports it as
   `cause`
