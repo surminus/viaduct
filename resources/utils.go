@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -235,7 +236,12 @@ func (p *Permissions) resolveOwnership() (uid, gid int, err error) {
 }
 
 func applyChmod(log *viaduct.Logger, path string, mode os.FileMode) error {
-	if viaduct.MatchChmod(path, mode) {
+	match, err := viaduct.MatchChmod(path, mode)
+	if err != nil {
+		return err
+	}
+
+	if match {
 		log.Noop("chmod-unchanged", "path", path, "mode", mode.String())
 		return nil
 	}
@@ -249,7 +255,12 @@ func applyChmod(log *viaduct.Logger, path string, mode os.FileMode) error {
 }
 
 func applyChown(log *viaduct.Logger, path string, uid, gid int) error {
-	if viaduct.MatchChown(path, uid, gid) {
+	match, err := viaduct.MatchChown(path, uid, gid)
+	if err != nil {
+		return err
+	}
+
+	if match {
 		log.Noop("chown-unchanged", "path", path, "uid", strconv.Itoa(uid), "gid", strconv.Itoa(gid))
 		return nil
 	}
@@ -286,12 +297,20 @@ func (p *Permissions) setDirectoryPermissions(
 		}
 
 		for _, f := range files {
-			if viaduct.MatchChown(f, uid, gid) {
+			match, err := viaduct.MatchChown(f, uid, gid)
+			if errors.Is(err, fs.ErrNotExist) {
+				// Removed since the walk found it
+				continue
+			} else if err != nil {
+				return err
+			}
+
+			if match {
 				continue
 			}
 
 			wasUpdated = true
-			if err := os.Chown(f, uid, gid); err != nil {
+			if err := os.Chown(f, uid, gid); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return err
 			}
 		}

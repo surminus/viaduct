@@ -177,11 +177,13 @@ var templates embed.FS
 func main() {
         m := viaduct.New()
 
-        template := resources.NewTemplate(
+        // Must panics if the template cannot be read or rendered, which
+        // for an embedded template is a bug in the program
+        template := viaduct.Must(resources.NewTemplate(
                 templates,
                 "templates/test.txt",
                 struct{ Name string }{Name: "Bella"},
-        )
+        ))
 
         // CreateFile is a helper function that takes two arguments
         m.Add(resources.CreateFile("test/foo", template))
@@ -189,6 +191,8 @@ func main() {
 ```
 
 The `EmbeddedFile` function works in a similar way, but without variables.
+Both return an error rather than exiting, so they can also be handled like any
+other error.
 
 ## Attributes
 

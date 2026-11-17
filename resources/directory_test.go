@@ -32,7 +32,7 @@ func TestDirectory(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.DirExists(d.Path))
-		assert.Equal(t, true, viaduct.MatchChmod(d.Path, DefaultDirectoryPermissions))
+		assertMode(t, d.Path, DefaultDirectoryPermissions)
 
 		err = os.RemoveAll(d.Path)
 		if err != nil {
@@ -78,7 +78,7 @@ func TestDirectory(t *testing.T) {
 
 		assert.NoError(t, shallow.Run(testLogger))
 		assert.Equal(t, true, viaduct.DirExists(path))
-		assert.Equal(t, true, viaduct.MatchChmod(path, DefaultDirectoryPermissions))
+		assertMode(t, path, DefaultDirectoryPermissions)
 	})
 
 	t.Run("delete", func(t *testing.T) {

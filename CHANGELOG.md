@@ -14,8 +14,22 @@ resources needs no change. Beyond that:
   `StatusPending`, `StatusSuccess`, `StatusFailed` and
   `StatusDependencyFailed`, and a lock key is a `viaduct.LockKey`
 
+### Added
+
+- `Must`, for using a function that returns an error inline when the error
+  would be a bug, such as `viaduct.Must(resources.NewTemplate(...))`
+
 ### Changed
 
+- **Helpers return errors.** `FileSize`, `MatchChmod`, `MatchChown`,
+  `SystemAttributes.SetUser`, `SystemAttributes.JSON`,
+  `resources.EmbeddedFile` and `resources.NewTemplate` return an error rather
+  than exiting.
+  `SetUser` no longer logs
+- A directory whose contents change while its ownership is applied
+  recursively no longer fails when a file disappears part way through
+- `ExpandPath` only expands `~` and `~/...`, and leaves every other path as it
+  is
 - **Lock keys have their own type, `LockKey`.** `PackageLock` and
   `PasswdLock` are `LockKey` constants, and `WithLockKey`,
   `NewResourceParamsWithLockKey` and the `LockKey` fields take one. A

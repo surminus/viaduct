@@ -1,6 +1,8 @@
 package viaduct
 
 import (
+	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"os"
@@ -10,14 +12,11 @@ import (
 	"syscall"
 )
 
-// ExpandPath ensures that "~" are expanded.
+// ExpandPath expands a leading "~" to the home directory of the user
+// attribute.
 func ExpandPath(path string) string {
-	if strings.HasPrefix(path, "~") {
-		if p, err := filepath.Abs(strings.Replace(path, "~", Attributes().User.HomeDir, 1)); err == nil {
-			path = p
-		} else {
-			log.Fatal(err)
-		}
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		return filepath.Join(Attributes().User.HomeDir, strings.TrimPrefix(path, "~"))
 	}
 
 	return path
@@ -31,6 +30,16 @@ func ExpandPathRoot(path string) string {
 	}
 
 	return p
+}
+
+// Must returns v, panicking if err is not nil. It is for values known at
+// build time, such as an embedded template, where an error is a bug.
+func Must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+
+	return v
 }
 
 // PrependSudo takes a slice of args and simply prepends sudo to the front.
@@ -103,10 +112,15 @@ func DirExists(path string) bool {
 	return false
 }
 
-// ListFiles returns all files within a path
+// ListFiles returns every path within a path, including the path itself.
+// Paths removed during the walk are skipped.
 func ListFiles(path string) (files []string, err error) {
 	err = filepath.Walk(path, func(p string, f os.FileInfo, err error) error {
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) && p != path {
+				return nil
+			}
+
 			return err
 		}
 
@@ -117,35 +131,29 @@ func ListFiles(path string) (files []string, err error) {
 	return files, err
 }
 
-// MatchChmod returns true if the permissions of the path match
-func MatchChmod(path string, perms fs.FileMode) bool {
-	if info, err := os.Stat(path); err == nil {
-		if info.Mode() == perms {
-			return true
-		}
-	} else {
-		log.Fatal(err)
+// MatchChmod reports whether the mode of the path matches perms.
+func MatchChmod(path string, perms fs.FileMode) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false, err
 	}
 
-	return false
+	return info.Mode() == perms, nil
 }
 
-// MatchChown returns true if the path is owned by the specified user and group
-func MatchChown(path string, user, group int) bool {
-	if info, err := os.Stat(path); err == nil {
-		stat := info.Sys().(*syscall.Stat_t)
-
-		uid := stat.Uid
-		gid := stat.Gid
-
-		if user == int(uid) && group == int(gid) {
-			return true
-		}
-	} else {
-		log.Fatal(err)
+// MatchChown reports whether the path is owned by the given user and group.
+func MatchChown(path string, user, group int) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false, err
 	}
 
-	return false
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false, fmt.Errorf("cannot read ownership of %s", path)
+	}
+
+	return user == int(stat.Uid) && group == int(stat.Gid), nil
 }
 
 // IsRoot returns true if the user is root
@@ -154,13 +162,13 @@ func IsRoot() bool {
 }
 
 // FileSize returns the file size in bytes
-func FileSize(path string) int64 {
+func FileSize(path string) (int64, error) {
 	f, err := os.Stat(path)
 	if err != nil {
-		log.Fatal(err)
+		return 0, err
 	}
 
-	return f.Size()
+	return f.Size(), nil
 }
 
 // CommandTrue is similar to the "Unless" parameter found in some resources, but instead

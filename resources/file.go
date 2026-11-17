@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
-	"log"
 	"os"
 	"text/template"
-	"time"
 
 	"github.com/surminus/viaduct"
 )
@@ -111,34 +109,36 @@ func (f *File) managesOwnership() bool {
 	return f.User != "" || f.Group != "" || f.UID != 0 || f.GID != 0
 }
 
-// EmbeddedFile is a small helper function to helper reading
-// embedded files
-func EmbeddedFile(files embed.FS, path string) string {
+// EmbeddedFile returns the contents of an embedded file. Wrap it in
+// viaduct.Must to use it inline.
+func EmbeddedFile(files embed.FS, path string) (string, error) {
 	out, err := files.ReadFile(path)
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
 
-	return string(out)
+	return string(out), nil
 }
 
-// NewTemplate makes it easier to return the data required
-// to parse a template
-func NewTemplate(files embed.FS, path string, variables interface{}) string {
-	out := EmbeddedFile(files, path)
-
-	tmpl, err := template.New(time.Now().String()).Parse(out)
+// NewTemplate renders an embedded Go template with the given variables. Wrap
+// it in viaduct.Must to use it inline.
+func NewTemplate(files embed.FS, path string, variables any) (string, error) {
+	out, err := EmbeddedFile(files, path)
 	if err != nil {
-		log.Fatal(err)
+		return "", err
+	}
+
+	tmpl, err := template.New(path).Parse(out)
+	if err != nil {
+		return "", err
 	}
 
 	var b bytes.Buffer
-	err = tmpl.Execute(&b, variables)
-	if err != nil {
-		log.Fatal(err)
+	if err := tmpl.Execute(&b, variables); err != nil {
+		return "", err
 	}
 
-	return b.String()
+	return b.String(), nil
 }
 
 func (f *File) OperationName() string {

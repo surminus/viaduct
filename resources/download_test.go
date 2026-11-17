@@ -6,6 +6,7 @@ import (
 
 	"github.com/h2non/gock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/surminus/viaduct"
 )
 
@@ -43,7 +44,9 @@ func TestDown(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.FileExists(d.Path))
-		assert.Equal(t, true, viaduct.FileSize(d.Path) > 0)
+		size, err := viaduct.FileSize(d.Path)
+		require.NoError(t, err)
+		assert.Positive(t, size)
 
 		if err := os.RemoveAll(d.Path); err != nil {
 			t.Fatal(err)

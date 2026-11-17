@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/user"
 	"runtime"
@@ -45,16 +44,17 @@ type PlatformAttributes struct {
 	UbuntuCodename   string `json:"ubuntuCodename"`
 }
 
-// SetUser allows us to assign a default username
-func (a *SystemAttributes) SetUser(username string) {
-	NewLogger("Attribute", "Set").Info(fmt.Sprintf("User -> %s", username))
-
+// SetUser sets the user attribute, which resources use as the default owner
+// and to expand "~". It does not change the user the program runs as.
+func (a *SystemAttributes) SetUser(username string) error {
 	u, err := user.Lookup(username)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	a.User = *u
+
+	return nil
 }
 
 var attributes struct {
@@ -113,14 +113,14 @@ func loadAttributes(releaseFile string) (*SystemAttributes, error) {
 	return a, errors.Join(errs...)
 }
 
-// JSON returns a string representation of the loaded attributes
-func (a *SystemAttributes) JSON() string {
+// JSON returns the attributes as indented JSON
+func (a *SystemAttributes) JSON() (string, error) {
 	output, err := json.MarshalIndent(a, "", "    ")
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
 
-	return string(output)
+	return string(output), nil
 }
 
 // AddCustom allows us to add custom attributes during a run

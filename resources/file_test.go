@@ -35,7 +35,7 @@ func TestFile(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.FileExists(f.Path))
-		assert.Equal(t, true, viaduct.MatchChmod(f.Path, DefaultFilePermissions))
+		assertMode(t, f.Path, DefaultFilePermissions)
 		assert.Equal(t, f.Content, viaduct.FileContents(f.Path))
 
 		err = os.Remove(f.Path)
@@ -91,7 +91,7 @@ func TestFile(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, "not ours to write\n", viaduct.FileContents(path))
-		assert.Equal(t, true, viaduct.MatchChmod(path, 0o600))
+		assertMode(t, path, 0o600)
 	})
 
 	t.Run("permissions only leaves ownership alone", func(t *testing.T) {
@@ -119,7 +119,7 @@ func TestFile(t *testing.T) {
 		after, err := fileOwnership(path)
 		assert.NoError(t, err)
 		assert.Equal(t, before, after)
-		assert.Equal(t, true, viaduct.MatchChmod(path, 0o640))
+		assertMode(t, path, 0o640)
 	})
 
 	t.Run("permissions only keeps the group when setting the user", func(t *testing.T) {
@@ -149,7 +149,7 @@ func TestFile(t *testing.T) {
 		assert.Equal(t, before.gid, after.gid)
 
 		// The mode was not asked for, so it is left as it was
-		assert.Equal(t, true, viaduct.MatchChmod(path, 0o644))
+		assertMode(t, path, 0o644)
 	})
 
 	t.Run("permissions only errors when the file is missing", func(t *testing.T) {

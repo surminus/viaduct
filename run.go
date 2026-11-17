@@ -37,7 +37,14 @@ func (m *Manifest) run() int {
 // returns the exit code.
 func (m *Manifest) runWith(flags CliFlags) int {
 	if flags.Attributes {
-		fmt.Println(Attributes().JSON())
+		out, err := Attributes().JSON()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+
+		fmt.Println(out)
+
 		return 0
 	}
 
