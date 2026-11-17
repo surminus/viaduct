@@ -78,61 +78,38 @@ func (g *Git) OperationName() string {
 func (g *Git) Run(ctx context.Context, log *viaduct.Logger) error {
 	if g.Delete {
 		return g.deleteGit(ctx, log)
-	} else {
-		return g.createGit(ctx, log)
 	}
+
+	return g.createGit(ctx, log)
 }
 
 func (g *Git) createGit(ctx context.Context, log *viaduct.Logger) error {
-	path := viaduct.ExpandPath(g.Path)
-
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("cloned", "url", g.URL, "path", path)
-		return nil
-	}
+	env := viaduct.EnvFrom(ctx)
+	path := env.Path(viaduct.ExpandPath(g.Path))
 
 	if viaduct.FileExists(path) && g.Ensure {
-		r, err := git.PlainOpen(path)
-		if err != nil {
-			return err
-		}
-
-		w, err := r.Worktree()
-		if err != nil {
-			return err
-		}
-
-		if viaduct.Attributes().User.Username != "root" {
-			err = os.Setenv("SSH_KNOWN_HOSTS", viaduct.ExpandPath("~/.ssh/known_hosts"))
-			if err != nil {
-				return err
-			}
-		}
-
-		progress := gitProgress()
-
-		// nolint:exhaustivestruct
-		err = w.Pull(&git.PullOptions{
-			RemoteName:    g.RemoteName,
-			Progress:      progress,
-			ReferenceName: plumbing.ReferenceName(g.Reference),
-		})
-		if err != nil {
-			if err == git.NoErrAlreadyUpToDate {
-				log.Noop("up-to-date", "url", g.URL, "path", path)
-			} else {
-				return err
-			}
-		} else {
+		if env.DryRun {
+			// Whether a pull changes anything needs a fetch, so a dry run
+			// reports a pull
 			log.Info("pulled", "url", g.URL, "path", path)
+		} else if err := g.pull(ctx, log, path); err != nil {
+			return err
 		}
 	}
 
 	if !viaduct.FileExists(path) {
-		progress := gitProgress()
+		if env.DryRun {
+			log.Info("cloned", "url", g.URL, "path", path)
+
+			// Nothing to set permissions on yet
+			return nil
+		}
+
+		progress := log.Writer(viaduct.Stdout)
+		defer progress.Close()
 
 		// nolint:exhaustivestruct
-		_, err := git.PlainClone(path, false, &git.CloneOptions{
+		_, err := git.PlainCloneContext(ctx, path, false, &git.CloneOptions{
 			Progress:      progress,
 			ReferenceName: plumbing.ReferenceName(g.Reference),
 			RemoteName:    g.RemoteName,
@@ -153,34 +130,60 @@ func (g *Git) createGit(ctx context.Context, log *viaduct.Logger) error {
 	)
 }
 
-func gitProgress() *os.File {
-	if viaduct.Cli.Quiet || viaduct.Cli.Silent || viaduct.Cli.JSON {
-		devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0755)
-		if err != nil {
-			return nil
-		}
-		return devnull
+// pull brings the repository at path up to date with the remote
+func (g *Git) pull(ctx context.Context, log *viaduct.Logger, path string) error {
+	r, err := git.PlainOpen(path)
+	if err != nil {
+		return err
 	}
-	return os.Stdout
-}
 
-func (g *Git) deleteGit(ctx context.Context, log *viaduct.Logger) error {
-	path := viaduct.ExpandPath(g.Path)
+	w, err := r.Worktree()
+	if err != nil {
+		return err
+	}
 
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("deleted", "path", path)
+	if viaduct.Attributes().User.Username != "root" {
+		err = os.Setenv("SSH_KNOWN_HOSTS", viaduct.ExpandPath("~/.ssh/known_hosts"))
+		if err != nil {
+			return err
+		}
+	}
+
+	progress := log.Writer(viaduct.Stdout)
+	defer progress.Close()
+
+	// nolint:exhaustivestruct
+	err = w.PullContext(ctx, &git.PullOptions{
+		RemoteName:    g.RemoteName,
+		Progress:      progress,
+		ReferenceName: plumbing.ReferenceName(g.Reference),
+	})
+	if err == git.NoErrAlreadyUpToDate {
+		log.Noop("up-to-date", "url", g.URL, "path", path)
 		return nil
 	}
 
-	if viaduct.DirExists(path) {
-		if err := os.RemoveAll(path); err != nil {
-			return err
-		}
-
-		log.Info("deleted", "path", path)
-	} else {
-		log.Noop("up-to-date", "path", path)
+	if err != nil {
+		return err
 	}
 
+	log.Info("pulled", "url", g.URL, "path", path)
+
 	return nil
+}
+
+func (g *Git) deleteGit(ctx context.Context, log *viaduct.Logger) error {
+	env := viaduct.EnvFrom(ctx)
+	path := env.Path(viaduct.ExpandPath(g.Path))
+
+	if !viaduct.DirExists(path) {
+		log.Noop("up-to-date", "path", path)
+		return nil
+	}
+
+	if !change(ctx, log, "deleted", "path", path) {
+		return nil
+	}
+
+	return os.RemoveAll(path)
 }

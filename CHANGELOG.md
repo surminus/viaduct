@@ -191,6 +191,7 @@ resources needs no change. Beyond that:
   picked entries exist. A changed archive or changed options extract again
 - A `Download` whose file already exists with a matching `Checksum` is a noop,
   rather than being downloaded again
+- Downloads and Git clones and pulls stop when the context is cancelled
 - **`File`, `Template`, `Line` and `Apt` write files atomically.** A
   crash part way through a write leaves the old file or the new one, never a
   truncated mixture. The file is replaced rather than rewritten, so its inode
