@@ -31,6 +31,12 @@ resources needs no change. Beyond that:
 
 ### Added
 
+- A new `Filesystem` resource, with a `Mkfs` shortcut, for creating a
+  filesystem on an empty device. The device is probed with `blkid -p` first: a
+  device with the same filesystem is left alone, and one with anything else on
+  it, including a partition table, is a permanent error. It never formats a
+  device that has something on it, or anything that is not a block device.
+  `msdos`, `fat` and `vfat` count as the same type. It takes `FstabLock`
 - `FstabLock` and `NetworkLock`, alongside `PackageLock` and `PasswdLock`
 
 - `Apply(ctx, Options)` runs a manifest and returns a `Report` with a `Result`
@@ -75,7 +81,8 @@ resources needs no change. Beyond that:
   context is cancelled, and SIGKILL if it has not stopped 30 seconds later. `ExitCode` reads the exit
   status from an error, and `ExitError` is the one a fake runner returns
 - The `viaducttest` package, with a fake `Runner`, a `Recorder` handler and a
-  test `Env` rooted in a temporary directory
+  test `Env` rooted in a temporary directory. `Env.BlockDevice` marks a path
+  as a block device, for testing a resource that needs one
 - `ApplyOne`, which runs a resource's preflight checks and then the resource,
   so a custom resource can use others once it knows a value only available
   part way through a run

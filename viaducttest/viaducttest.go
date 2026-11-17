@@ -5,8 +5,10 @@ package viaducttest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -227,6 +229,8 @@ type Env struct {
 	Runner   *Runner
 	Recorder *Recorder
 	Log      *viaduct.Logger
+
+	blockDevices map[string]bool
 }
 
 // NewEnv returns a test environment with an empty root.
@@ -244,7 +248,41 @@ func NewEnv(t testing.TB) *Env {
 
 // Env returns the viaduct.Env that Context carries.
 func (e *Env) Env() viaduct.Env {
-	return viaduct.Env{Root: e.Root, Runner: e.Runner, DryRun: e.DryRun}
+	devices := maps.Clone(e.blockDevices)
+
+	return viaduct.Env{
+		Root:   e.Root,
+		Runner: e.Runner,
+		DryRun: e.DryRun,
+		BlockDevice: func(path string) bool {
+			return devices[filepath.Clean(path)]
+		},
+	}
+}
+
+// BlockDevice creates an empty file at an absolute path under the root, and
+// marks it as a block device for resources that need one, such as
+// Filesystem. Contexts created before the call do not see it.
+func (e *Env) BlockDevice(path string) {
+	e.t.Helper()
+
+	full := e.rooted(path)
+
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		e.t.Fatal(err)
+	}
+
+	if _, err := os.Stat(full); errors.Is(err, os.ErrNotExist) {
+		if err := os.WriteFile(full, nil, 0o644); err != nil {
+			e.t.Fatal(err)
+		}
+	}
+
+	if e.blockDevices == nil {
+		e.blockDevices = make(map[string]bool)
+	}
+
+	e.blockDevices[filepath.Clean(path)] = true
 }
 
 // Context returns a context carrying the environment.

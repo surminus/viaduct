@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -154,6 +155,25 @@ func TestEnv(t *testing.T) {
 
 		e.WriteFile("/etc/hosts", "127.0.0.1 localhost\n")
 		assert.Equal(t, "127.0.0.1 localhost\n", e.ReadFile("/etc/hosts"))
+	})
+
+	t.Run("a path can be marked as a block device", func(t *testing.T) {
+		e := NewEnv(t)
+		e.BlockDevice("/dev/sdb")
+		e.WriteFile("/dev/sdc", "")
+
+		env := viaduct.EnvFrom(e.Context())
+
+		block, err := env.IsBlockDevice("/dev/sdb")
+		require.NoError(t, err)
+		assert.True(t, block)
+
+		block, err = env.IsBlockDevice("/dev/sdc")
+		require.NoError(t, err)
+		assert.False(t, block, "a file that was not marked")
+
+		_, err = env.IsBlockDevice("/dev/sdd")
+		assert.ErrorIs(t, err, os.ErrNotExist)
 	})
 
 	t.Run("Apply uses the environment's context when given none", func(t *testing.T) {

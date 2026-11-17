@@ -2,6 +2,7 @@ package viaduct
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 )
 
@@ -20,6 +21,10 @@ type Env struct {
 
 	// Runner runs the commands resources need. The default is ExecRunner.
 	Runner Runner
+
+	// BlockDevice reports whether an absolute path that exists is a block
+	// device. The default checks the file's mode under Root.
+	BlockDevice func(path string) bool
 }
 
 type envKey struct{}
@@ -63,6 +68,22 @@ func (e Env) Path(path string) string {
 // when Root is set.
 func (e Env) IsRoot() bool {
 	return e.Root != "" || IsRoot()
+}
+
+// IsBlockDevice reports whether an absolute path is a block device, using
+// BlockDevice when it is set. It returns an error when the path does not
+// exist or cannot be read.
+func (e Env) IsBlockDevice(path string) (bool, error) {
+	info, err := os.Stat(e.Path(path))
+	if err != nil {
+		return false, err
+	}
+
+	if e.BlockDevice != nil {
+		return e.BlockDevice(path), nil
+	}
+
+	return info.Mode()&os.ModeDevice != 0 && info.Mode()&os.ModeCharDevice == 0, nil
 }
 
 // ResolveSymlink is ResolveSymlink for a path a resource reads or writes. It

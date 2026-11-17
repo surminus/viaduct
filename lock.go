@@ -23,8 +23,8 @@ const (
 	// such as useradd, usermod or groupadd.
 	PasswdLock LockKey = "passwd"
 
-	// FstabLock is for anything that edits /etc/fstab or changes what is
-	// mounted, such as Mount and Swap.
+	// FstabLock is for anything that formats a device, edits /etc/fstab or
+	// changes what is mounted, such as Filesystem, Mount and Swap.
 	FstabLock LockKey = "fstab"
 
 	// NetworkLock is for anything that changes the host's network
