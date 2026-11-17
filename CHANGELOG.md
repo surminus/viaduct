@@ -118,6 +118,11 @@ resources needs no change. Beyond that:
   `resources.EmbeddedFile` and `resources.NewTemplate` return an error rather
   than exiting.
   `Logger.Fatal` is gone. `SetUser` no longer logs
+- **Mode and ownership are never set through a symlink.** `File`,
+  `Template`, `Download`, `Directory` and `Git` change a file through a
+  descriptor opened without following links, and a symlink at a path whose
+  permissions are managed is an error. Applying ownership recursively changes
+  a symlink itself rather than what it points to
 - A directory whose contents change while its ownership is applied
   recursively no longer fails when a file disappears part way through
 - `ExpandPath` only expands `~` and `~/...`, and leaves every other path as it

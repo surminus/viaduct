@@ -45,17 +45,19 @@ func ensureParentDir(ctx context.Context, log *viaduct.Logger, path string) erro
 		return nil
 	}
 
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("created-parent", "path", dir)
+	if !change(ctx, log, "created-parent", "path", dir) {
 		return nil
 	}
 
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
+	return os.MkdirAll(dir, 0o755)
+}
 
-	log.Info("created-parent", "path", dir)
-	return nil
+// change logs a change with Info and reports whether to make it, which it
+// is not in a dry run.
+func change(ctx context.Context, log *viaduct.Logger, msg string, kv ...any) bool {
+	log.Info(msg, kv...)
+
+	return !viaduct.EnvFrom(ctx).DryRun
 }
 
 // writeManagedFile writes content to path when it differs from what is
@@ -117,7 +119,7 @@ type ownership struct {
 // fileOwnership returns who owns a path, so a resource managing one side of the
 // ownership can leave the other side as it is
 func fileOwnership(path string) (ownership, error) {
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		return ownership{}, err
 	}
@@ -232,42 +234,129 @@ func (p *Permissions) resolveOwnership() (uid, gid int, err error) {
 	return uid, gid, nil
 }
 
+// openNoFollow opens path to change its mode or ownership through the
+// descriptor, so a symlink swapped in at path is never followed. A file the
+// user cannot read is opened for writing instead.
+func openNoFollow(path string) (*os.File, fs.FileInfo, error) {
+	flags := syscall.O_NOFOLLOW | syscall.O_NONBLOCK | syscall.O_CLOEXEC
+
+	f, err := os.OpenFile(path, os.O_RDONLY|flags, 0)
+	if errors.Is(err, fs.ErrPermission) {
+		f, err = os.OpenFile(path, os.O_WRONLY|flags, 0)
+	}
+
+	if errors.Is(err, syscall.ELOOP) {
+		return nil, nil, fmt.Errorf("%s is a symlink, and permissions are never set through one", path)
+	}
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+
+	return f, info, nil
+}
+
 func applyChmod(ctx context.Context, log *viaduct.Logger, path string, mode os.FileMode) error {
-	match, err := viaduct.MatchChmod(path, mode)
+	f, info, err := openNoFollow(path)
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 
-	if match {
+	if info.Mode() == mode {
 		log.Noop("chmod-unchanged", "path", path, "mode", mode.String())
 		return nil
 	}
 
-	if err := os.Chmod(path, mode); err != nil {
-		return err
+	if !change(ctx, log, "chmod", "path", path, "mode", mode.String()) {
+		return nil
 	}
 
-	log.Info("chmod", "path", path, "mode", mode.String())
-	return nil
+	return f.Chmod(mode)
 }
 
 func applyChown(ctx context.Context, log *viaduct.Logger, path string, uid, gid int) error {
-	match, err := viaduct.MatchChown(path, uid, gid)
+	f, info, err := openNoFollow(path)
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 
-	if match {
+	if ownedBy(info, uid, gid) {
 		log.Noop("chown-unchanged", "path", path, "uid", strconv.Itoa(uid), "gid", strconv.Itoa(gid))
 		return nil
 	}
 
-	if err := os.Chown(path, uid, gid); err != nil {
-		return err
+	if !change(ctx, log, "chown", "path", path, "uid", strconv.Itoa(uid), "gid", strconv.Itoa(gid)) {
+		return nil
 	}
 
-	log.Info("chown", "path", path, "uid", strconv.Itoa(uid), "gid", strconv.Itoa(gid))
-	return nil
+	return f.Chown(uid, gid)
+}
+
+// ownedBy reports whether a file is owned by the user and group.
+func ownedBy(info fs.FileInfo, uid, gid int) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+
+	return ok && int(stat.Uid) == uid && int(stat.Gid) == gid
+}
+
+// lstat and lchown are variables so tests can make a file vanish part way
+// through a walk.
+var (
+	lstat  = os.Lstat
+	lchown = os.Lchown
+)
+
+// chownTree sets the ownership of everything under root, including root,
+// reporting whether anything needed changing. Symlinks are changed
+// themselves and never followed, and a file that disappears part way
+// through is skipped.
+func chownTree(root string, uid, gid int, dryRun bool) (bool, error) {
+	var changed bool
+
+	err := filepath.WalkDir(root, func(p string, _ fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) && p != root {
+				return nil
+			}
+
+			return err
+		}
+
+		info, err := lstat(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		if ownedBy(info, uid, gid) {
+			return nil
+		}
+
+		changed = true
+
+		if dryRun {
+			return nil
+		}
+
+		if err := lchown(p, uid, gid); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+
+		return nil
+	})
+
+	return changed, err
 }
 
 // Set permissions for a directory
@@ -286,42 +375,19 @@ func (p *Permissions) setDirectoryPermissions(
 		return err
 	}
 
-	if viaduct.DirExists(path) && recursiveChown {
-		var wasUpdated bool
+	if !recursiveChown || !viaduct.DirExists(path) {
+		return applyChown(ctx, log, path, uid, gid)
+	}
 
-		files, err := viaduct.ListFiles(path)
-		if err != nil {
-			return err
-		}
+	changed, err := chownTree(path, uid, gid, viaduct.EnvFrom(ctx).DryRun)
+	if err != nil {
+		return err
+	}
 
-		for _, f := range files {
-			match, err := viaduct.MatchChown(f, uid, gid)
-			if errors.Is(err, fs.ErrNotExist) {
-				// Removed since the walk found it
-				continue
-			} else if err != nil {
-				return err
-			}
-
-			if match {
-				continue
-			}
-
-			wasUpdated = true
-			if err := os.Chown(f, uid, gid); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				return err
-			}
-		}
-
-		if wasUpdated {
-			log.Info("chown-recursive", "path", path, "uid", strconv.Itoa(uid), "gid", strconv.Itoa(gid))
-		} else {
-			log.Noop("chown-recursive-unchanged", "path", path, "uid", strconv.Itoa(uid), "gid", strconv.Itoa(gid))
-		}
+	if changed {
+		log.Info("chown-recursive", "path", path, "uid", strconv.Itoa(uid), "gid", strconv.Itoa(gid))
 	} else {
-		if err := applyChown(ctx, log, path, uid, gid); err != nil {
-			return err
-		}
+		log.Noop("chown-recursive-unchanged", "path", path, "uid", strconv.Itoa(uid), "gid", strconv.Itoa(gid))
 	}
 
 	return nil
