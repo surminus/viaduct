@@ -370,6 +370,7 @@ func (c *jsonCollector) resources(report Report) []ResourceResult {
 			Status:       string(r.Status),
 			Changed:      r.Changed,
 			Attempt:      r.Attempt,
+			AllowFailure: r.AllowFailure,
 			Cause:        string(r.Cause),
 			Duration:     r.Duration.String(),
 			Log:          c.entries[r.ID],
@@ -398,6 +399,7 @@ type ResourceResult struct {
 	Status       string     `json:"status"`
 	Changed      bool       `json:"changed"`
 	Attempt      int        `json:"attempt"`
+	AllowFailure bool       `json:"allow_failure,omitempty"`
 	Cause        string     `json:"cause,omitempty"`
 	Duration     string     `json:"duration"`
 	Error        string     `json:"error,omitempty"`
@@ -467,9 +469,10 @@ func toSummary(r Result) failureSummary {
 
 // collectFailures groups the failures that failed the run under the resource
 // that failed in its own right, following each DependencyFailed result's
-// Cause. A failure with no cause to follow, such as a resource that never
-// started because the run was cancelled, is listed on its own after the
-// rest.
+// Cause. An allowed failure is listed only when something that fails
+// the run depended on it. A failure with no cause to follow, such as a
+// resource that never started because the run was cancelled, is listed on
+// its own after the rest.
 func collectFailures(final []Result) []failureSummary {
 	byID := make(map[ResourceID]Result, len(final))
 	for _, r := range final {
@@ -511,6 +514,10 @@ func collectFailures(final []Result) []failureSummary {
 	var orphans []failureSummary
 
 	for _, r := range final {
+		if r.AllowFailure {
+			continue
+		}
+
 		switch r.Status {
 		case StatusFailed:
 			rootFor(r)

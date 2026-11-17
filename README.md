@@ -148,6 +148,55 @@ The compiled binary comes with runtime flags:
 ./viaduct --help
 ```
 
+## Using viaduct as a library
+
+A program with flags of its own, or one that wants to handle the outcome
+itself, uses `Apply` instead of `Run`. Nothing happens when viaduct is
+imported: flags are only read by `Run`, and the system attributes are read
+when first used.
+
+```go
+report, err := m.Apply(ctx, viaduct.Options{
+        Env:     viaduct.Env{DryRun: dryRun},
+        Handler: handler,
+        OnResult: func(r viaduct.Result) {
+                // Called as each resource finishes, never concurrently
+        },
+})
+```
+
+`Apply` returns an error wrapping `ErrInvalidManifest`, `ErrPreflightFailed` or
+`ErrRunFailed`, and a `Report` with a `Result` for every resource, including
+the one that failed. Each result has the resource's ID, kind, operation and
+status, whether it changed anything, its error, and how long it took. A
+resource that did not run because a dependency failed has that dependency
+as its `Cause`.
+Cancelling the context stops resources that are running and stops the rest
+from starting.
+
+Everything a run reports is an `Event`, sent to the `Handler` in `Options`.
+`NewTextHandler` prints what `Run` prints. Command output arrives as events
+too, one per line.
+
+Use `AddNamed` to give a resource a stable ID of your own, rather than one
+generated from its attributes.
+
+### Retries and outcomes
+
+```go
+ready := m.AddNamed("ready", resources.Exec("curl -fsS http://localhost:8080/ready"))
+m.WithRetry(ready, viaduct.RetryPolicy{Attempts: 5, Initial: time.Second, Max: 30 * time.Second})
+
+// A failure here is reported, but does not fail the run. Anything depending
+// on it does not run
+m.AllowFailure(m.Add(resources.Exec("optional-tuning")))
+```
+
+A retried resource releases its lock while it waits, and an error wrapped with
+`viaduct.Permanent` stops the retries. A resource can return
+`viaduct.Skip(reason)` when it has nothing to do, and anything depending on it
+still runs.
+
 ## Embedded files and templates
 
 There are helper functions to allow us to use the

@@ -127,6 +127,16 @@ func (m *Manifest) WithRetry(r *Resource, p RetryPolicy) {
 	}
 }
 
+// AllowFailure lets a resource fail without failing the run. The failure is
+// logged as a warning and kept in its result. Resources depending on it do
+// not run: they are DependencyFailed, and fail the run unless they are
+// allowed to fail too. A resource that fails its preflight checks is not run.
+func (m *Manifest) AllowFailure(r *Resource) {
+	if r, ok := m.lookup("AllowFailure", r); ok {
+		r.allowFailure = true
+	}
+}
+
 // SetName replaces a resource's generated ID with a name, which must be unique
 // within the manifest.
 func (m *Manifest) SetName(r *Resource, name string) {

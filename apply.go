@@ -73,11 +73,12 @@ func (r Report) Final() []Result {
 
 // Failed returns the final results of the resources that failed the run,
 // including those that did not run because something they depend on failed.
+// Resources allowed to fail are left out.
 func (r Report) Failed() []Result {
 	var out []Result
 
 	for _, res := range r.Final() {
-		if res.Status == StatusFailed || res.Status == StatusDependencyFailed {
+		if !res.AllowFailure && (res.Status == StatusFailed || res.Status == StatusDependencyFailed) {
 			out = append(out, res)
 		}
 	}
@@ -113,6 +114,9 @@ type Result struct {
 	// Final is true for the last result of a resource, and false for an
 	// attempt that is retried.
 	Final bool
+
+	// AllowFailure is true for a resource whose failure does not fail the run.
+	AllowFailure bool
 
 	// Start is when the resource started, and is zero if it never did.
 	Start time.Time
@@ -235,6 +239,7 @@ func (m *Manifest) Apply(ctx context.Context, o Options) (Report, error) {
 	if o.Env.DryRun {
 		l.Warn("dry-run", "msg", "resources report what they would change without changing it")
 	}
+
 	l.progress("preflight-checks")
 
 	// A cycle can never progress, so fail before any resource does work.
@@ -250,6 +255,11 @@ func (m *Manifest) Apply(ctx context.Context, o Options) (Report, error) {
 	var wg sync.WaitGroup
 
 	for _, r := range m.order {
+		// A resource allowed to fail that failed preflight already has a result.
+		if rn.finished(r) {
+			continue
+		}
+
 		wg.Go(func() {
 			rn.apply(ctx, r)
 		})
@@ -285,10 +295,11 @@ func (rn *run) logger(ctx context.Context, operation string) *Logger {
 // shares.
 func (rn *run) newResult(r *Resource, operation string) Result {
 	return Result{
-		ID:          r.ResourceID,
-		Kind:        r.ResourceKind,
-		Operation:   operation,
-		Description: r.Attributes.Description(),
+		ID:           r.ResourceID,
+		Kind:         r.ResourceKind,
+		Operation:    operation,
+		Description:  r.Attributes.Description(),
+		AllowFailure: r.allowFailure,
 	}
 }
 
@@ -314,7 +325,12 @@ func (rn *run) preflight(ctx context.Context, l *Logger) error {
 		result.Start = start
 		result.Duration = time.Since(start)
 
-		failed = append(failed, result)
+		if r.allowFailure {
+			log.Warn("failure-allowed", "error", err.Error())
+		} else {
+			failed = append(failed, result)
+		}
+
 		rn.record(r, result)
 	}
 
@@ -384,7 +400,7 @@ func (rn *run) apply(ctx context.Context, r *Resource) {
 		result.Final = final
 
 		if final {
-			rn.record(r, result)
+			rn.finish(ctx, r, result)
 			return
 		}
 
@@ -395,7 +411,7 @@ func (rn *run) apply(ctx context.Context, r *Resource) {
 		case <-ctx.Done():
 			result.Err = fmt.Errorf("%w, and stopped before trying again: %w", result.Err, ctx.Err())
 			result.Final = true
-			rn.record(r, result)
+			rn.finish(ctx, r, result)
 
 			return
 		case <-time.After(wait):
@@ -451,6 +467,15 @@ func (rn *run) attempt(ctx context.Context, r *Resource, n int) (Result, bool) {
 	}
 
 	return result, true
+}
+
+// finish records a resource's final result.
+func (rn *run) finish(ctx context.Context, r *Resource, result Result) {
+	if result.Status == StatusFailed && r.allowFailure {
+		newResourceLogger(ctx, rn.handler, r, result.Operation).Warn("failure-allowed", "error", result.Err.Error())
+	}
+
+	rn.record(r, result)
 }
 
 // fail records a resource that did not run, and the resource that stopped
@@ -520,7 +545,8 @@ const (
 )
 
 // settled maps a dependency's final status to a dependency state. Only
-// success and skipping let dependants run.
+// success and skipping let dependants run: an allowed failure does
+// not fail the run, but what depends on it cannot rely on it either.
 func (rn *run) settled(d *Resource) int {
 	if !rn.finished(d) {
 		return depWaiting

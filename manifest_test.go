@@ -491,6 +491,7 @@ func TestGeneratedIDs(t *testing.T) {
 	assert.Equal(t, time.Minute, c.Timeout)
 }
 
+// newCompiledRun returns a run of a manifest with its dependencies resolved
 func newCompiledRun(t *testing.T, m *Manifest) *run {
 	t.Helper()
 
@@ -787,6 +788,34 @@ func TestCollectFailures(t *testing.T) {
 		require.Len(t, failures, 1)
 		assert.Equal(t, "exec-1", failures[0].ResourceID)
 		assert.Equal(t, "upstream", failures[0].Error)
+	})
+
+	t.Run("an allowed failure is the root of what depends on it", func(t *testing.T) {
+		t.Parallel()
+
+		opt := failed("opt-1", "boom")
+		opt.AllowFailure = true
+
+		lone := failed("opt-2", "boom")
+		lone.AllowFailure = true
+
+		failures := collectFailures([]Result{opt, lone, depFailed("exec-1", "opt-1")})
+		require.Len(t, failures, 1, "an allowed failure with nothing depending on it is not listed")
+		assert.Equal(t, "opt-1", failures[0].ResourceID)
+		require.Len(t, failures[0].Dependents, 1)
+		assert.Equal(t, "exec-1", failures[0].Dependents[0].ResourceID)
+	})
+
+	t.Run("dependants allowed to fail are left out", func(t *testing.T) {
+		t.Parallel()
+
+		dep := depFailed("exec-1", "file-1")
+		dep.AllowFailure = true
+
+		failures := collectFailures([]Result{failed("file-1", "boom"), dep, depFailed("exec-2", "exec-1")})
+		require.Len(t, failures, 1)
+		require.Len(t, failures[0].Dependents, 1, "traced through the resource allowed to fail")
+		assert.Equal(t, "exec-2", failures[0].Dependents[0].ResourceID)
 	})
 
 	t.Run("no failures returns empty", func(t *testing.T) {

@@ -86,6 +86,10 @@ resources needs no change. Beyond that:
   returns the last result of each resource
 - `Skip(reason)`, returned by a resource with nothing to do, gives it the new
   `StatusSkipped` status. Anything depending on it runs
+- `AllowFailure` lets a resource fail without failing the run. The failure is in
+  its result, marked `AllowFailure`, and logged as a warning. Resources that
+  depend on it do not run: they are `StatusDependencyFailed`, and fail the run
+  unless they are allowed to fail too
 - `Result.Cause` names the resource whose failure stopped a
   `StatusDependencyFailed` resource from running, and `--json` reports it as
   `cause`

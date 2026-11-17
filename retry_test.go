@@ -426,6 +426,160 @@ func TestSkip(t *testing.T) {
 	})
 }
 
+func TestAllowFailure(t *testing.T) {
+	t.Run("a failure does not fail the run, but its dependants do not run", func(t *testing.T) {
+		after := newTestResource("after")
+		bad := &failingResource{testResourceType: testResourceType{Value: "bad"}, runErr: errors.New("boom")}
+
+		m := New()
+		b := m.Add(bad)
+		a := m.Add(after, b)
+		m.AllowFailure(b)
+
+		rec := &recorder{}
+		report, err := m.Apply(context.Background(), Options{Handler: rec})
+		require.ErrorIs(t, err, ErrRunFailed, "the dependant that could not run fails the run")
+
+		assert.False(t, after.ran.Load())
+
+		results := byID(report)
+
+		res := results[b.ResourceID]
+		assert.Equal(t, StatusFailed, res.Status)
+		assert.True(t, res.AllowFailure)
+		assert.EqualError(t, res.Err, "boom")
+
+		dep := results[a.ResourceID]
+		assert.Equal(t, StatusDependencyFailed, dep.Status)
+		assert.Equal(t, b.ResourceID, dep.Cause)
+		assert.ErrorContains(t, dep.Err, "upstream dependency failingResource bad")
+
+		failed := report.Failed()
+		require.Len(t, failed, 1)
+		assert.Equal(t, a.ResourceID, failed[0].ID)
+
+		assert.Contains(t, rec.messages(LevelWarn), "failure-allowed")
+		assert.NotContains(t, rec.messages(LevelError), "failure-allowed")
+	})
+
+	t.Run("a failure with nothing depending on it does not fail the run", func(t *testing.T) {
+		bad := &failingResource{testResourceType: testResourceType{Value: "bad"}, runErr: errors.New("boom")}
+		other := newTestResource("other")
+
+		m := New()
+		m.AllowFailure(m.Add(bad))
+		m.Add(other)
+
+		report, err := m.Apply(context.Background(), Options{})
+		require.NoError(t, err)
+
+		assert.True(t, other.ran.Load())
+		assert.Empty(t, report.Failed())
+		assert.Empty(t, collectFailures(report.Final()))
+	})
+
+	t.Run("a dependant of an allowed failure, itself allowed to fail, does not fail the run", func(t *testing.T) {
+		bad := &failingResource{testResourceType: testResourceType{Value: "bad"}, runErr: errors.New("boom")}
+		after := newTestResource("after")
+
+		m := New()
+		b := m.Add(bad)
+		a := m.Add(after, b)
+		m.AllowFailure(b)
+		m.AllowFailure(a)
+
+		report, err := m.Apply(context.Background(), Options{})
+		require.NoError(t, err)
+
+		assert.False(t, after.ran.Load())
+		assert.Equal(t, StatusDependencyFailed, byID(report)[a.ResourceID].Status)
+	})
+
+	t.Run("an allowed preflight failure does not stop the run", func(t *testing.T) {
+		other := newTestResource("other")
+		after := newTestResource("after")
+		bad := &failingResource{testResourceType: testResourceType{Value: "bad"}, preflightErr: errors.New("missing")}
+
+		m := New()
+		b := m.Add(bad)
+		m.Add(other)
+		a := m.Add(after, b)
+		m.AllowFailure(b)
+		m.AllowFailure(a)
+
+		report, err := m.Apply(context.Background(), Options{})
+		require.NoError(t, err)
+
+		assert.True(t, other.ran.Load())
+		assert.False(t, bad.ran.Load(), "a resource that failed preflight does not run")
+		assert.False(t, after.ran.Load(), "nor does anything depending on it")
+
+		results := byID(report)
+
+		res := results[b.ResourceID]
+		assert.True(t, res.AllowFailure)
+		assert.Equal(t, "Preflight", res.Operation)
+
+		assert.Equal(t, StatusDependencyFailed, results[a.ResourceID].Status)
+		assert.Equal(t, b.ResourceID, results[a.ResourceID].Cause)
+	})
+
+	t.Run("a required failure is passed on through a resource allowed to fail", func(t *testing.T) {
+		bad := &failingResource{testResourceType: testResourceType{Value: "bad"}, runErr: errors.New("boom")}
+		after := newTestResource("after")
+
+		m := New()
+		a := m.Add(bad)
+		b := m.Add(newTestResource("optional"), a)
+		m.Add(after, b)
+		m.AllowFailure(b)
+
+		report, err := m.Apply(context.Background(), Options{})
+		assert.ErrorIs(t, err, ErrRunFailed)
+		assert.False(t, after.ran.Load())
+
+		failures := collectFailures(report.Final())
+		require.Len(t, failures, 1)
+		assert.Equal(t, string(a.ResourceID), failures[0].ResourceID)
+	})
+
+	t.Run("a resource allowed to fail is retried first", func(t *testing.T) {
+		r := &flakyResource{failures: 10}
+
+		m := New()
+		res := m.Add(r)
+		m.WithRetry(res, fastRetry(2))
+		m.AllowFailure(res)
+
+		_, err := m.Apply(context.Background(), Options{})
+		require.NoError(t, err)
+		assert.EqualValues(t, 2, r.attempts.Load())
+	})
+}
+
+func TestSettledStatuses(t *testing.T) {
+	m := New()
+	r := m.Add(newTestResource("a"))
+	m.AllowFailure(r)
+
+	settled := func(s Status) int {
+		rn := newRun(m, Options{})
+		rn.record(r, Result{ID: r.ResourceID, Status: s, AllowFailure: true, Final: true})
+
+		return rn.settled(r)
+	}
+
+	for _, s := range []Status{StatusSuccess, StatusSkipped} {
+		assert.Equal(t, depSatisfied, settled(s), s)
+	}
+
+	for _, s := range []Status{StatusFailed, StatusDependencyFailed} {
+		assert.Equal(t, depFailed, settled(s), "%s, even for a resource allowed to fail", s)
+	}
+
+	assert.Equal(t, depWaiting, newRun(m, Options{}).settled(r), "no result yet")
+}
+
 func TestJSONCollectorRetries(t *testing.T) {
 	c := newJSONCollector()
 
