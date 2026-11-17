@@ -1,48 +1,94 @@
+// Package example is a custom resource with everything a resource needs: it
+// checks the current state, does nothing when it is already right, reports
+// the change it makes, skips it in a dry run, and runs commands through
+// viaduct so they are logged and can be faked in tests.
 package example
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"strings"
 
 	"github.com/surminus/viaduct"
 )
 
-// This is an example custom resource with everything required to create your
-// first custom resource in Viaduct.
+// Motd writes a message of the day, then runs a command to refresh anything
+// that caches it.
+type Motd struct {
+	// Message is the content of /etc/motd.
+	Message string
 
-// Example is an example resource. Add a description of your resource
-// and what it does here.
-type Example struct{}
-
-// Description returns a short human-readable identifier for this resource.
-func (a *Example) Description() string {
-	return "example"
+	// Refresh is a command to run after the message changes. Optional.
+	Refresh []string
 }
 
-// Params are globally available parameters for interacting with Viaduct during
-// a run.
-func (a *Example) Params() *viaduct.ResourceParams {
+// Description identifies this resource in logs and results.
+func (m *Motd) Description() string {
+	return "/etc/motd"
+}
+
+// OperationName says what the resource does, such as Create or Update.
+func (m *Motd) OperationName() string {
+	return "Update"
+}
+
+// Params says how the resource interacts with the run, such as which lock it
+// needs or how long it may take.
+func (m *Motd) Params() *viaduct.ResourceParams {
 	return viaduct.NewResourceParams()
 }
 
-// PreflightChecks is an important step to ensure that:
-// 1. Required resource parameters have been assigned
-// 2. Any optional parameters have default values if needed
-// 3. Any other checks that may cause an error during a run
-func (a *Example) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
-	// Test for required parameters here.
+// PreflightChecks validates the resource and sets defaults. It runs for every
+// resource before any of them runs.
+func (m *Motd) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
+	if m.Message == "" {
+		return fmt.Errorf("required parameter: Message")
+	}
+
+	if !strings.HasSuffix(m.Message, "\n") {
+		m.Message += "\n"
+	}
+
 	return nil
 }
 
-// OperationName is used for logging and error messages, and will be
-// something like "Create" or "Delete".
-func (a *Example) OperationName() string {
-	// Used for logging and error messages.
-	return "Wave"
-}
+// Run makes the change.
+func (m *Motd) Run(ctx context.Context, log *viaduct.Logger) error {
+	env := viaduct.EnvFrom(ctx)
 
-// Run actually performs the work for the resource.
-func (a *Example) Run(ctx context.Context, log *viaduct.Logger) error {
-	log.Info("hello")
+	// Paths go through Env.Path, so tests can run against a directory
+	path := env.Path("/etc/motd")
 
-	return nil
+	current, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+
+	// Already right: report a noop and change nothing
+	if string(current) == m.Message {
+		log.Noop("up-to-date", "path", "/etc/motd")
+		return nil
+	}
+
+	// Report the change, then stop here in a dry run
+	log.Info("updated", "path", "/etc/motd")
+
+	if env.DryRun {
+		return nil
+	}
+
+	if err := viaduct.WriteFileAtomic(path, []byte(m.Message), 0o644); err != nil {
+		return err
+	}
+
+	if len(m.Refresh) == 0 {
+		return nil
+	}
+
+	// Commands go through the environment's Runner, and their output is
+	// logged line by line
+	return viaduct.Command{Name: m.Refresh[0], Args: m.Refresh[1:]}.Run(ctx, log)
 }

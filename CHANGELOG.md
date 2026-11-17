@@ -17,6 +17,11 @@ resources needs no change. Beyond that:
   func (r *MyResource) PreflightChecks(ctx context.Context, log *viaduct.Logger) error
   func (r *MyResource) Run(ctx context.Context, log *viaduct.Logger) error
   ```
+
+- In `Run`, read dry run from `viaduct.EnvFrom(ctx).DryRun` rather than
+  `viaduct.Cli.DryRun`. Check the current state first, log `Noop` and return
+  when nothing needs doing, log the change with `Info`, and return before
+  making it in a dry run. See [the example](examples/custom-resource)
 - Run commands with `viaduct.Command{Name: ..., Args: ...}.Run(ctx, log)`
   rather than `os/exec`, and go through `EnvFrom(ctx).Path` for absolute
   paths, so the resource can be tested with `viaducttest`
