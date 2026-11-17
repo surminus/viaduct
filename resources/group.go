@@ -102,7 +102,7 @@ func (g *Group) create(ctx context.Context, log *viaduct.Logger) error {
 
 	args = append(args, g.Name)
 
-	if err := runCommand(args...); err != nil {
+	if err := runCommand(ctx, log, args...); err != nil {
 		return fmt.Errorf("groupadd failed for %s: %w", g.Name, err)
 	}
 
@@ -122,7 +122,7 @@ func (g *Group) delete(ctx context.Context, log *viaduct.Logger) error {
 		return nil
 	}
 
-	if err := runCommand("groupdel", g.Name); err != nil {
+	if err := runCommand(ctx, log, "groupdel", g.Name); err != nil {
 		return fmt.Errorf("groupdel failed for %s: %w", g.Name, err)
 	}
 

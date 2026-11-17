@@ -387,14 +387,14 @@ func (a *Apt) receiveSigningKey(ctx context.Context, log *viaduct.Logger) error 
 
 	if a.SigningKey != "" {
 		// First we fetch the key using GPG
-		if err := runCommand("gpg", "--recv-keys", "--keyserver", "keyserver.ubuntu.com", a.SigningKey); err != nil {
+		if err := runCommand(ctx, log, "gpg", "--recv-keys", "--keyserver", "keyserver.ubuntu.com", a.SigningKey); err != nil {
 			return err
 		}
 
 		// Ensure that the key is deleted from GPG
 		defer func() {
 			//nolint:errcheck
-			runCommand("gpg", "--delete-keys", "--yes", a.SigningKey)
+			runCommand(ctx, log, "gpg", "--delete-keys", "--yes", a.SigningKey)
 		}()
 
 		// Then we export the key to disk

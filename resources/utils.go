@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strconv"
@@ -131,13 +130,9 @@ func fileOwnership(path string) (ownership, error) {
 	return ownership{uid: int(stat.Uid), gid: int(stat.Gid)}, nil
 }
 
-// runCommand runs a system command, directing output according to the
-// CLI flags
-func runCommand(args ...string) error {
-	// nolint:gosec
-	cmd := exec.Command(args[0], args[1:]...)
-	setCommandOutput(cmd)
-	return cmd.Run()
+// runCommand runs a command through the environment's runner
+func runCommand(ctx context.Context, log *viaduct.Logger, args ...string) error {
+	return viaduct.Command{Name: args[0], Args: args[1:]}.Run(ctx, log)
 }
 
 // Permissions can be used with some resources to manage how they set

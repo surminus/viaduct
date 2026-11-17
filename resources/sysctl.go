@@ -106,7 +106,7 @@ func (s *Sysctl) Run(ctx context.Context, log *viaduct.Logger) error {
 		return nil
 	}
 
-	if err := runCommand("sysctl", "--system"); err != nil {
+	if err := runCommand(ctx, log, "sysctl", "--system"); err != nil {
 		return fmt.Errorf("sysctl --system failed: %w", err)
 	}
 

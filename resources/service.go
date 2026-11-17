@@ -159,7 +159,7 @@ func (s *Service) setEnabled(ctx context.Context, log *viaduct.Logger, enable bo
 		return nil
 	}
 
-	if err := runCommand("systemctl", verb, s.Name); err != nil {
+	if err := runCommand(ctx, log, "systemctl", verb, s.Name); err != nil {
 		return fmt.Errorf("systemctl %s failed for %s: %w", verb, s.Name, err)
 	}
 
@@ -195,7 +195,7 @@ func (s *Service) runAction(ctx context.Context, log *viaduct.Logger) error {
 		}
 	}
 
-	if err := runCommand("systemctl", s.Action, s.Name); err != nil {
+	if err := runCommand(ctx, log, "systemctl", s.Action, s.Name); err != nil {
 		return fmt.Errorf("systemctl %s failed for %s: %w", s.Action, s.Name, err)
 	}
 

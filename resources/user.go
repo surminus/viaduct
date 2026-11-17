@@ -92,7 +92,7 @@ func (u *User) create(ctx context.Context, log *viaduct.Logger) error {
 	}
 
 	if u.GID != 0 && !groupExists(u.Name) {
-		if err := runCommand("groupadd", "-g", strconv.Itoa(u.GID), u.Name); err != nil {
+		if err := runCommand(ctx, log, "groupadd", "-g", strconv.Itoa(u.GID), u.Name); err != nil {
 			return fmt.Errorf("groupadd failed for %s: %w", u.Name, err)
 		}
 
@@ -119,7 +119,7 @@ func (u *User) create(ctx context.Context, log *viaduct.Logger) error {
 
 	args = append(args, "-s", u.Shell, u.Name)
 
-	if err := runCommand(args...); err != nil {
+	if err := runCommand(ctx, log, args...); err != nil {
 		return fmt.Errorf("useradd failed for %s: %w", u.Name, err)
 	}
 
@@ -150,7 +150,7 @@ func (u *User) update(ctx context.Context, log *viaduct.Logger, usr *user.User) 
 		return nil
 	}
 
-	if err := runCommand("usermod", "-a", "-G", strings.Join(missing, ","), u.Name); err != nil {
+	if err := runCommand(ctx, log, "usermod", "-a", "-G", strings.Join(missing, ","), u.Name); err != nil {
 		return fmt.Errorf("usermod failed for %s: %w", u.Name, err)
 	}
 
