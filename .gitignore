@@ -18,3 +18,4 @@
 example/test
 example/example
 test/integration/viaduct-integration
+test/integration/viaduct-privileged
