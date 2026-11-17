@@ -154,6 +154,15 @@ func runCommand(ctx context.Context, log *viaduct.Logger, args ...string) error 
 	return viaduct.Command{Name: args[0], Args: args[1:]}.Run(ctx, log)
 }
 
+// requireRoot returns an error unless running as root
+func requireRoot(ctx context.Context, kind string) error {
+	if !viaduct.EnvFrom(ctx).IsRoot() {
+		return fmt.Errorf("%s resource must be run as root", kind)
+	}
+
+	return nil
+}
+
 // Permissions can be used with some resources to manage how they set
 // permissions on files
 type Permissions struct {

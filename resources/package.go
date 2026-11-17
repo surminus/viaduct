@@ -3,14 +3,15 @@ package resources
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/exec"
+	"io"
 	"strings"
 
 	"github.com/surminus/viaduct"
 )
 
-// Package installs one or more packages. Specify the package names.
+// Package installs one or more packages. Specify the package names. It has
+// no timeout by default; WithTimeout and the ResourceTimeout option still
+// apply.
 type Package struct {
 	// Names are the package names
 	Names []string
@@ -42,8 +43,12 @@ func (p *Package) Description() string {
 
 func (p *Package) Params() *viaduct.ResourceParams {
 	// Package managers take their own lock, and their maintainer scripts write
-	// the passwd database, so the package lock covers both
-	return viaduct.NewResourceParamsWithLockKey(viaduct.PackageLock)
+	// the passwd database, so the package lock covers both. A timeout kills
+	// the process, which can leave dpkg interrupted, so there is none.
+	params := viaduct.NewResourceParamsWithLockKey(viaduct.PackageLock)
+	params.Timeout = noTimeout
+
+	return params
 }
 
 // PreflightChecks sets default values for the parameters for a particular
@@ -54,8 +59,8 @@ func (p *Package) PreflightChecks(ctx context.Context, log *viaduct.Logger) erro
 		return fmt.Errorf("required parameter: Names")
 	}
 
-	if !viaduct.IsRoot() {
-		return fmt.Errorf("package resource must be run as root")
+	if err := requireRoot(ctx, "package"); err != nil {
+		return err
 	}
 
 	if p.Purge && !purgeSupported(viaduct.Attributes().Platform.ID) {
@@ -191,32 +196,40 @@ func (p *Package) Run(ctx context.Context, log *viaduct.Logger) error {
 }
 
 func (p *Package) install(ctx context.Context, log *viaduct.Logger) error {
-	log.Info("installing", "packages", strings.Join(p.Names, ", "))
-	if viaduct.EnvFrom(ctx).DryRun {
+	args, err := installArgs(viaduct.Attributes().Platform.ID, p.Names)
+	if err != nil {
+		return err
+	}
+
+	if !change(ctx, log, "installing", "packages", strings.Join(p.Names, ", ")) {
 		return nil
 	}
 
-	return installPkg(viaduct.Attributes().Platform.ID, p.Names, p.Verbose)
+	return runPkgCmd(ctx, log, args, p.Verbose)
 }
 
 func (p *Package) uninstall(ctx context.Context, log *viaduct.Logger) error {
-	if p.Purge {
-		log.Info("purging", "packages", strings.Join(p.Names, ", "))
-	} else {
-		log.Info("uninstalling", "packages", strings.Join(p.Names, ", "))
+	args, err := removeArgs(viaduct.Attributes().Platform.ID, p.Names, p.Purge)
+	if err != nil {
+		return err
 	}
 
-	if viaduct.EnvFrom(ctx).DryRun {
+	msg := "uninstalling"
+	if p.Purge {
+		msg = "purging"
+	}
+
+	if !change(ctx, log, msg, "packages", strings.Join(p.Names, ", ")) {
 		return nil
 	}
 
-	return removePkg(viaduct.Attributes().Platform.ID, p.Names, p.Verbose, p.Purge)
+	return runPkgCmd(ctx, log, args, p.Verbose)
 }
 
 // hold marks packages as held back, or releases them, leaving alone any that
 // are already in the state we want
 func (p *Package) hold(ctx context.Context, log *viaduct.Logger) error {
-	held, err := heldPackages()
+	held, err := heldPackages(ctx, log)
 	if err != nil {
 		return err
 	}
@@ -238,7 +251,7 @@ func (p *Package) hold(ctx context.Context, log *viaduct.Logger) error {
 		return nil
 	}
 
-	return runPkgCmd(append([]string{"apt-mark", action}, change...), p.Verbose)
+	return runPkgCmd(ctx, log, append([]string{"apt-mark", action}, change...), p.Verbose)
 }
 
 // holdsToChange returns the packages whose hold state does not match what was
@@ -255,9 +268,10 @@ func holdsToChange(names []string, held map[string]bool, want bool) []string {
 	return change
 }
 
-// heldPackages returns the set of packages currently marked as held back
-func heldPackages() (map[string]bool, error) {
-	out, err := exec.Command("apt-mark", "showhold").Output()
+// heldPackages returns the set of packages currently marked as held back. It
+// runs in a dry run too.
+func heldPackages(ctx context.Context, log *viaduct.Logger) (map[string]bool, error) {
+	out, err := viaduct.Command{Name: "apt-mark", Args: []string{"showhold"}}.Output(ctx, log)
 	if err != nil {
 		return nil, fmt.Errorf("apt-mark showhold failed: %w", err)
 	}
@@ -268,24 +282,6 @@ func heldPackages() (map[string]bool, error) {
 	}
 
 	return held, nil
-}
-
-func installPkg(platform string, pkgs []string, verbose bool) error {
-	args, err := installArgs(platform, pkgs)
-	if err != nil {
-		return err
-	}
-
-	return runPkgCmd(args, verbose)
-}
-
-func removePkg(platform string, pkgs []string, verbose, purge bool) error {
-	args, err := removeArgs(platform, pkgs, purge)
-	if err != nil {
-		return err
-	}
-
-	return runPkgCmd(args, verbose)
 }
 
 // installArgs builds the command that installs packages on a platform
@@ -326,23 +322,16 @@ func removeArgs(platform string, pkgs []string, purge bool) ([]string, error) {
 	}
 }
 
-func runPkgCmd(args []string, verbose bool) (err error) {
-	// nolint:gosec
-	cmd := exec.Command(args[0], args[1:]...)
+// runPkgCmd runs a package manager command, logging its stderr, and its stdout
+// when verbose
+func runPkgCmd(ctx context.Context, log *viaduct.Logger, args []string, verbose bool) error {
+	c := viaduct.Command{Name: args[0], Args: args[1:]}
 
-	if viaduct.Cli.JSON {
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-	} else {
-		if verbose {
-			cmd.Stdout = os.Stdout
-		}
-		cmd.Stderr = os.Stderr
+	if !verbose {
+		c.Stdout = io.Discard
 	}
 
-	err = cmd.Run()
-
-	return err
+	return c.Run(ctx, log)
 }
 
 func aptGetArgs(command string, packages []string) []string {

@@ -168,10 +168,10 @@ resources needs no change. Beyond that:
   SIGTERM cancels running resources too, and a second signal exits straight
   away
 - **Package work has no timeout by default.** Stopping dpkg part way through
-  leaves it interrupted, so `Execute` or `Shell` with `LockKey` set to
-  `PackageLock` (including `DistUpgrade`, `AptAutoremove`, `AptHold` and
-  `InstallDeb`) run until they finish. `WithTimeout` and `--resource-timeout`
-  still apply to them
+  leaves it interrupted, so `Package`,
+  and `Execute` or `Shell` with `LockKey` set to `PackageLock` (including
+  `DistUpgrade`, `AptAutoremove`, `AptHold` and `InstallDeb`) run until they
+  finish. `WithTimeout` and `--resource-timeout` still apply to them
 - **A failed `Execute` or `Shell` reports no change.** They log the command
   once it has finished, or in a dry run, the command they would have run
 - **`File`, `Template` and `Line` write files atomically.** A
