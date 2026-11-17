@@ -3,13 +3,13 @@ package resources
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/surminus/viaduct"
 )
 
+// Execute runs a command. It reports a change on every run, unless Unless
+// says there is nothing to do.
 type Execute struct {
 	// Command is the command to run. It is passed to "bash -c", so shell
 	// syntax such as pipes and redirection works, and any value containing
@@ -37,7 +37,8 @@ type Execute struct {
 
 	// LockKey narrows the lock to a single domain, such as
 	// viaduct.PackageLock, so the command only waits for other resources
-	// using the same key. Implies Lock. Optional.
+	// using the same key. Implies Lock. With viaduct.PackageLock the command
+	// has no timeout by default. Optional.
 	LockKey viaduct.LockKey
 }
 
@@ -80,10 +81,23 @@ func (e *Execute) Description() string {
 }
 
 func (e *Execute) Params() *viaduct.ResourceParams {
-	return &viaduct.ResourceParams{GlobalLock: e.Lock || e.LockKey != "", LockKey: e.LockKey}
+	return lockParams(e.Lock, e.LockKey)
 }
 
-func (e *Execute) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
+// lockParams returns the params of a command resource. One holding the
+// package lock gets no timeout, as Package does, since stopping dpkg part way
+// through leaves it interrupted.
+func lockParams(lock bool, key viaduct.LockKey) *viaduct.ResourceParams {
+	params := &viaduct.ResourceParams{GlobalLock: lock || key != "", LockKey: key}
+
+	if key == viaduct.PackageLock {
+		params.Timeout = noTimeout
+	}
+
+	return params
+}
+
+func (e *Execute) PreflightChecks(_ context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if e.Command == "" && len(e.Args) == 0 {
 		return fmt.Errorf("required parameter: Command")
@@ -102,26 +116,19 @@ func (e *Execute) OperationName() string {
 }
 
 func (e *Execute) Run(ctx context.Context, log *viaduct.Logger) error {
-	return e.runExecute(ctx, log)
-}
-
-// Run runs the given command
-func (e *Execute) runExecute(ctx context.Context, log *viaduct.Logger) error {
-	if unlessSucceeds(e.Unless, e.WorkingDirectory) {
+	if unlessSucceeds(ctx, log, e.Unless, e.WorkingDirectory) {
 		log.Noop("skipped", "command", e.Description())
 		return nil
 	}
 
-	log.Info("started", "command", e.Description())
-	if viaduct.EnvFrom(ctx).DryRun {
+	if wouldRun(ctx, log, "command", e.Description()) {
 		return nil
 	}
 
-	cmd := e.command()
-	setCommandOutput(cmd)
-	cmd.Dir = e.WorkingDirectory
+	c := e.command()
+	c.Dir = e.WorkingDirectory
 
-	if err := cmd.Run(); err != nil {
+	if err := c.Run(ctx, log); err != nil {
 		return fmt.Errorf("command failed: %s: %w", e.Description(), err)
 	}
 	log.Info("finished", "command", e.Description())
@@ -129,48 +136,39 @@ func (e *Execute) runExecute(ctx context.Context, log *viaduct.Logger) error {
 	return nil
 }
 
-// command builds the command to run, using a shell only when the command was
-// given as a single string
-func (e *Execute) command() *exec.Cmd {
-	if len(e.Args) > 0 {
-		// nolint:gosec
-		return exec.Command(e.Args[0], e.Args[1:]...)
+// wouldRun logs, in a dry run, the command or script that would run, and
+// reports whether it is a dry run. A real run logs nothing until the command
+// has finished, so one that fails does not mark the resource changed.
+func wouldRun(ctx context.Context, log *viaduct.Logger, kind, description string) bool {
+	if !viaduct.EnvFrom(ctx).DryRun {
+		return false
 	}
 
-	// nolint:gosec
-	return exec.Command("bash", "-c", e.Command)
+	log.Info("started", kind, description)
+
+	return true
+}
+
+// command builds the command to run, using a shell only when the command was
+// given as a single string
+func (e *Execute) command() viaduct.Command {
+	if len(e.Args) > 0 {
+		return viaduct.Command{Name: e.Args[0], Args: e.Args[1:]}
+	}
+
+	return viaduct.Command{Name: "bash", Args: []string{"-c", e.Command}}
 }
 
 // unlessSucceeds runs an Unless guard through bash in dir, reporting whether
 // it exited cleanly. An empty guard never succeeds, so the resource runs. The
 // guard shares the resource's working directory so a relative path in it
-// checks the same place the resource acts on.
-func unlessSucceeds(unless, dir string) bool {
+// checks the same place the resource acts on. It runs in a dry run too.
+func unlessSucceeds(ctx context.Context, log *viaduct.Logger, unless, dir string) bool {
 	if unless == "" {
 		return false
 	}
 
-	// nolint:gosec
-	cmd := exec.Command("bash", "-c", unless)
-	setCommandOutput(cmd)
-	cmd.Dir = dir
+	c := viaduct.Command{Name: "bash", Args: []string{"-c", unless}, Dir: dir}
 
-	return cmd.Run() == nil
-}
-
-func setCommandOutput(cmd *exec.Cmd) {
-	if viaduct.Cli.Silent || viaduct.Cli.JSON {
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		return
-	}
-
-	if viaduct.Cli.Quiet {
-		cmd.Stdout = nil
-		cmd.Stderr = os.Stderr
-		return
-	}
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	return c.Run(ctx, log) == nil
 }

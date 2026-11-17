@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/surminus/viaduct"
 )
 
+// Shell runs a script. It reports a change on every run, unless Unless says
+// there is nothing to do.
 type Shell struct {
 	// Script is the shell script to run. It can span multiple lines, and the
 	// indentation common to every line is removed before it runs, so it can
@@ -43,7 +44,8 @@ type Shell struct {
 
 	// LockKey narrows the lock to a single domain, such as
 	// viaduct.PackageLock, so the script only waits for other resources using
-	// the same key. Implies Lock. Optional.
+	// the same key. Implies Lock. With viaduct.PackageLock the script has no
+	// timeout by default. Optional.
 	LockKey viaduct.LockKey
 }
 
@@ -74,7 +76,7 @@ func (s *Shell) Description() string {
 }
 
 func (s *Shell) Params() *viaduct.ResourceParams {
-	return &viaduct.ResourceParams{GlobalLock: s.Lock || s.LockKey != "", LockKey: s.LockKey}
+	return lockParams(s.Lock, s.LockKey)
 }
 
 func (s *Shell) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
@@ -102,13 +104,12 @@ func (s *Shell) OperationName() string {
 }
 
 func (s *Shell) Run(ctx context.Context, log *viaduct.Logger) error {
-	if unlessSucceeds(s.Unless, s.WorkingDirectory) {
+	if unlessSucceeds(ctx, log, s.Unless, s.WorkingDirectory) {
 		log.Noop("skipped", "script", s.Description())
 		return nil
 	}
 
-	log.Info("started", "script", s.Description())
-	if viaduct.EnvFrom(ctx).DryRun {
+	if wouldRun(ctx, log, "script", s.Description()) {
 		return nil
 	}
 
@@ -132,11 +133,9 @@ func (s *Shell) Run(ctx context.Context, log *viaduct.Logger) error {
 		return fmt.Errorf("writing script file: %w", err)
 	}
 
-	cmd := exec.Command(s.Interpreter, append(s.flags(), f.Name())...) // nolint:gosec
-	setCommandOutput(cmd)
-	cmd.Dir = s.WorkingDirectory
+	c := viaduct.Command{Name: s.Interpreter, Args: append(s.flags(), f.Name()), Dir: s.WorkingDirectory}
 
-	if err := cmd.Run(); err != nil {
+	if err := c.Run(ctx, log); err != nil {
 		return fmt.Errorf("script failed: %s: %w", s.Description(), err)
 	}
 	log.Info("finished", "script", s.Description())

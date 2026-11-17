@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/surminus/viaduct"
+	"github.com/surminus/viaduct/viaducttest"
 )
 
 func runShell(t *testing.T, s *Shell) error {
@@ -60,6 +62,23 @@ func TestShell(t *testing.T) {
 
 		assert.Error(t, runShell(t, s))
 		assert.NoFileExists(t, path)
+	})
+
+	t.Run("a failed script does not mark the resource changed", func(t *testing.T) {
+		log := viaduct.NewLogger(nil, "Shell", "Run")
+
+		require.Error(t, Bash("false").Run(testCtx, log))
+		assert.False(t, log.Changed())
+	})
+
+	t.Run("a dry run logs the script without running it", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+
+		log, err := env.Apply(env.DryRunContext(), Bash("false"))
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Empty(t, env.Runner.Calls())
 	})
 
 	t.Run("fails on a failing pipeline under bash", func(t *testing.T) {

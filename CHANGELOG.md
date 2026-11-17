@@ -17,6 +17,9 @@ resources needs no change. Beyond that:
   func (r *MyResource) PreflightChecks(ctx context.Context, log *viaduct.Logger) error
   func (r *MyResource) Run(ctx context.Context, log *viaduct.Logger) error
   ```
+- Run commands with `viaduct.Command{Name: ..., Args: ...}.Run(ctx, log)`
+  rather than `os/exec`, and go through `EnvFrom(ctx).Path` for absolute
+  paths, so the resource can be tested with `viaducttest`
 - `NewLogger(kind, operation)` in tests becomes
   `viaduct.NewLogger(nil, kind, operation)`, or use `viaducttest.NewEnv`
 - `Pending`, `Success`, `Failed` and `DependencyFailed` become
@@ -164,6 +167,13 @@ resources needs no change. Beyond that:
   40 seconds after its context is cancelled is abandoned. SIGINT or
   SIGTERM cancels running resources too, and a second signal exits straight
   away
+- **Package work has no timeout by default.** Stopping dpkg part way through
+  leaves it interrupted, so `Execute` or `Shell` with `LockKey` set to
+  `PackageLock` (including `DistUpgrade`, `AptAutoremove`, `AptHold` and
+  `InstallDeb`) run until they finish. `WithTimeout` and `--resource-timeout`
+  still apply to them
+- **A failed `Execute` or `Shell` reports no change.** They log the command
+  once it has finished, or in a dry run, the command they would have run
 - **`File`, `Template` and `Line` write files atomically.** A
   crash part way through a write leaves the old file or the new one, never a
   truncated mixture. The file is replaced rather than rewritten, so its inode

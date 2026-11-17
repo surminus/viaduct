@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/surminus/viaduct"
 )
@@ -143,6 +144,10 @@ func fileOwnership(path string) (ownership, error) {
 
 	return ownership{uid: int(stat.Uid), gid: int(stat.Gid)}, nil
 }
+
+// noTimeout is a ResourceParams timeout meaning none. Package work uses it,
+// since stopping dpkg part way through leaves it interrupted.
+const noTimeout time.Duration = -1
 
 // runCommand runs a command through the environment's runner
 func runCommand(ctx context.Context, log *viaduct.Logger, args ...string) error {

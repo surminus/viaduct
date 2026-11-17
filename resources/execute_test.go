@@ -1,12 +1,16 @@
 package resources
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/surminus/viaduct"
+	"github.com/surminus/viaduct/viaducttest"
 )
 
 func newTestExecute(t *testing.T) *Execute {
@@ -34,6 +38,23 @@ func TestExecute(t *testing.T) {
 
 		err := e.Run(testCtx, testLogger)
 		assert.ErrorContains(t, err, "exit status 1")
+	})
+
+	t.Run("a failed command does not mark the resource changed", func(t *testing.T) {
+		log := viaduct.NewLogger(nil, "Execute", "Run")
+
+		require.Error(t, Exec("false").Run(testCtx, log))
+		assert.False(t, log.Changed())
+	})
+
+	t.Run("a dry run logs the command without running it", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+
+		log, err := env.Apply(env.DryRunContext(), Exec("false"))
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Empty(t, env.Runner.Calls())
 	})
 
 	t.Run("runs unless in the working directory", func(t *testing.T) {
@@ -103,5 +124,39 @@ func TestExecutePreflightChecks(t *testing.T) {
 
 	t.Run("accepts args alone", func(t *testing.T) {
 		assert.NoError(t, (&Execute{Args: []string{"true"}}).PreflightChecks(testCtx, testLogger))
+	})
+}
+
+func TestExecuteOutput(t *testing.T) {
+	t.Run("each line of output is an event", func(t *testing.T) {
+		var events []viaduct.Event
+		log := viaduct.NewLogger(viaduct.HandlerFunc(func(_ context.Context, e viaduct.Event) {
+			events = append(events, e)
+		}), "Execute", "Run")
+
+		e := Exec("echo one; echo two >&2; printf three")
+		require.NoError(t, e.Run(testCtx, log))
+
+		var lines []string
+		streams := map[string]any{}
+		for _, ev := range events {
+			if ev.Level == viaduct.LevelOutput {
+				lines = append(lines, ev.Message)
+				streams[ev.Message], _ = ev.Field("stream")
+			}
+		}
+
+		assert.ElementsMatch(t, []string{"one", "two", "three"}, lines)
+		assert.Equal(t, viaduct.Stdout, streams["one"])
+		assert.Equal(t, viaduct.Stderr, streams["two"])
+	})
+
+	t.Run("a background process holding the output open does not hang", func(t *testing.T) {
+		start := time.Now()
+
+		e := Exec("sleep 30 &")
+		require.NoError(t, e.Run(testCtx, testLogger))
+
+		assert.Less(t, time.Since(start), 10*time.Second)
 	})
 }

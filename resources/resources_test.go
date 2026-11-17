@@ -18,7 +18,6 @@ var (
 )
 
 func init() {
-	viaduct.Cli.SetSilent()
 	testLogger = viaduct.NewLogger(nil, "Test", "Testing")
 }
 
