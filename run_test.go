@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -239,6 +240,61 @@ func TestRunJSON(t *testing.T) {
 	})
 }
 
+func TestRunInterrupted(t *testing.T) {
+	for sig, code := range map[syscall.Signal]int{
+		syscall.SIGINT:  130,
+		syscall.SIGTERM: 143,
+	} {
+		t.Run(sig.String(), func(t *testing.T) {
+			ctx, cancel := context.WithCancelCause(context.Background())
+
+			// a holds the run until it has been interrupted, so b never starts
+			a := &startedResource{started: make(chan struct{})}
+			b := newTestResource("b")
+
+			m := New()
+			m.Add(b, m.Add(a))
+
+			go func() {
+				<-a.started
+				cancel(interrupt{sig: sig})
+			}()
+
+			got, out := runJSON(t, ctx, m, CliFlags{})
+			assert.Equal(t, code, got)
+			assert.Equal(t, "interrupted", out.Status)
+			assert.Contains(t, out.Error, "interrupted by")
+			assert.Empty(t, out.Failures, "an interrupted run is not a failure to explain")
+			assert.False(t, b.ran.Load())
+		})
+	}
+
+	t.Run("text", func(t *testing.T) {
+		ctx, cancel := context.WithCancelCause(context.Background())
+		cancel(interrupt{sig: syscall.SIGINT})
+
+		m := New()
+		m.Add(newTestResource("a"))
+
+		code, _, stderr := runOutput(t, ctx, m, CliFlags{})
+		assert.Equal(t, 130, code)
+		assert.Contains(t, stderr, "interrupted")
+		assert.NotContains(t, stderr, "Failed resources")
+	})
+
+	t.Run("a cancelled context without a signal", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		m := New()
+		m.Add(newTestResource("a"))
+
+		code, out := runJSON(t, ctx, m, CliFlags{})
+		assert.Equal(t, 1, code)
+		assert.Equal(t, "interrupted", out.Status)
+	})
+}
+
 func TestDumpManifest(t *testing.T) {
 	ctx := context.Background()
 
@@ -292,4 +348,18 @@ func TestDumpManifest(t *testing.T) {
 		assert.Equal(t, 0, code, "a failed dump does not fail the run")
 		assert.Contains(t, stderr, "manifest-not-written")
 	})
+}
+
+// startedResource says when it has started, then waits for its context to be
+// cancelled
+type startedResource struct {
+	testResourceType
+	started chan struct{}
+}
+
+func (s *startedResource) Run(ctx context.Context, log *Logger) error {
+	close(s.started)
+	<-ctx.Done()
+
+	return ctx.Err()
 }

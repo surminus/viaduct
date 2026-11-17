@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"slices"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/fatih/color"
@@ -18,7 +20,9 @@ import (
 
 // Run is the entry point for a program whose only job is to apply the
 // manifest. It reads the command-line flags, applies the manifest, prints
-// the outcome and exits, with a non-zero status if anything failed.
+// the outcome and exits, with a non-zero status if anything failed. SIGINT
+// or SIGTERM stops the run, cancelling the resources that are running, and
+// exits with 130 or 143. A second signal exits straight away.
 //
 // A program that defines its own flags, or wants to handle the outcome
 // itself, uses Apply instead.
@@ -33,7 +37,10 @@ func (m *Manifest) run() int {
 		return code
 	}
 
-	return m.runWith(context.Background(), flags, os.Stdout, os.Stderr)
+	ctx, stop := signalContext(context.Background())
+	defer stop()
+
+	return m.runWith(ctx, flags, os.Stdout, os.Stderr)
 }
 
 // flagsExit returns the exit code for an error from reading the flags, and
@@ -47,6 +54,49 @@ func flagsExit(err error, stderr io.Writer) (int, bool) {
 	default:
 		fmt.Fprintln(stderr, err)
 		return 2, true
+	}
+}
+
+// interrupt is the cause of a run being stopped by a signal.
+type interrupt struct {
+	sig os.Signal
+}
+
+func (i interrupt) Error() string {
+	return "interrupted by " + i.sig.String()
+}
+
+// exitCode is the shell convention for a program stopped by the signal: 130
+// for SIGINT and 143 for SIGTERM.
+func (i interrupt) exitCode() int {
+	if s, ok := i.sig.(syscall.Signal); ok {
+		return 128 + int(s)
+	}
+
+	return 1
+}
+
+// signalContext returns a context cancelled by the first SIGINT or SIGTERM,
+// with an interrupt as its cause. The signals then get their default
+// handling back, so a second one kills the program.
+func signalContext(parent context.Context) (context.Context, func()) {
+	ctx, cancel := context.WithCancelCause(parent)
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		select {
+		case s := <-sigs:
+			signal.Stop(sigs)
+			cancel(interrupt{sig: s})
+		case <-ctx.Done():
+		}
+	}()
+
+	return ctx, func() {
+		signal.Stop(sigs)
+		cancel(nil)
 	}
 }
 
@@ -92,8 +142,13 @@ func (m *Manifest) runWith(ctx context.Context, flags CliFlags, stdout, stderr i
 	l := NewLogger(handler, "Viaduct", "Run")
 	l.ctx = ctx
 
+	interrupted := err != nil && ctx.Err() != nil
 	duration := report.Duration.Round(time.Second).String()
-	failures := collectFailures(report.Final())
+
+	var failures []failureSummary
+	if !interrupted {
+		failures = collectFailures(report.Final())
+	}
 
 	var manifestPath string
 
@@ -123,7 +178,11 @@ func (m *Manifest) runWith(ctx context.Context, flags CliFlags, stdout, stderr i
 			Manifest:  manifestPath,
 		}
 
-		if err != nil {
+		switch {
+		case interrupted:
+			output.Status = "interrupted"
+			output.Error = context.Cause(ctx).Error()
+		case err != nil:
 			output.Status = "failed"
 			output.Error = err.Error()
 		}
@@ -137,6 +196,8 @@ func (m *Manifest) runWith(ctx context.Context, flags CliFlags, stdout, stderr i
 		fmt.Fprintln(stdout, string(out))
 	} else {
 		switch {
+		case interrupted:
+			l.Warn("interrupted", "duration", duration)
 		case err == nil:
 			l.progress("completed", "duration", duration)
 		case errors.Is(err, ErrRunFailed):
@@ -151,15 +212,27 @@ func (m *Manifest) runWith(ctx context.Context, flags CliFlags, stdout, stderr i
 		// Apply has already logged anything that stopped the run before it
 		// started.
 		if flags.Silent && err != nil {
-			fmt.Fprintln(stderr, err)
+			if interrupted {
+				fmt.Fprintln(stderr, context.Cause(ctx))
+			} else {
+				fmt.Fprintln(stderr, err)
+			}
 		}
 	}
 
-	if err != nil {
-		return 1
-	}
+	switch {
+	case interrupted:
+		var in interrupt
+		if errors.As(context.Cause(ctx), &in) {
+			return in.exitCode()
+		}
 
-	return 0
+		return 1
+	case err != nil:
+		return 1
+	default:
+		return 0
+	}
 }
 
 // dumpedResource is a resource as --dump-manifest writes it, with the
@@ -413,7 +486,7 @@ type ResourceResult struct {
 
 // RunOutput is the top-level JSON output for a run.
 type RunOutput struct {
-	// Status is "success" or "failed".
+	// Status is "success", "failed" or "interrupted".
 	Status string `json:"status"`
 
 	// Error is why the run failed, including when it failed before any

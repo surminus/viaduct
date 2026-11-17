@@ -32,7 +32,8 @@ resources needs no change. Beyond that:
   for every resource, and an error, rather than printing and exiting. The
   error wraps `ErrInvalidManifest`, `ErrPreflightFailed` or `ErrRunFailed`.
   Cancelling the context stops resources that have not started from starting.
-  `Run` is now a wrapper around it for command-line programs. A manifest
+  `Run` is now a wrapper around it for command-line programs, and stops the
+  run the same way on SIGINT or SIGTERM, exiting with 130 or 143. A manifest
   can be applied more than once, each time with its own report, but not
   concurrently
 - `Must`, for using a function that returns an error inline when the error
@@ -140,7 +141,9 @@ resources needs no change. Beyond that:
   `Cli.DryRun`
 - **A timeout cancels the resource's context.** Commands are stopped, rather
   than left running while the run moves on. A resource that has not returned
-  40 seconds after its context is cancelled is abandoned
+  40 seconds after its context is cancelled is abandoned. SIGINT or
+  SIGTERM cancels running resources too, and a second signal exits straight
+  away
 
 - **Importing viaduct no longer does anything.** Flags are parsed, system
   attributes are read and the temporary directory is created when they are
@@ -157,8 +160,9 @@ resources needs no change. Beyond that:
   reported and exits with status 2. `--help` lists `VIADUCT_RESOURCE_TIMEOUT`
   and `VIADUCT_STDOUT`
 - **`--json` always prints a JSON document**, including when the run fails
-  before any resource runs. It has `status` (`success` or `failed`), `error`
-  when the run failed, and the preflight failures in `failures`
+  before any resource runs. It has `status` (`success`, `failed` or
+  `interrupted`), `error` when the run failed, and the preflight failures in
+  `failures`. An interrupted run has no `failures`
 - `--silent` still prints the error when the run fails
 - `--dump-manifest` writes to a new file in `$TMPDIR` readable only by the
   user, with each resource's `Status` and `Error` from the run, and prints

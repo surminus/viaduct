@@ -151,9 +151,13 @@ happened and exits with a non-zero status if anything failed:
 ```
 
 `--json` prints a single JSON document on stdout, whatever the outcome, with a
-`status` of `success` or `failed`. `--dump-manifest` writes
+`status` of `success`, `failed` or `interrupted`. `--dump-manifest` writes
 every resource and its outcome to a file readable only by you, and prints
 where.
+
+The exit status is 0 when every resource succeeded, 1 when the run failed, 2
+for a flag that cannot be read, and 130 or 143 when SIGINT or SIGTERM stopped
+the run.
 
 ## Using viaduct as a library
 

@@ -151,6 +151,41 @@ func TestApply(t *testing.T) {
 		assert.ErrorIs(t, report.Results[0].Err, context.Canceled)
 	})
 
+	t.Run("a resource queued on a lock does not start once cancelled", func(t *testing.T) {
+		holder := &startedResource{started: make(chan struct{})}
+		holder.LockKey = PackageLock
+
+		gate := &waitingResource{wait: holder.started, done: make(chan struct{})}
+		queued := newTestResourceWithLockKey("queued", PackageLock)
+
+		m := New()
+		m.Add(holder)
+		q := m.Add(queued, m.Add(gate))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go func() {
+			// queued is past its dependency and waiting for the lock holder
+			<-gate.done
+			time.Sleep(20 * time.Millisecond)
+			cancel()
+		}()
+
+		report, err := m.Apply(ctx, Options{})
+		require.ErrorIs(t, err, ErrRunFailed)
+
+		assert.False(t, queued.ran.Load())
+
+		res := byID(report)[q.ResourceID]
+		assert.Equal(t, StatusDependencyFailed, res.Status)
+		assert.ErrorIs(t, res.Err, context.Canceled)
+		assert.ErrorContains(t, res.Err, "not started")
+		assert.Zero(t, res.Attempt)
+		assert.True(t, res.Start.IsZero())
+		assert.Empty(t, res.Cause)
+	})
+
 	t.Run("the temporary directory is removed when a run fails", func(t *testing.T) {
 		var dir string
 
@@ -203,7 +238,20 @@ func TestApply(t *testing.T) {
 		assert.Equal(t, StatusSuccess, byID(second)[f.ResourceID].Status)
 		assert.Equal(t, StatusSuccess, byID(second)[after.ResourceID].Status)
 	})
+}
 
+// waitingResource waits for a channel to close, then closes its own
+type waitingResource struct {
+	testResourceType
+	wait <-chan struct{}
+	done chan struct{}
+}
+
+func (w *waitingResource) Run(_ context.Context, log *Logger) error {
+	<-w.wait
+	close(w.done)
+
+	return nil
 }
 
 // tmpUser creates the temporary directory, recording where it was
