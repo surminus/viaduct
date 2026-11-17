@@ -153,9 +153,15 @@ func main() {
 	// current runtime value. This exercises writing the config file and
 	// the noop path of the apply
 	if swappiness, err := os.ReadFile("/proc/sys/vm/swappiness"); err == nil {
+		// The missing key is ignored, so it neither fails the apply nor
+		// triggers a change on the second run
 		m.Add(&resources.Sysctl{
-			Name:   "99-viaduct-test",
-			Values: map[string]string{"vm.swappiness": strings.TrimSpace(string(swappiness))},
+			Name: "99-viaduct-test",
+			Values: map[string]string{
+				"vm.swappiness":       strings.TrimSpace(string(swappiness)),
+				"net.viaduct.missing": "1",
+			},
+			IgnoreMissing: []string{"net.viaduct.missing"},
 		})
 	}
 

@@ -81,5 +81,6 @@ grep -q "^from a heredoc$" /opt/viaduct-test/heredoc || fail "sh heredoc not wri
 # Sysctl
 [ -f /etc/sysctl.d/99-viaduct-test.conf ] || fail "sysctl config missing"
 grep -q "vm.swappiness" /etc/sysctl.d/99-viaduct-test.conf || fail "sysctl config content wrong"
+grep -q "^-net.viaduct.missing = 1$" /etc/sysctl.d/99-viaduct-test.conf || fail "sysctl IgnoreMissing key not written with a - prefix"
 
 echo "OK: all integration checks passed"
