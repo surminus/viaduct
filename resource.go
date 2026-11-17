@@ -1,7 +1,6 @@
 package viaduct
 
 import (
-	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -29,8 +28,6 @@ type Resource struct {
 	ResourceID
 	// ResourceKind is what the resource kind is, such as "File" or "Package".
 	ResourceKind
-	// Status denotes the current status of the resource.
-	Status
 	// Attributes are the resource type attributes.
 	Attributes ResourceAttributes
 	// DependsOn is a list of resource dependencies.
@@ -45,11 +42,9 @@ type Resource struct {
 	// Timeout overrides how long this resource is given to run. Zero uses
 	// the manifest setting, and a negative duration means no timeout.
 	Timeout time.Duration `json:"Timeout,omitempty"`
-	// Error contains any errors raised during a run.
-	Error `json:"Error"`
 
 	// deps and depNames are the dependencies given to Add and SetDep. They are
-	// resolved into resolved and DependsOn when the manifest runs, so renames
+	// resolved into resolved and DependsOn on apply, so renames
 	// do not break them.
 	deps     []*Resource
 	depNames []ResourceID
@@ -57,11 +52,6 @@ type Resource struct {
 
 	// invalid marks a resource that could not be added to the manifest.
 	invalid bool
-}
-
-type Error struct {
-	Err     error  `json:"-"`
-	Message string `json:"Message"`
 }
 
 // ResourceParams are a set of options that each resource can set
@@ -170,9 +160,9 @@ func (r *Resource) hashID() ResourceID {
 	return ResourceID(string(r.ResourceKind) + "_id-" + sha[0:8])
 }
 
-func (r *Resource) preflight(h Handler) error {
-	log := newResourceLogger(context.Background(), h, r, "Preflight")
-	return r.Attributes.PreflightChecks(log)
+// name identifies a resource in messages by kind, description and ID.
+func (r *Resource) name() string {
+	return fmt.Sprintf("%s %s (%s)", r.ResourceKind, r.Attributes.Description(), r.ResourceID)
 }
 
 // run performs the resource operation, giving up on it if it takes longer than
@@ -182,9 +172,7 @@ func (r *Resource) preflight(h Handler) error {
 // abandoned resource carries on in the background: giving up means the run
 // stops waiting for it and reports it as failed, not that whatever it was
 // doing has stopped.
-func (r *Resource) run(h Handler, timeout time.Duration) error {
-	log := newResourceLogger(context.Background(), h, r, r.Attributes.OperationName())
-
+func (r *Resource) run(log *Logger, timeout time.Duration) error {
 	if timeout <= 0 {
 		return r.Attributes.Run(log)
 	}
@@ -204,8 +192,4 @@ func (r *Resource) run(h Handler, timeout time.Duration) error {
 			timeout,
 		)
 	}
-}
-
-func (r *Resource) Failed() bool {
-	return r.Status == StatusFailed || r.Status == StatusDependencyFailed
 }

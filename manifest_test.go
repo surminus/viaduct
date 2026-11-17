@@ -1,8 +1,9 @@
 package viaduct
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -488,43 +489,67 @@ func TestGeneratedIDs(t *testing.T) {
 	assert.Equal(t, ResourceID("testResourceType_id-3f0c4ec3"), b.ResourceID)
 }
 
+func newCompiledRun(t *testing.T, m *Manifest) *run {
+	t.Helper()
+
+	require.NoError(t, m.compile())
+
+	return newRun(m, Options{})
+}
+
 func TestDependencyCheck(t *testing.T) {
 	t.Run("returns immediately without dependencies", func(t *testing.T) {
 		m := New()
 		r := m.Add(newTestResource("a"))
+		rn := newCompiledRun(t, m)
 
-		var lock sync.RWMutex
-		assert.NoError(t, m.dependencyCheck(r, &lock))
+		_, err := rn.dependencyCheck(context.Background(), r)
+		assert.NoError(t, err)
 	})
 
 	t.Run("waits for a dependency to succeed", func(t *testing.T) {
 		m := New()
 		a := m.Add(newTestResource("a"))
 		b := m.Add(newTestResource("b"), a)
-
-		var lock sync.RWMutex
+		rn := newCompiledRun(t, m)
 
 		go func() {
 			time.Sleep(20 * time.Millisecond)
-			m.setStatus(a, &lock, StatusSuccess)
+			rn.record(a, Result{ID: a.ResourceID, Status: StatusSuccess, Final: true})
 		}()
 
-		require.NoError(t, m.compile())
-		assert.NoError(t, m.dependencyCheck(b, &lock))
+		_, err := rn.dependencyCheck(context.Background(), b)
+		assert.NoError(t, err)
 	})
 
-	t.Run("fails when a dependency failed", func(t *testing.T) {
+	t.Run("fails when a dependency failed, naming it", func(t *testing.T) {
 		m := New()
 		a := m.Add(newTestResource("a"))
 		b := m.Add(newTestResource("b"), a)
+		rn := newCompiledRun(t, m)
 
-		var lock sync.RWMutex
-		m.setStatus(a, &lock, StatusFailed)
+		rn.record(a, Result{ID: a.ResourceID, Status: StatusFailed, Final: true})
 
-		require.NoError(t, m.compile())
-		err := m.dependencyCheck(b, &lock)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "upstream dependency")
+		cause, err := rn.dependencyCheck(context.Background(), b)
+		assert.Equal(t, a.ResourceID, cause)
+		assert.EqualError(t, err, fmt.Sprintf("upstream dependency testResourceType a (%s) failed", a.ResourceID))
+	})
+
+	t.Run("stops waiting when the context is cancelled", func(t *testing.T) {
+		m := New()
+		a := m.Add(newTestResource("a"))
+		b := m.Add(newTestResource("b"), a)
+		rn := newCompiledRun(t, m)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			time.Sleep(20 * time.Millisecond)
+			cancel()
+		}()
+
+		cause, err := rn.dependencyCheck(ctx, b)
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.Empty(t, cause)
 	})
 
 	t.Run("waits as long as a slow dependency takes", func(t *testing.T) {
@@ -536,16 +561,26 @@ func TestDependencyCheck(t *testing.T) {
 		// slow one is never a failure however long the run takes
 		m.SetResourceTimeout(10 * time.Millisecond)
 
-		var lock sync.RWMutex
+		rn := newCompiledRun(t, m)
 
 		go func() {
 			time.Sleep(100 * time.Millisecond)
-			m.setStatus(a, &lock, StatusSuccess)
+			rn.record(a, Result{ID: a.ResourceID, Status: StatusSuccess, Final: true})
 		}()
 
-		require.NoError(t, m.compile())
-		assert.NoError(t, m.dependencyCheck(b, &lock))
+		_, err := rn.dependencyCheck(context.Background(), b)
+		assert.NoError(t, err)
 	})
+}
+
+// byID returns the final result of each resource in a report
+func byID(report Report) map[ResourceID]Result {
+	out := map[ResourceID]Result{}
+	for _, r := range report.Final() {
+		out[r.ID] = r
+	}
+
+	return out
 }
 
 func TestResourceTimeout(t *testing.T) {
@@ -557,19 +592,15 @@ func TestResourceTimeout(t *testing.T) {
 		r := m.Add(blocked)
 		m.SetResourceTimeout(20 * time.Millisecond)
 
-		var lock sync.RWMutex
-		var wg sync.WaitGroup
-
-		wg.Add(1)
-		m.apply(r, &wg, &lock, newLockSet())
-		wg.Wait()
+		report, err := m.Apply(context.Background(), Options{})
+		require.ErrorIs(t, err, ErrRunFailed)
 
 		// The failure is reported against the resource that overran, rather
 		// than against whatever happened to be waiting for it
-		stored := m.resources[r.ResourceID]
-		assert.Equal(t, StatusFailed, stored.Status)
-		assert.Contains(t, stored.Message, "timed out after 20ms")
-		assert.Contains(t, stored.Message, "may still be running")
+		res := byID(report)[r.ResourceID]
+		assert.Equal(t, StatusFailed, res.Status)
+		assert.ErrorContains(t, res.Err, "timed out after 20ms")
+		assert.ErrorContains(t, res.Err, "may still be running")
 	})
 
 	t.Run("dependents fail once a resource is abandoned", func(t *testing.T) {
@@ -581,22 +612,17 @@ func TestResourceTimeout(t *testing.T) {
 		b := m.Add(newTestResource("b"), a)
 		m.SetResourceTimeout(20 * time.Millisecond)
 
-		require.NoError(t, m.compile())
+		report, err := m.Apply(context.Background(), Options{})
+		require.ErrorIs(t, err, ErrRunFailed)
 
-		var lock sync.RWMutex
-		var wg sync.WaitGroup
-
-		wg.Add(2)
-		go m.apply(m.resources[a.ResourceID], &wg, &lock, newLockSet())
-		go m.apply(m.resources[b.ResourceID], &wg, &lock, newLockSet())
-		wg.Wait()
-
-		assert.Equal(t, StatusFailed, m.resources[a.ResourceID].Status)
-		assert.Equal(t, StatusDependencyFailed, m.resources[b.ResourceID].Status)
+		results := byID(report)
+		assert.Equal(t, StatusFailed, results[a.ResourceID].Status)
+		assert.Equal(t, StatusDependencyFailed, results[b.ResourceID].Status)
+		assert.Equal(t, a.ResourceID, results[b.ResourceID].Cause)
 
 		// Both are reported, with the overrun as the root of the failure
-		failures := collectFailures(m.resources)
-		assert.Len(t, failures, 1)
+		failures := collectFailures(report.Final())
+		require.Len(t, failures, 1)
 		assert.Equal(t, string(a.ResourceID), failures[0].ResourceID)
 		assert.Len(t, failures[0].Dependents, 1)
 	})
@@ -612,22 +638,22 @@ func TestResourceTimeout(t *testing.T) {
 		b := m.Add(later)
 		m.SetResourceTimeout(20 * time.Millisecond)
 
-		var lock sync.RWMutex
-		var wg sync.WaitGroup
+		require.NoError(t, m.compile())
+		rn := newRun(m, Options{})
 
-		locks := newLockSet()
-
-		wg.Add(2)
-		m.apply(m.resources[a.ResourceID], &wg, &lock, locks)
-		m.apply(m.resources[b.ResourceID], &wg, &lock, locks)
-		wg.Wait()
+		// One after the other, so b is only ready once a has been abandoned
+		rn.apply(context.Background(), a)
+		rn.apply(context.Background(), b)
 
 		// The abandoned operation is still running and still holds whatever it
 		// locked, so the rest of the run does not go near it
 		assert.False(t, later.ran.Load())
-		assert.Equal(t, StatusDependencyFailed, m.resources[b.ResourceID].Status)
-		assert.Contains(t, m.resources[b.ResourceID].Message, "not started")
-		assert.Contains(t, m.resources[b.ResourceID].Message, string(a.ResourceID))
+
+		res := rn.states[b].final
+		assert.Equal(t, StatusDependencyFailed, res.Status)
+		assert.Equal(t, a.ResourceID, res.Cause)
+		assert.ErrorContains(t, res.Err, "not started")
+		assert.ErrorContains(t, res.Err, string(a.ResourceID))
 	})
 
 	t.Run("a resource within its timeout succeeds", func(t *testing.T) {
@@ -635,15 +661,12 @@ func TestResourceTimeout(t *testing.T) {
 		r := m.Add(newTestResource("a"))
 		m.SetResourceTimeout(time.Minute)
 
-		var lock sync.RWMutex
-		var wg sync.WaitGroup
+		report, err := m.Apply(context.Background(), Options{})
+		require.NoError(t, err)
 
-		wg.Add(1)
-		m.apply(r, &wg, &lock, newLockSet())
-		wg.Wait()
-
-		assert.Equal(t, StatusSuccess, m.resources[r.ResourceID].Status)
-		assert.NoError(t, m.resources[r.ResourceID].Err)
+		res := byID(report)[r.ResourceID]
+		assert.Equal(t, StatusSuccess, res.Status)
+		assert.NoError(t, res.Err)
 	})
 
 	t.Run("a negative timeout gives a resource as long as it takes", func(t *testing.T) {
@@ -653,73 +676,59 @@ func TestResourceTimeout(t *testing.T) {
 		r := m.Add(slow)
 		m.SetResourceTimeout(-1)
 
-		var lock sync.RWMutex
-		var wg sync.WaitGroup
-
 		go func() {
 			time.Sleep(50 * time.Millisecond)
 			slow.release()
 		}()
 
-		wg.Add(1)
-		m.apply(r, &wg, &lock, newLockSet())
-		wg.Wait()
-
-		assert.Equal(t, StatusSuccess, m.resources[r.ResourceID].Status)
+		report, err := m.Apply(context.Background(), Options{})
+		require.NoError(t, err)
+		assert.Equal(t, StatusSuccess, byID(report)[r.ResourceID].Status)
 	})
 }
 
 func TestTimeoutFor(t *testing.T) {
-	orig := Cli.ResourceTimeout
-	defer func() { Cli.ResourceTimeout = orig }()
-
-	Cli.ResourceTimeout = 0
-
 	m := New()
 	r := m.Add(newTestResource("a"))
 
+	timeout := func(o Options) time.Duration {
+		return newRun(m, o).timeoutFor(r)
+	}
+
 	// The default applies when nothing has been set
-	assert.Equal(t, defaultResourceTimeout, m.timeoutFor(r))
+	assert.Equal(t, defaultResourceTimeout, timeout(Options{}))
 
 	// The manifest overrides the default
 	m.SetResourceTimeout(time.Minute)
-	assert.Equal(t, time.Minute, m.timeoutFor(r))
+	assert.Equal(t, time.Minute, timeout(Options{}))
 
 	// The resource overrides the manifest
 	m.WithTimeout(r, 2*time.Minute)
-	stored := m.resources[r.ResourceID]
-	assert.Equal(t, 2*time.Minute, m.timeoutFor(stored))
+	assert.Equal(t, 2*time.Minute, timeout(Options{}))
 
-	// The flag overrides everything, so a slow run can be rescued without
-	// recompiling the configuration
-	Cli.ResourceTimeout = 3 * time.Minute
-	assert.Equal(t, 3*time.Minute, m.timeoutFor(stored))
+	// The option overrides everything
+	assert.Equal(t, 3*time.Minute, timeout(Options{ResourceTimeout: 3 * time.Minute}))
 }
 
 func TestCollectFailures(t *testing.T) {
 	t.Parallel()
 
+	failed := func(id ResourceID, msg string) Result {
+		return Result{ID: id, Kind: "File", Description: "test", Status: StatusFailed, Err: errors.New(msg), Final: true}
+	}
+
+	depFailed := func(id, cause ResourceID) Result {
+		return Result{ID: id, Kind: "Execute", Description: "test", Status: StatusDependencyFailed, Err: errors.New("upstream"), Cause: cause, Final: true}
+	}
+
 	t.Run("single root failure with no dependents", func(t *testing.T) {
 		t.Parallel()
 
-		resources := map[ResourceID]*Resource{
-			"file-1": {
-				ResourceID:   "file-1",
-				ResourceKind: "File",
-				Status:       StatusFailed,
-				Attributes:   testResource,
-				Error:        Error{Err: fmt.Errorf("permission denied"), Message: "permission denied"},
-			},
-			"git-1": {
-				ResourceID:   "git-1",
-				ResourceKind: "Git",
-				Status:       StatusSuccess,
-				Attributes:   testResource,
-			},
-		}
-
-		failures := collectFailures(resources)
-		assert.Len(t, failures, 1)
+		failures := collectFailures([]Result{
+			failed("file-1", "permission denied"),
+			{ID: "git-1", Kind: "Git", Status: StatusSuccess, Final: true},
+		})
+		require.Len(t, failures, 1)
 		assert.Equal(t, "file-1", failures[0].ResourceID)
 		assert.Equal(t, "test", failures[0].Description)
 		assert.Equal(t, "permission denied", failures[0].Error)
@@ -729,69 +738,26 @@ func TestCollectFailures(t *testing.T) {
 	t.Run("root failure with dependency failures", func(t *testing.T) {
 		t.Parallel()
 
-		resources := map[ResourceID]*Resource{
-			"file-1": {
-				ResourceID:   "file-1",
-				ResourceKind: "File",
-				Status:       StatusFailed,
-				Attributes:   testResource,
-				Error:        Error{Err: fmt.Errorf("permission denied"), Message: "permission denied"},
-			},
-			"git-1": {
-				ResourceID:   "git-1",
-				ResourceKind: "Git",
-				Status:       StatusDependencyFailed,
-				DependsOn:    []ResourceID{"file-1"},
-				Attributes:   testResource,
-				Error:        Error{Err: fmt.Errorf("upstream dependency file-1 returned an error"), Message: "upstream dependency file-1 returned an error"},
-			},
-			"exec-1": {
-				ResourceID:   "exec-1",
-				ResourceKind: "Execute",
-				Status:       StatusDependencyFailed,
-				DependsOn:    []ResourceID{"file-1"},
-				Attributes:   testResource,
-				Error:        Error{Err: fmt.Errorf("upstream dependency file-1 returned an error"), Message: "upstream dependency file-1 returned an error"},
-			},
-		}
-
-		failures := collectFailures(resources)
-		assert.Len(t, failures, 1)
+		failures := collectFailures([]Result{
+			depFailed("git-1", "file-1"),
+			failed("file-1", "permission denied"),
+			depFailed("exec-1", "file-1"),
+		})
+		require.Len(t, failures, 1)
 		assert.Equal(t, "file-1", failures[0].ResourceID)
-		assert.Len(t, failures[0].Dependents, 2)
+		require.Len(t, failures[0].Dependents, 2)
+		assert.Equal(t, "exec-1", failures[0].Dependents[0].ResourceID, "dependents are sorted")
 	})
 
 	t.Run("transitive dependency failure traces to root", func(t *testing.T) {
 		t.Parallel()
 
-		resources := map[ResourceID]*Resource{
-			"file-1": {
-				ResourceID:   "file-1",
-				ResourceKind: "File",
-				Status:       StatusFailed,
-				Attributes:   testResource,
-				Error:        Error{Err: fmt.Errorf("permission denied"), Message: "permission denied"},
-			},
-			"git-1": {
-				ResourceID:   "git-1",
-				ResourceKind: "Git",
-				Status:       StatusDependencyFailed,
-				DependsOn:    []ResourceID{"file-1"},
-				Attributes:   testResource,
-				Error:        Error{Err: fmt.Errorf("upstream"), Message: "upstream"},
-			},
-			"exec-1": {
-				ResourceID:   "exec-1",
-				ResourceKind: "Execute",
-				Status:       StatusDependencyFailed,
-				DependsOn:    []ResourceID{"git-1"},
-				Attributes:   testResource,
-				Error:        Error{Err: fmt.Errorf("upstream"), Message: "upstream"},
-			},
-		}
-
-		failures := collectFailures(resources)
-		assert.Len(t, failures, 1)
+		failures := collectFailures([]Result{
+			failed("file-1", "permission denied"),
+			depFailed("git-1", "file-1"),
+			depFailed("exec-1", "git-1"),
+		})
+		require.Len(t, failures, 1)
 		assert.Equal(t, "file-1", failures[0].ResourceID)
 		assert.Len(t, failures[0].Dependents, 2)
 	})
@@ -799,110 +765,31 @@ func TestCollectFailures(t *testing.T) {
 	t.Run("multiple independent root failures", func(t *testing.T) {
 		t.Parallel()
 
-		resources := map[ResourceID]*Resource{
-			"file-1": {
-				ResourceID:   "file-1",
-				ResourceKind: "File",
-				Status:       StatusFailed,
-				Attributes:   testResource,
-				Error:        Error{Err: fmt.Errorf("error 1"), Message: "error 1"},
-			},
-			"file-2": {
-				ResourceID:   "file-2",
-				ResourceKind: "File",
-				Status:       StatusFailed,
-				Attributes:   testResource,
-				Error:        Error{Err: fmt.Errorf("error 2"), Message: "error 2"},
-			},
-		}
-
-		failures := collectFailures(resources)
-		assert.Len(t, failures, 2)
+		failures := collectFailures([]Result{
+			failed("file-2", "error 2"),
+			failed("file-1", "error 1"),
+		})
+		require.Len(t, failures, 2)
+		assert.Equal(t, "file-1", failures[0].ResourceID)
 	})
 
 	t.Run("dependency failure with no root is listed on its own", func(t *testing.T) {
 		t.Parallel()
 
-		// A resource that gave up waiting has no failed dependency to blame,
-		// so it has to be reported in its own right
-		resources := map[ResourceID]*Resource{
-			"file-1": {
-				ResourceID:   "file-1",
-				ResourceKind: "File",
-				Status:       StatusSuccess,
-				Attributes:   testResource,
-			},
-			"exec-1": {
-				ResourceID:   "exec-1",
-				ResourceKind: "Execute",
-				Status:       StatusDependencyFailed,
-				DependsOn:    []ResourceID{"file-1"},
-				Attributes:   testResource,
-				Error:        Error{Err: fmt.Errorf("gave up waiting"), Message: "gave up waiting"},
-			},
-		}
-
-		failures := collectFailures(resources)
-		assert.Len(t, failures, 1)
+		// A resource stopped by a cancelled run has no failed dependency to
+		// blame, so it has to be reported in its own right
+		failures := collectFailures([]Result{
+			{ID: "file-1", Status: StatusSuccess, Final: true},
+			depFailed("exec-1", ""),
+		})
+		require.Len(t, failures, 1)
 		assert.Equal(t, "exec-1", failures[0].ResourceID)
-		assert.Equal(t, "gave up waiting", failures[0].Error)
-	})
-
-	t.Run("error without a status is still reported", func(t *testing.T) {
-		t.Parallel()
-
-		// Whether a run failed and what gets reported come from the same
-		// place, so a resource cannot fail a run without being named
-		resources := map[ResourceID]*Resource{
-			"exec-1": {
-				ResourceID:   "exec-1",
-				ResourceKind: "Execute",
-				Status:       StatusPending,
-				Attributes:   testResource,
-				Error:        Error{Err: fmt.Errorf("something went wrong"), Message: "something went wrong"},
-			},
-		}
-
-		failures := collectFailures(resources)
-		assert.Len(t, failures, 1)
-		assert.Equal(t, "exec-1", failures[0].ResourceID)
-		assert.Equal(t, "something went wrong", failures[0].Error)
+		assert.Equal(t, "upstream", failures[0].Error)
 	})
 
 	t.Run("no failures returns empty", func(t *testing.T) {
 		t.Parallel()
 
-		resources := map[ResourceID]*Resource{
-			"file-1": {
-				ResourceID:   "file-1",
-				ResourceKind: "File",
-				Status:       StatusSuccess,
-				Attributes:   testResource,
-			},
-		}
-
-		failures := collectFailures(resources)
-		assert.Empty(t, failures)
-	})
-}
-
-func TestRun(t *testing.T) {
-	t.Parallel()
-
-	t.Run("resources finishing while others are still starting", func(t *testing.T) {
-		t.Parallel()
-
-		// Enough resources that the first ones finish, and write their status
-		// back, before the last ones have been started
-		m := New()
-		for i := range 1000 {
-			m.Add(newTestResource(fmt.Sprintf("resource-%d", i)))
-		}
-
-		assert.Equal(t, 0, m.runWith(CliFlags{}))
-
-		for _, r := range m.resources {
-			assert.Equal(t, StatusSuccess, r.Status, r.ResourceID)
-		}
+		assert.Empty(t, collectFailures([]Result{{ID: "file-1", Status: StatusSuccess, Final: true}}))
 	})
 }

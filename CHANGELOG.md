@@ -15,24 +15,39 @@ resources needs no change. Beyond that:
 - `Pending`, `Success`, `Failed` and `DependencyFailed` become
   `StatusPending`, `StatusSuccess`, `StatusFailed` and
   `StatusDependencyFailed`, and a lock key is a `viaduct.LockKey`
+- A program with flags of its own uses `Apply` rather than `Run`
 
 ### Added
 
+- `Apply(ctx, Options)` runs a manifest and returns a `Report` with a `Result`
+  for every resource, and an error, rather than printing and exiting. The
+  error wraps `ErrInvalidManifest`, `ErrPreflightFailed` or `ErrRunFailed`.
+  Cancelling the context stops resources that have not started from starting.
+  `Run` is now a wrapper around it for command-line programs. A manifest
+  can be applied more than once, each time with its own report, but not
+  concurrently
 - `Must`, for using a function that returns an error inline when the error
   would be a bug, such as `viaduct.Must(resources.NewTemplate(...))`
 - **Events and handlers.** Everything a run reports is an `Event`, with a
   time, a level (`LevelInfo`, `LevelOutput`, `LevelNoop`, `LevelChanged`,
   `LevelWarn`, `LevelError`), the resource ID, kind, operation and
-  description, a message and fields. A `Handler` receives them, and is
+  description, a message and fields. `Options.Handler` receives them, and is
   never called concurrently. `NewTextHandler` gives the output `Run` prints
 - `Logger.Writer` reports what is written to it as `LevelOutput` events,
   one per line, with a `stream` field of `stdout` or `stderr`. A line ends at
   `\n`, `\r` or `\r\n`, so progress output arrives a step at a time, and a
   line longer than 64 KiB is split
 - `AddNamed`, which adds a resource under a name rather than a generated ID
+- `Result.Cause` names the resource whose failure stopped a
+  `StatusDependencyFailed` resource from running, and `--json` reports it as
+  `cause`
 
 ### Changed
 
+- **Nothing in viaduct exits the program apart from `Run`.** Building a
+  manifest records its errors, such as a duplicate resource, a nil dependency
+  or `SetName` on a resource from another manifest, and `Apply` returns them
+  before anything runs. `Add` still returns a resource that can be depended on
 - **Helpers return errors.** `FileSize`, `MatchChmod`, `MatchChown`,
   `SystemAttributes.SetUser`, `SystemAttributes.JSON`,
   `resources.EmbeddedFile` and `resources.NewTemplate` return an error rather
@@ -81,6 +96,15 @@ resources needs no change. Beyond that:
   unknown flag, or a `VIADUCT_RESOURCE_TIMEOUT` that is not a duration, is
   reported and exits with status 2. `--help` lists `VIADUCT_RESOURCE_TIMEOUT`
   and `VIADUCT_STDOUT`
+- `--dump-manifest` writes to a new file in `$TMPDIR` readable only by the
+  user, with each resource's `Status` and `Error` from the run, and prints
+  its path, or with `--json` puts it in `manifest`. It used to write a
+  predictable name under `/tmp` readable by everyone
+- Failures name the resource by its description as well as its ID: in the
+  failure tree, in `preflight-failed`, and in the error of a resource whose
+  dependency failed. Adding the same resource twice is the error
+  `<Kind> <Description> is already in the manifest; use AddNamed to add it
+  under another name`
 - **The temporary directory is under `$TMPDIR` and is always removed.** It is
   created on first use by `TmpDir` or `TmpFile`, which now returns an error,
   and removed when `Run` finishes, whether or not the run failed. It used to be
@@ -92,6 +116,8 @@ resources needs no change. Beyond that:
 - `ExpandPathRoot`. Use `filepath.Abs`
 - `FileContents`. Use `os.ReadFile`
 - `IsDirectory`. Use `DirExists`
+- `Resource.Status`, `Resource.Error`, `Resource.Failed` and the `Error`
+  type. The `Report` from `Apply` holds the outcome of a run
 
 ## v0.8.0
 

@@ -139,3 +139,19 @@ func TestTmpDir(t *testing.T) {
 	_, err = os.Stat(next)
 	assert.True(t, os.IsNotExist(err))
 }
+
+func TestTmpDirSharedBetweenApplies(t *testing.T) {
+	require.NoError(t, removeTmpDir())
+
+	first := holdTmpDir()
+	second := holdTmpDir()
+
+	dir, err := TmpDir()
+	require.NoError(t, err)
+
+	first()
+	assert.DirExists(t, dir, "kept while another Apply is running")
+
+	second()
+	assert.NoDirExists(t, dir, "removed once the last Apply finishes")
+}
