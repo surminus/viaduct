@@ -3,6 +3,7 @@ package viaduct
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -373,5 +374,80 @@ func TestApplyEnv(t *testing.T) {
 		report, err := m.Apply(context.Background(), Options{})
 		require.NoError(t, err)
 		assert.Equal(t, StatusSuccess, report.Results[0].Status)
+	})
+}
+
+// composite uses other resources once it knows what they need
+type composite struct {
+	testResourceType
+	path string
+}
+
+func (c *composite) Run(ctx context.Context, log *Logger) error {
+	return ApplyOne(ctx, &writeResource{path: c.path}, log)
+}
+
+// writeResource writes a file under the root
+type writeResource struct {
+	testResourceType
+	path      string
+	preflight bool
+}
+
+func (w *writeResource) PreflightChecks(ctx context.Context, log *Logger) error {
+	if w.path == "" {
+		return errors.New("required parameter: path")
+	}
+
+	w.preflight = true
+
+	return nil
+}
+
+func (w *writeResource) Run(ctx context.Context, log *Logger) error {
+	env := EnvFrom(ctx)
+
+	if env.DryRun {
+		log.Info("would write", "path", w.path)
+		return nil
+	}
+
+	log.Info("wrote", "path", w.path)
+
+	return os.WriteFile(env.Path(w.path), []byte("x"), 0o644)
+}
+
+func TestApplyOne(t *testing.T) {
+	t.Run("runs preflight then run with the parent's logger and env", func(t *testing.T) {
+		root := t.TempDir()
+
+		m := New()
+		r := m.Add(&composite{path: "/file"})
+
+		report, err := m.Apply(context.Background(), Options{Env: Env{Root: root, Runner: &countingRunner{}}})
+		require.NoError(t, err)
+
+		assert.FileExists(t, filepath.Join(root, "file"))
+		require.Len(t, report.Results, 1)
+		assert.Equal(t, r.ResourceID, report.Results[0].ID)
+		assert.True(t, report.Results[0].Changed, "changes by the inner resource count")
+	})
+
+	t.Run("preflight errors are returned", func(t *testing.T) {
+		err := ApplyOne(context.Background(), &writeResource{}, NewLogger(nil, "Test", "Test"))
+		assert.ErrorContains(t, err, "required parameter: path")
+	})
+
+	t.Run("dry run", func(t *testing.T) {
+		root := t.TempDir()
+		ctx := WithEnv(context.Background(), Env{Root: root, DryRun: true})
+
+		w := &writeResource{path: "/file"}
+		log := NewLogger(nil, "Test", "Test")
+		require.NoError(t, ApplyOne(ctx, w, log))
+
+		assert.True(t, w.preflight)
+		assert.True(t, log.Changed())
+		assert.NoFileExists(t, filepath.Join(root, "file"))
 	})
 }

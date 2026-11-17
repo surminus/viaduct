@@ -503,3 +503,16 @@ func (rn *run) timeoutFor(r *Resource) time.Duration {
 		return defaultResourceTimeout
 	}
 }
+
+// ApplyOne runs a resource's preflight checks and then the resource itself,
+// outside a manifest, logging to log. It is for a custom resource that builds
+// on others once it knows a value only available part way through a run, such
+// as a device path. It uses the Env in ctx and takes none of the manifest's
+// locks, timeouts or retries.
+func ApplyOne(ctx context.Context, a ResourceAttributes, log *Logger) error {
+	if err := a.PreflightChecks(ctx, log); err != nil {
+		return fmt.Errorf("%s: preflight checks: %w", a.Description(), err)
+	}
+
+	return a.Run(ctx, log)
+}
