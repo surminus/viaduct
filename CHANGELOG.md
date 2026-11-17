@@ -56,6 +56,13 @@ resources needs no change. Beyond that:
   finishes, and never concurrently. `Report.Failed` returns the failures
 - `AddNamed`, which adds a resource under a name rather than a generated ID
 - `--json` output includes `changed` and `duration` for each resource
+- **`Env`, carried in the context.** `viaduct.EnvFrom(ctx)` gives a resource
+  `DryRun`, `Root` and `Runner`, set from `Options.Env`. `Root` is a directory
+  every absolute path a resource reads or writes itself is taken to be under,
+  including `/proc` and `/sys`, and `Runner` runs commands, so resources can be
+  tested without touching the host. `Env.Path` applies the root, and
+  `..` cannot climb above it. `Apply` refuses a `Root` without a `Runner`,
+  since commands would run on the host
 - `Command`, with `Run` and `Output`, runs a program through the `Runner`,
   logging its output, or discarding it with a nil `Logger`. `ExecRunner` runs
   each command in its own process group, which is sent SIGTERM when the

@@ -172,6 +172,34 @@ func TestExitCode(t *testing.T) {
 	assert.EqualError(t, &ExitError{Code: 2}, "exit status 2")
 }
 
+func TestEnv(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		env := EnvFrom(context.Background())
+
+		assert.False(t, env.DryRun)
+		assert.Empty(t, env.Root)
+		assert.Equal(t, ExecRunner, env.Runner)
+		assert.Equal(t, "/etc/fstab", env.Path("/etc/fstab"))
+	})
+
+	t.Run("root", func(t *testing.T) {
+		env := EnvFrom(WithEnv(context.Background(), Env{Root: "/tmp/root"}))
+
+		assert.Equal(t, "/tmp/root/etc/fstab", env.Path("/etc/fstab"))
+		assert.Equal(t, "/tmp/root/proc/sys/vm/swappiness", env.Path("/proc/sys/vm/swappiness"))
+		assert.Equal(t, "relative", env.Path("relative"))
+		assert.True(t, env.IsRoot())
+	})
+
+	t.Run("paths cannot escape the root", func(t *testing.T) {
+		env := Env{Root: "/tmp/root"}
+
+		assert.Equal(t, "/tmp/root/etc/passwd", env.Path("/../etc/passwd"))
+		assert.Equal(t, "/tmp/root/etc/passwd", env.Path("/etc/../../../etc/passwd"))
+		assert.Equal(t, "/tmp/root", env.Path("/.."))
+	})
+}
+
 // envResource records the environment it ran in
 type envResource struct {
 	testResourceType
@@ -231,11 +259,24 @@ func TestApplyEnv(t *testing.T) {
 		m := New()
 		m.Add(r)
 
-		_, err := m.Apply(context.Background(), Options{Env: Env{DryRun: true, Runner: runner}})
+		_, err := m.Apply(context.Background(), Options{Env: Env{DryRun: true, Root: "/tmp/root", Runner: runner}})
 		require.NoError(t, err)
 
 		assert.True(t, r.env.DryRun)
+		assert.Equal(t, "/tmp/root", r.env.Root)
 		assert.Same(t, runner, r.env.Runner)
+	})
+
+	t.Run("a root without a runner is an error", func(t *testing.T) {
+		r := &envResource{}
+
+		m := New()
+		m.Add(r)
+
+		_, err := m.Apply(context.Background(), Options{Env: Env{Root: t.TempDir()}})
+		require.ErrorIs(t, err, ErrInvalidManifest)
+		assert.ErrorContains(t, err, "without a Runner")
+		assert.Nil(t, r.env.Runner, "nothing ran")
 	})
 
 	t.Run("a timeout cancels the resource's context", func(t *testing.T) {

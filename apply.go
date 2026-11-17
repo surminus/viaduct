@@ -28,7 +28,9 @@ var (
 
 // Options configures Apply.
 type Options struct {
-	// Env is the environment resources run in. See Env.
+	// Env is the environment resources run in. Setting Env.Root needs
+	// Env.Runner too, or Apply returns an error, since commands would
+	// otherwise run on the host. See Env.
 	Env Env
 
 	// Handler receives every event from the run. The default drops them.
@@ -210,6 +212,13 @@ func (m *Manifest) Apply(ctx context.Context, o Options) (Report, error) {
 		}
 
 		return Report{}, fmt.Errorf("%w: %w", ErrInvalidManifest, errors.Join(m.errs...))
+	}
+
+	if o.Env.Root != "" && o.Env.Runner == nil {
+		err := errors.New("the Env in Options sets Root without a Runner, so commands would run on the host")
+		rn.logger(ctx, "Compile").Error(err.Error())
+
+		return Report{}, fmt.Errorf("%w: %w", ErrInvalidManifest, err)
 	}
 
 	if _, err := LoadAttributes(); err != nil {
