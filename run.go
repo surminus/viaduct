@@ -2,25 +2,65 @@ package viaduct
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	flag "github.com/spf13/pflag"
 )
 
-// Run will run the specified resources concurrently, taking into account
-// any dependencies that have been declared
+// Run is the entry point for a program whose only job is to apply the
+// manifest. It reads the command-line flags, runs the resources concurrently
+// once their dependencies have succeeded, prints the outcome and exits, with
+// a non-zero status if anything failed.
 func (m *Manifest) Run() {
+	os.Exit(m.run())
+}
+
+// run is Run without the exit, returning the exit code.
+func (m *Manifest) run() int {
+	flags, err := ParseFlags()
+	if code, exit := flagsExit(err, os.Stderr); exit {
+		return code
+	}
+
+	return m.runWith(flags)
+}
+
+// runWith applies the manifest as Run does, with the flags already read. It
+// returns the exit code.
+func (m *Manifest) runWith(flags CliFlags) int {
+	if flags.Attributes {
+		fmt.Println(Attributes().JSON())
+		return 0
+	}
+
+	defer func() {
+		_ = removeTmpDir()
+	}()
+
 	l := NewLogger("Viaduct", "Run")
+
+	if _, err := LoadAttributes(); err != nil {
+		l.Error("attributes", "error", err.Error())
+		return 1
+	}
+
+	if flags.DryRun {
+		log.Println("WARNING: dry run mode enabled")
+	}
+
 	start := time.Now()
 	l.Info("started")
 	l.Info("preflight-checks")
 
-	if Cli.JSON {
+	if flags.JSON {
 		m.collector = newResultCollector()
 	}
 
@@ -28,7 +68,7 @@ func (m *Manifest) Run() {
 	// rather than waiting for the dependency timeout to notice.
 	if err := m.dependencyCycle(); err != nil {
 		l.Error("dependency-cycle", "error", err.Error())
-		os.Exit(1)
+		return 1
 	}
 
 	var preflightFailed bool
@@ -55,7 +95,7 @@ func (m *Manifest) Run() {
 			}
 		}
 
-		os.Exit(1)
+		return 1
 	}
 
 	var lock sync.RWMutex
@@ -86,7 +126,7 @@ func (m *Manifest) Run() {
 	failures := collectFailures(m.resources)
 	withErrors := len(failures) > 0
 
-	if Cli.JSON {
+	if flags.JSON {
 		status := "success"
 		if withErrors {
 			status = "failed"
@@ -101,12 +141,13 @@ func (m *Manifest) Run() {
 
 		out, err := json.MarshalIndent(output, "", "  ")
 		if err != nil {
-			log.Fatal(err)
+			fmt.Fprintln(os.Stderr, err)
+			return 1
 		}
 		fmt.Println(string(out))
 
 		if withErrors {
-			os.Exit(1)
+			return 1
 		}
 	} else {
 		if withErrors {
@@ -120,33 +161,45 @@ func (m *Manifest) Run() {
 		}
 	}
 
-	if Cli.DumpManifest {
+	if flags.DumpManifest {
 		tmpName := fmt.Sprintf("/tmp/viaduct-%d.json", time.Now().Unix())
 
 		out, err := json.MarshalIndent(m.resources, "", "    ")
 		if err != nil {
-			l.Fatal(err.Error())
+			l.Error(err.Error())
+			return 1
 		}
 
 		err = os.WriteFile(tmpName, out, 0o644)
 		if err != nil {
-			l.Fatal(err.Error())
+			l.Error(err.Error())
+			return 1
 		}
 
 		l.Info("manifest-written", "path", tmpName)
 	}
 
 	if withErrors {
-		if !Cli.DumpManifest && !Cli.JSON {
+		if !flags.DumpManifest && !flags.JSON {
 			l.Info("hint", "msg", "to see all resources, run with --dump-manifest")
 		}
-		os.Exit(1)
+		return 1
 	}
 
-	// Tidy up temporary directory if there were no errors
-	err := os.RemoveAll(filepath.Join(Attribute.TmpDir))
-	if err != nil {
-		l.Fatal(err.Error())
+	return 0
+}
+
+// flagsExit returns the exit code for an error from reading the flags, and
+// whether to exit with it.
+func flagsExit(err error, stderr io.Writer) (int, bool) {
+	switch {
+	case err == nil:
+		return 0, false
+	case errors.Is(err, flag.ErrHelp):
+		return 0, true
+	default:
+		fmt.Fprintln(stderr, err)
+		return 2, true
 	}
 }
 

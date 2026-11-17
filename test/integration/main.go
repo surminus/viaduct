@@ -20,7 +20,7 @@ func main() {
 
 	// Sync package databases before installing anything
 	var update *viaduct.Resource
-	switch viaduct.Attribute.Platform.ID {
+	switch viaduct.Attributes().Platform.ID {
 	case "debian", "ubuntu", "linuxmint":
 		update = m.Add(resources.AptUpdate())
 	case "arch", "manjaro":
@@ -37,7 +37,7 @@ func main() {
 	// upgrades. Only the Debian derivatives are covered here because "hello"
 	// is not packaged everywhere, Fedora has no purge at all, and holds are
 	// only implemented for apt-mark
-	switch viaduct.Attribute.Platform.ID {
+	switch viaduct.Attributes().Platform.ID {
 	case "debian", "ubuntu", "linuxmint":
 		m.ChainFrom(update,
 			resources.Pkg("hello"),

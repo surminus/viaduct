@@ -3,13 +3,14 @@ package viaduct
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/user"
-	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 const LinuxOsReleaseFile = "/etc/os-release"
@@ -22,7 +23,6 @@ type SystemAttributes struct {
 	Hostname string             `json:"hostname"`
 	Platform PlatformAttributes `json:"platform"`
 	Custom   map[string]string  `json:"custom"`
-	TmpDir   string             `json:"tmp_dir"`
 
 	// runuser specifies the user that it's run as, rather
 	// than the set user attribute, which can be modified
@@ -57,43 +57,60 @@ func (a *SystemAttributes) SetUser(username string) {
 	a.User = *u
 }
 
-// initAttributes populates the attributes
-func initAttributes(a *SystemAttributes) {
-	user, err := user.Current()
-	if err != nil {
-		log.Fatal(err)
+var attributes struct {
+	once sync.Once
+	attr *SystemAttributes
+	err  error
+}
+
+// LoadAttributes reads the system attributes, such as the current user,
+// hostname and platform. They are read once and every call returns the same
+// shared value. Anything that could not be read is left empty and reported in
+// the error.
+func LoadAttributes() (*SystemAttributes, error) {
+	attributes.once.Do(func() {
+		attributes.attr, attributes.err = loadAttributes(LinuxOsReleaseFile)
+	})
+
+	return attributes.attr, attributes.err
+}
+
+// Attributes returns the system attributes. Use LoadAttributes to see whether
+// any could not be read.
+func Attributes() *SystemAttributes {
+	a, _ := LoadAttributes()
+	return a
+}
+
+// loadAttributes reads the system attributes, carrying on past anything it
+// cannot read.
+func loadAttributes(releaseFile string) (*SystemAttributes, error) {
+	a := &SystemAttributes{
+		OS:     runtime.GOOS,
+		Arch:   runtime.GOARCH,
+		Custom: make(map[string]string),
 	}
 
-	a.User = *user
-	a.OS = runtime.GOOS
-	a.Arch = runtime.GOARCH
+	var errs []error
 
-	a.runuser = *user
+	if u, err := user.Current(); err == nil {
+		a.User = *u
+		a.runuser = *u
+	} else {
+		errs = append(errs, fmt.Errorf("reading the current user: %w", err))
+	}
 
-	a.Hostname, err = os.Hostname()
-	if err != nil {
-		log.Fatal(err)
+	if h, err := os.Hostname(); err == nil {
+		a.Hostname = h
+	} else {
+		errs = append(errs, fmt.Errorf("reading the hostname: %w", err))
 	}
 
 	if a.OS == "linux" {
-		a.Platform = newPlatformAttributes(LinuxOsReleaseFile)
+		a.Platform = newPlatformAttributes(releaseFile)
 	}
 
-	tmpDirPath = filepath.Join(a.User.HomeDir, ".viaduct", "tmp")
-
-	err = os.MkdirAll(tmpDirPath, 0o755)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	tmpdir, err := os.MkdirTemp(tmpDirPath, "")
-	if err != nil {
-		log.Fatal(err)
-	}
-	// Create a new temporary dir for each run
-	a.TmpDir = tmpdir
-
-	a.Custom = make(map[string]string)
+	return a, errors.Join(errs...)
 }
 
 // JSON returns a string representation of the loaded attributes

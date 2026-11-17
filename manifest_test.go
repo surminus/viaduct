@@ -805,7 +805,7 @@ func TestRun(t *testing.T) {
 			m.Add(newTestResource(fmt.Sprintf("resource-%d", i)))
 		}
 
-		m.Run()
+		assert.Equal(t, 0, m.runWith(CliFlags{}))
 
 		for _, r := range m.resources {
 			assert.Equal(t, StatusSuccess, r.Status, r.ResourceID)

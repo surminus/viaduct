@@ -183,7 +183,7 @@ func (p *Permissions) preflightPermissions(t ptype) error {
 	}
 
 	if p.User == "" && p.UID == 0 && !p.Root {
-		if uid, err := strconv.Atoi(viaduct.Attribute.User.Uid); err != nil {
+		if uid, err := strconv.Atoi(viaduct.Attributes().User.Uid); err != nil {
 			return err
 		} else {
 			p.UID = uid
@@ -191,7 +191,7 @@ func (p *Permissions) preflightPermissions(t ptype) error {
 	}
 
 	if p.Group == "" && p.GID == 0 && !p.Root {
-		if gid, err := strconv.Atoi(viaduct.Attribute.User.Gid); err != nil {
+		if gid, err := strconv.Atoi(viaduct.Attributes().User.Gid); err != nil {
 			return err
 		} else {
 			p.GID = gid

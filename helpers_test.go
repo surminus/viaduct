@@ -8,14 +8,14 @@ import (
 
 func TestIsUbuntu(t *testing.T) {
 	t.Run("ubuntu", func(t *testing.T) {
-		Attribute.Platform = newPlatformAttributes("test/fixtures/os-release_ubuntu")
+		Attributes().Platform = newPlatformAttributes("test/fixtures/os-release_ubuntu")
 		assert.Equal(t, true, IsUbuntu())
-		Attribute.Platform = newPlatformAttributes(LinuxOsReleaseFile)
+		Attributes().Platform = newPlatformAttributes(LinuxOsReleaseFile)
 	})
 
 	t.Run("linuxmint", func(t *testing.T) {
-		Attribute.Platform = newPlatformAttributes("test/fixtures/os-release_linuxmint")
+		Attributes().Platform = newPlatformAttributes("test/fixtures/os-release_linuxmint")
 		assert.Equal(t, true, IsUbuntu())
-		Attribute.Platform = newPlatformAttributes(LinuxOsReleaseFile)
+		Attributes().Platform = newPlatformAttributes(LinuxOsReleaseFile)
 	})
 }

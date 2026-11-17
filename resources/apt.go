@@ -103,7 +103,7 @@ func (a *Apt) PreflightChecks(log *viaduct.Logger) error {
 
 	// Set optional defaults here
 	if a.Distribution == "" {
-		a.Distribution = viaduct.Attribute.Platform.UbuntuCodename
+		a.Distribution = viaduct.Attributes().Platform.UbuntuCodename
 	}
 
 	if a.Source == "" {

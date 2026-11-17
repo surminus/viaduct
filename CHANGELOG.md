@@ -8,6 +8,8 @@ A configuration management framework written in Go.
 
 A manifest that only uses `New`, `Add`, `Chain` and `Run` with the standard
 resources needs no change. Beyond that:
+
+- `viaduct.Attribute.X` becomes `viaduct.Attributes().X`
 - `Pending`, `Success`, `Failed` and `DependencyFailed` become
   `StatusPending`, `StatusSuccess`, `StatusFailed` and
   `StatusDependencyFailed`, and a lock key is a `viaduct.LockKey`
@@ -22,6 +24,26 @@ resources needs no change. Beyond that:
   and `DependencyFailed` are `StatusPending`, `StatusSuccess`, `StatusFailed`
   and `StatusDependencyFailed`. Their values, as they appear in `--json`, are
   unchanged
+
+- **Importing viaduct no longer does anything.** Flags are parsed, system
+  attributes are read and the temporary directory is created when they are
+  first needed, rather than in `init()`. A program that imports viaduct can
+  define flags of its own, and nothing is left behind by a program that never
+  runs a manifest
+- **`Attribute` is now `Attributes()`.** `viaduct.Attribute.User` becomes
+  `viaduct.Attributes().User`. The attributes are loaded on first use and
+  shared, so `SetUser` and `AddCustom` are still seen everywhere.
+  `LoadAttributes` returns them along with any error from reading them
+- `ParseFlags` reads the command line into `Cli`, keeping anything set on it
+  beforehand that the command line does not override. `Run` calls it. An
+  unknown flag, or a `VIADUCT_RESOURCE_TIMEOUT` that is not a duration, is
+  reported and exits with status 2. `--help` lists `VIADUCT_RESOURCE_TIMEOUT`
+  and `VIADUCT_STDOUT`
+- **The temporary directory is under `$TMPDIR` and is always removed.** It is
+  created on first use by `TmpDir` or `TmpFile`, which now returns an error,
+  and removed when `Run` finishes, whether or not the run failed. It used to be
+  under `~/.viaduct/tmp` and was left behind by every failed run.
+  `SystemAttributes.TmpDir` is gone
 
 ## v0.8.0
 

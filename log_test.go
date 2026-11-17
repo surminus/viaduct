@@ -22,17 +22,31 @@ func TestInfoWriter(t *testing.T) {
 func TestEnvDuration(t *testing.T) {
 	const name = "VIADUCT_RESOURCE_TIMEOUT_TEST"
 
-	t.Run("unset means no timeout", func(t *testing.T) {
+	t.Run("unset", func(t *testing.T) {
 		os.Unsetenv(name)
-		assert.Zero(t, envDuration(name))
+		d, ok, err := envDuration(name)
+		assert.NoError(t, err)
+		assert.False(t, ok)
+		assert.Zero(t, d)
 	})
 
 	t.Run("parsed", func(t *testing.T) {
 		t.Setenv(name, "90s")
-		assert.Equal(t, 90*time.Second, envDuration(name))
+		d, ok, err := envDuration(name)
+		assert.NoError(t, err)
+		assert.True(t, ok)
+		assert.Equal(t, 90*time.Second, d)
 
 		t.Setenv(name, "-1s")
-		assert.Equal(t, -time.Second, envDuration(name))
+		d, _, err = envDuration(name)
+		assert.NoError(t, err)
+		assert.Equal(t, -time.Second, d)
+	})
+
+	t.Run("unparseable is an error", func(t *testing.T) {
+		t.Setenv(name, "soon")
+		_, _, err := envDuration(name)
+		assert.EqualError(t, err, name+" is not a duration: soon")
 	})
 }
 

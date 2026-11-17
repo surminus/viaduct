@@ -193,7 +193,9 @@ The `EmbeddedFile` function works in a similar way, but without variables.
 ## Attributes
 
 Like any good configuration management tool, we also have access to node
-attributes under the `Attribute` variable:
+attributes through the `Attributes` function. They are read from the system on
+first use, and `LoadAttributes` returns the same value along with any error
+from reading them:
 
 ```go
 import (
@@ -207,7 +209,7 @@ func main() {
         m := viaduct.New()
 
         // E is an alias for creating an Execute resource
-        m.Add(resources.Exec(fmt.Sprintf("echo \"Hello %s!\"", viaduct.Attribute.User.Username)))
+        m.Add(resources.Exec(fmt.Sprintf("echo \"Hello %s!\"", viaduct.Attributes().User.Username)))
 }
 ```
 
@@ -223,11 +225,11 @@ user and group in the resource.
 Alternatively, you can set a default user attribute:
 ```go
 func main() {
-        viaduct.Attribute.SetUser("laura")
+        viaduct.Attributes().SetUser("laura")
         m := viaduct.New()
 
         // Will print my home directory
-        m.Add(resources.Echo(viaduct.Attribute.User.Homedir))
+        m.Add(resources.Echo(viaduct.Attributes().User.HomeDir))
 
         m.Run()
 }

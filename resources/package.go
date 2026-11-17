@@ -57,8 +57,8 @@ func (p *Package) PreflightChecks(log *viaduct.Logger) error {
 		return fmt.Errorf("package resource must be run as root")
 	}
 
-	if p.Purge && !purgeSupported(viaduct.Attribute.Platform.ID) {
-		return fmt.Errorf("purge is not supported on %s", viaduct.Attribute.Platform.ID)
+	if p.Purge && !purgeSupported(viaduct.Attributes().Platform.ID) {
+		return fmt.Errorf("purge is not supported on %s", viaduct.Attributes().Platform.ID)
 	}
 
 	if p.Hold && p.Unhold {
@@ -69,8 +69,8 @@ func (p *Package) PreflightChecks(log *viaduct.Logger) error {
 		return fmt.Errorf("cannot hold and uninstall the same packages")
 	}
 
-	if (p.Hold || p.Unhold) && !holdSupported(viaduct.Attribute.Platform.ID) {
-		return fmt.Errorf("holding packages is not supported on %s", viaduct.Attribute.Platform.ID)
+	if (p.Hold || p.Unhold) && !holdSupported(viaduct.Attributes().Platform.ID) {
+		return fmt.Errorf("holding packages is not supported on %s", viaduct.Attributes().Platform.ID)
 	}
 
 	// Set optional defaults here
@@ -195,7 +195,7 @@ func (p *Package) install(log *viaduct.Logger) error {
 		return nil
 	}
 
-	return installPkg(viaduct.Attribute.Platform.ID, p.Names, p.Verbose)
+	return installPkg(viaduct.Attributes().Platform.ID, p.Names, p.Verbose)
 }
 
 func (p *Package) uninstall(log *viaduct.Logger) error {
@@ -209,7 +209,7 @@ func (p *Package) uninstall(log *viaduct.Logger) error {
 		return nil
 	}
 
-	return removePkg(viaduct.Attribute.Platform.ID, p.Names, p.Verbose, p.Purge)
+	return removePkg(viaduct.Attributes().Platform.ID, p.Names, p.Verbose, p.Purge)
 }
 
 // hold marks packages as held back, or releases them, leaving alone any that

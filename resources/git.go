@@ -101,7 +101,7 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 			return err
 		}
 
-		if viaduct.Attribute.User.Username != "root" {
+		if viaduct.Attributes().User.Username != "root" {
 			err = os.Setenv("SSH_KNOWN_HOSTS", viaduct.ExpandPath("~/.ssh/known_hosts"))
 			if err != nil {
 				return err

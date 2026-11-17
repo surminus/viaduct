@@ -13,7 +13,7 @@ import (
 // ExpandPath ensures that "~" are expanded.
 func ExpandPath(path string) string {
 	if strings.HasPrefix(path, "~") {
-		if p, err := filepath.Abs(strings.Replace(path, "~", Attribute.User.HomeDir, 1)); err == nil {
+		if p, err := filepath.Abs(strings.Replace(path, "~", Attributes().User.HomeDir, 1)); err == nil {
 			path = p
 		} else {
 			log.Fatal(err)
@@ -56,7 +56,7 @@ func SudoCommand(command ...string) error {
 // IsUbuntu returns true if the distribution is Ubuntu
 func IsUbuntu() bool {
 	// Linux Mint uses IDLike since it's an Ubuntu fork
-	return strings.Contains(Attribute.Platform.ID, "ubuntu") || strings.Contains(Attribute.Platform.IDLike, "ubuntu")
+	return strings.Contains(Attributes().Platform.ID, "ubuntu") || strings.Contains(Attributes().Platform.IDLike, "ubuntu")
 }
 
 // FileExists returns true if the file exists
@@ -150,12 +150,7 @@ func MatchChown(path string, user, group int) bool {
 
 // IsRoot returns true if the user is root
 func IsRoot() bool {
-	return Attribute.runuser.Username == "root"
-}
-
-// TmpFile returns the path for a Viaduct temporary file
-func TmpFile(path string) string {
-	return filepath.Join(Attribute.TmpDir, path)
+	return Attributes().runuser.Username == "root"
 }
 
 // FileSize returns the file size in bytes
