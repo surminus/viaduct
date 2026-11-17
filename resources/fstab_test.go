@@ -109,6 +109,31 @@ func TestEnsureFstabEntry(t *testing.T) {
 	})
 }
 
+func TestMountInfo(t *testing.T) {
+	env := viaducttest.NewEnv(t)
+	env.WriteFile("/proc/self/mountinfo", `22 1 259:1 / / rw,relatime shared:1 - ext4 /dev/nvme0n1p1 rw
+30 22 259:2 / /data rw,relatime shared:2 - xfs /dev/nvme1n1 rw,attr2
+31 22 0:40 / /mnt/my\040data rw - tmpfs tmpfs rw
+32 30 0:41 / /data rw - tmpfs tmpfs rw
+`)
+
+	e := viaduct.EnvFrom(env.Context())
+
+	m, ok, err := mountedAt(e, "/mnt/my data")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "tmpfs", m.Source)
+
+	m, ok, err = mountedAt(e, "/data/")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "tmpfs", m.Source, "the last mount stacked on a path is the visible one")
+
+	_, ok, err = mountedAt(e, "/missing")
+	require.NoError(t, err)
+	assert.False(t, ok)
+}
+
 func TestDevicePath(t *testing.T) {
 	env := viaducttest.NewEnv(t)
 	e := viaduct.EnvFrom(env.Context())

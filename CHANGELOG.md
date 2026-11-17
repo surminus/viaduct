@@ -37,6 +37,14 @@ resources needs no change. Beyond that:
   it, including a partition table, is a permanent error. It never formats a
   device that has something on it, or anything that is not a block device.
   `msdos`, `fat` and `vfat` count as the same type. It takes `FstabLock`
+- A new `Mount` resource, which creates the mount point, mounts the path if
+  it is not already, and only once the mount succeeds keeps one `/etc/fstab`
+  entry for the path, running `systemctl daemon-reload` when the entry
+  changes. A path already mounted from another source is an error, and so is
+  a mount point that is itself a symlink. `UUID=` and `LABEL=` sources, and
+  symlinked devices, are compared by the device they resolve to, and a bind
+  mount by the directory it comes from. Part of the same device mounted at the
+  path is a different source, unless `subvol` or `subvolid` selects it
 - A new `Swap` resource, which runs `mkswap` on an empty device, never forced,
   records the swap in `/etc/fstab` by UUID, runs `systemctl daemon-reload`
   when the entry changes, and turns it on. An active swap missing from

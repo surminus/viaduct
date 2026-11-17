@@ -241,6 +241,29 @@ func devicePath(env viaduct.Env, source string) string {
 	return unroot(env, resolved)
 }
 
+// resolvePath resolves the symlinks in an absolute path, as mountinfo lists
+// it. A path that does not exist yet is resolved as far as its nearest
+// existing parent.
+func resolvePath(env viaduct.Env, path string) string {
+	if !filepath.IsAbs(path) {
+		return path
+	}
+
+	dir, rest := filepath.Clean(path), ""
+
+	for {
+		if resolved, err := filepath.EvalSymlinks(env.Path(dir)); err == nil {
+			return filepath.Join(unroot(env, resolved), rest)
+		}
+
+		if dir == "/" {
+			return path
+		}
+
+		dir, rest = filepath.Dir(dir), filepath.Join(filepath.Base(dir), rest)
+	}
+}
+
 // unroot maps a path under the environment's root back to the path it
 // stands for. A path outside the root is returned as it is.
 func unroot(env viaduct.Env, path string) string {
@@ -259,6 +282,80 @@ func unroot(env viaduct.Env, path string) string {
 // sameDevice reports whether two sources refer to the same thing.
 func sameDevice(env viaduct.Env, a, b string) bool {
 	return a == b || devicePath(env, a) == devicePath(env, b)
+}
+
+// mountInfo is a line of /proc/self/mountinfo
+type mountInfo struct {
+	// Device is the major:minor of the filesystem
+	Device string
+
+	// Root is the directory within the filesystem that is mounted, which is
+	// "/" except for a bind mount
+	Root string
+
+	Path   string
+	FSType string
+	Source string
+}
+
+// mounts reads /proc/self/mountinfo.
+func mounts(env viaduct.Env) ([]mountInfo, error) {
+	content, err := os.ReadFile(env.Path("/proc/self/mountinfo"))
+	if err != nil {
+		return nil, err
+	}
+
+	var out []mountInfo
+
+	for _, line := range strings.Split(string(content), "\n") {
+		fields := strings.Fields(line)
+
+		sep := -1
+		for i, f := range fields {
+			if f == "-" {
+				sep = i
+				break
+			}
+		}
+
+		if sep < 5 || len(fields) < sep+3 {
+			continue
+		}
+
+		out = append(out, mountInfo{
+			Device: fields[2],
+			Root:   fstabUnescape(fields[3]),
+			Path:   fstabUnescape(fields[4]),
+			FSType: fields[sep+1],
+			Source: fstabUnescape(fields[sep+2]),
+		})
+	}
+
+	return out, nil
+}
+
+// mountedAt returns what is mounted at a path, if anything. The last of
+// several stacked mounts is the visible one.
+func mountedAt(env viaduct.Env, path string) (mountInfo, bool, error) {
+	all, err := mounts(env)
+	if err != nil {
+		return mountInfo{}, false, err
+	}
+
+	path = filepath.Clean(path)
+
+	var (
+		found mountInfo
+		ok    bool
+	)
+
+	for _, m := range all {
+		if m.Path == path {
+			found, ok = m, true
+		}
+	}
+
+	return found, ok, nil
 }
 
 // probe is what blkid finds on a device

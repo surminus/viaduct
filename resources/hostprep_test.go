@@ -149,6 +149,236 @@ func TestFilesystem(t *testing.T) {
 	})
 }
 
+func TestMount(t *testing.T) {
+	const mountinfo = "22 1 259:1 / / rw,relatime shared:1 - ext4 /dev/nvme0n1p1 rw\n"
+
+	setup := func(t *testing.T) *viaducttest.Env {
+		env := viaducttest.NewEnv(t)
+		env.WriteFile("/proc/self/mountinfo", mountinfo)
+		env.WriteFile("/etc/fstab", "LABEL=root / ext4 defaults 0 1\n")
+		env.WriteFile("/dev/nvme1n1", "")
+		require.NoError(t, os.Symlink("nvme1n1", env.Path("/dev/sdb")))
+		require.NoError(t, os.MkdirAll(env.Path("/run/systemd/system"), 0o755))
+
+		return env
+	}
+
+	mountArgs := []string{"-t", "ext4", "-o", "defaults,nofail", "/dev/sdb", "/data"}
+
+	mount := func() *Mount {
+		return &Mount{Source: "/dev/sdb", Path: "/data", FSType: "ext4", Options: "defaults,nofail", Pass: 2}
+	}
+
+	t.Run("preflight", func(t *testing.T) {
+		env := setup(t)
+
+		for _, m := range []*Mount{
+			{Path: "/data", FSType: "ext4"},
+			{Source: "/dev/sdb", FSType: "ext4"},
+			{Source: "/dev/sdb", Path: "/", FSType: "ext4"},
+			{Source: "/dev/sdb", Path: "data", FSType: "ext4"},
+			{Source: "/dev/sdb", Path: "/data"},
+		} {
+			assert.Error(t, m.PreflightChecks(env.Context(), env.Log), "%+v", m)
+		}
+
+		m := &Mount{Source: "/dev/sdb", Path: "/data", FSType: "ext4"}
+		require.NoError(t, m.PreflightChecks(env.Context(), env.Log))
+		assert.Equal(t, "defaults", m.Options)
+		assert.Equal(t, os.FileMode(0o755), m.Mode)
+		assert.Equal(t, viaduct.FstabLock, m.Params().LockKey)
+	})
+
+	t.Run("mounts, then records the mount", func(t *testing.T) {
+		env := setup(t)
+		env.Runner.On("systemctl", "daemon-reload")
+		env.Runner.On("mount", mountArgs...)
+
+		log, err := env.Apply(env.Context(), mount())
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.DirExists(t, env.Path("/data"))
+		assert.Equal(t, "LABEL=root / ext4 defaults 0 1\n/dev/sdb /data ext4 defaults,nofail 0 2\n", env.ReadFile("/etc/fstab"))
+		assert.Equal(t, []string{"mount -t ext4 -o defaults,nofail /dev/sdb /data", "systemctl daemon-reload"}, env.Runner.Commands())
+	})
+
+	t.Run("a failed mount leaves fstab alone", func(t *testing.T) {
+		env := setup(t)
+		env.Runner.On("mount", mountArgs...).Exit(32)
+
+		_, err := env.Apply(env.Context(), mount())
+		require.Error(t, err)
+
+		assert.Equal(t, "LABEL=root / ext4 defaults 0 1\n", env.ReadFile("/etc/fstab"))
+		assert.Equal(t, []string{"mount -t ext4 -o defaults,nofail /dev/sdb /data"}, env.Runner.Commands())
+	})
+
+	t.Run("already mounted under a symlinked parent is seen as mounted", func(t *testing.T) {
+		env := setup(t)
+		require.NoError(t, os.MkdirAll(env.Path("/srv/data"), 0o755))
+		require.NoError(t, os.Symlink("srv", env.Path("/mnt")))
+		env.WriteFile("/proc/self/mountinfo", mountinfo+"30 22 259:2 / /srv/data rw - ext4 /dev/nvme1n1 rw\n")
+		env.WriteFile("/etc/fstab", "/dev/sdb /mnt/data ext4 defaults 0 0\n")
+
+		log, err := env.Apply(env.Context(), &Mount{Source: "/dev/sdb", Path: "/mnt/data", FSType: "ext4"})
+		require.NoError(t, err)
+
+		assert.False(t, log.Changed())
+		assert.Empty(t, env.Runner.Calls())
+	})
+
+	t.Run("a mount point that is a symlink is refused", func(t *testing.T) {
+		env := setup(t)
+		require.NoError(t, os.MkdirAll(env.Path("/elsewhere"), 0o755))
+		require.NoError(t, os.Symlink("elsewhere", env.Path("/data")))
+
+		_, err := env.Apply(env.Context(), mount())
+		require.ErrorContains(t, err, "is a symlink")
+
+		assert.True(t, viaduct.IsPermanent(err))
+		assert.Empty(t, env.Runner.Calls())
+		assert.Equal(t, "LABEL=root / ext4 defaults 0 1\n", env.ReadFile("/etc/fstab"))
+	})
+
+	t.Run("already mounted and recorded is a noop", func(t *testing.T) {
+		env := setup(t)
+		env.WriteFile("/proc/self/mountinfo", mountinfo+"30 22 259:2 / /data rw - ext4 /dev/nvme1n1 rw\n")
+		env.WriteFile("/etc/fstab", "/dev/sdb /data ext4 defaults,nofail 0 2\n")
+		require.NoError(t, os.Mkdir(env.Path("/data"), 0o755))
+
+		log, err := env.Apply(env.Context(), mount())
+		require.NoError(t, err)
+
+		assert.False(t, log.Changed())
+		assert.Empty(t, env.Runner.Calls())
+	})
+
+	t.Run("mounted by UUID", func(t *testing.T) {
+		env := setup(t)
+		require.NoError(t, os.MkdirAll(env.Path("/dev/disk/by-uuid"), 0o755))
+		require.NoError(t, os.Symlink("../../nvme1n1", env.Path("/dev/disk/by-uuid/1234")))
+		env.WriteFile("/proc/self/mountinfo", mountinfo+"30 22 259:2 / /data rw - ext4 /dev/nvme1n1 rw\n")
+		env.WriteFile("/etc/fstab", "UUID=1234 /data ext4 defaults 0 0\n")
+		require.NoError(t, os.Mkdir(env.Path("/data"), 0o755))
+
+		log, err := env.Apply(env.Context(), &Mount{Source: "UUID=1234", Path: "/data", FSType: "ext4"})
+		require.NoError(t, err)
+		assert.False(t, log.Changed(), "the mounted device is the one the UUID names")
+	})
+
+	t.Run("an fstab change while mounted reloads systemd but does not remount", func(t *testing.T) {
+		env := setup(t)
+		env.WriteFile("/proc/self/mountinfo", mountinfo+"30 22 259:2 / /data rw - ext4 /dev/nvme1n1 rw\n")
+		require.NoError(t, os.Mkdir(env.Path("/data"), 0o755))
+		env.Runner.On("systemctl", "daemon-reload")
+
+		log, err := env.Apply(env.Context(), mount())
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, []string{"systemctl daemon-reload"}, env.Runner.Commands())
+	})
+
+	t.Run("mounted from somewhere else is an error and changes nothing", func(t *testing.T) {
+		env := setup(t)
+		env.WriteFile("/dev/nvme2n1", "")
+		env.WriteFile("/proc/self/mountinfo", mountinfo+"30 22 259:3 / /data rw - ext4 /dev/nvme2n1 rw\n")
+
+		_, err := env.Apply(env.Context(), mount())
+		require.Error(t, err)
+
+		assert.True(t, viaduct.IsPermanent(err))
+		assert.ErrorContains(t, err, "already mounted from /dev/nvme2n1")
+		assert.ErrorContains(t, err, "unmount it or change Source")
+		assert.Equal(t, "LABEL=root / ext4 defaults 0 1\n", env.ReadFile("/etc/fstab"))
+		assert.Empty(t, env.Runner.Calls())
+	})
+
+	t.Run("part of the same device mounted there is an error", func(t *testing.T) {
+		env := setup(t)
+		env.WriteFile("/proc/self/mountinfo", mountinfo+"30 22 259:2 /subdir /data rw - ext4 /dev/nvme1n1 rw\n")
+
+		_, err := env.Apply(env.Context(), mount())
+		require.Error(t, err)
+
+		assert.ErrorContains(t, err, "already mounted from /dev/nvme1n1[/subdir]")
+		assert.Empty(t, env.Runner.Calls())
+	})
+
+	t.Run("a btrfs subvolume compares by its root", func(t *testing.T) {
+		env := setup(t)
+		env.WriteFile("/proc/self/mountinfo", mountinfo+"30 22 0:40 /@data /data rw - btrfs /dev/nvme1n1 rw\n")
+
+		m := func(options string) *Mount {
+			return &Mount{Source: "/dev/sdb", Path: "/data", FSType: "btrfs", Options: options}
+		}
+
+		env.Runner.On("systemctl", "daemon-reload")
+
+		_, err := env.Apply(env.Context(), m("subvol=@data"))
+		require.NoError(t, err)
+
+		_, err = env.Apply(env.Context(), m("subvolid=256"))
+		require.NoError(t, err)
+
+		_, err = env.Apply(env.Context(), m("subvol=@other"))
+		assert.ErrorContains(t, err, "already mounted from /dev/nvme1n1[/@data]")
+	})
+
+	t.Run("a file at the mount point is an error", func(t *testing.T) {
+		env := setup(t)
+		env.WriteFile("/data", "")
+
+		_, err := env.Apply(env.Context(), mount())
+		assert.ErrorContains(t, err, "is not a directory")
+	})
+
+	t.Run("bind mounts compare by the directory they come from", func(t *testing.T) {
+		// /srv is on the root filesystem, so binding /srv/a shows that
+		// device with a root of /srv/a
+		bound := mountinfo + "30 22 259:1 /srv/a /data rw - ext4 /dev/nvme0n1p1 rw\n"
+		bind := func(source string) *Mount {
+			return &Mount{Source: source, Path: "/data", FSType: "none", Options: "bind"}
+		}
+
+		env := setup(t)
+		require.NoError(t, os.MkdirAll(env.Path("/srv/a"), 0o755))
+		require.NoError(t, os.MkdirAll(env.Path("/srv/b"), 0o755))
+		require.NoError(t, os.Mkdir(env.Path("/data"), 0o755))
+		env.WriteFile("/proc/self/mountinfo", bound)
+		env.WriteFile("/etc/fstab", "/srv/a /data none bind 0 0\n")
+
+		log, err := env.Apply(env.Context(), bind("/srv/a"))
+		require.NoError(t, err)
+		assert.False(t, log.Changed())
+
+		_, err = env.Apply(env.Context(), bind("/srv/b"))
+		assert.ErrorContains(t, err, "already mounted")
+
+		env.WriteFile("/proc/self/mountinfo", mountinfo)
+		env.Runner.On("mount", "-t", "none", "-o", "bind", "/srv/b", "/data")
+		env.Runner.On("systemctl", "daemon-reload")
+
+		_, err = env.Apply(env.Context(), bind("/srv/b"))
+		require.NoError(t, err)
+		assert.True(t, env.Runner.Ran("mount", "-t", "none", "-o", "bind", "/srv/b", "/data"))
+	})
+
+	t.Run("dry run", func(t *testing.T) {
+		env := setup(t)
+
+		log, err := env.Apply(env.DryRunContext(), mount())
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, []string{"created-mount-point", "mounted", "fstab-updated", "daemon-reload"}, env.Recorder.Messages(viaduct.LevelChanged))
+		assert.NoDirExists(t, env.Path("/data"))
+		assert.Equal(t, "LABEL=root / ext4 defaults 0 1\n", env.ReadFile("/etc/fstab"))
+		assert.Empty(t, env.Runner.Calls())
+	})
+}
+
 func TestSwap(t *testing.T) {
 	const swaps = "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n"
 
