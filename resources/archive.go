@@ -6,8 +6,12 @@ import (
 	"compress/bzip2"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -21,6 +25,13 @@ import (
 // Archive extracts a tar or zip archive into a destination directory.
 // Supported formats are tar.gz, tgz, tar.bz2, tbz2, tar and zip, detected
 // by file extension.
+//
+// After extracting, it writes a marker holding the archive's SHA-256 along
+// with Strip and Pick, in /var/lib/viaduct/archive when running as root, or
+// $XDG_STATE_HOME/viaduct/archive otherwise, which defaults to
+// ~/.local/state/viaduct/archive. The archive is not extracted again while
+// the marker matches, Dest exists and every Pick entry exists. Removing the
+// marker forces the next run to extract.
 type Archive struct {
 	// Path is the path to the archive file
 	Path string
@@ -37,7 +48,8 @@ type Archive struct {
 	Pick []string
 
 	// NotIfExists will skip extraction if all Pick entries already exist
-	// within Dest, or if Dest exists when Pick is not set. Optional.
+	// within Dest, or if Dest exists when Pick is not set, without reading
+	// the archive. Optional.
 	NotIfExists bool
 }
 
@@ -82,16 +94,38 @@ func (a *Archive) OperationName() string {
 }
 
 func (a *Archive) Run(ctx context.Context, log *viaduct.Logger) error {
-	apath := viaduct.ExpandPath(a.Path)
-	dest := viaduct.ExpandPath(a.Dest)
-
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("extracted", "path", apath, "dest", dest)
-		return nil
-	}
+	env := viaduct.EnvFrom(ctx)
+	apath := env.Path(viaduct.ExpandPath(a.Path))
+	dest := env.Path(viaduct.ExpandPath(a.Dest))
 
 	if a.NotIfExists && a.upToDate(dest) {
 		log.Noop("up-to-date", "path", apath, "dest", dest)
+		return nil
+	}
+
+	marker, err := archiveMarker(env, a.Path, a.Dest)
+	if err != nil {
+		return err
+	}
+
+	// In a dry run the archive may not exist yet, because an earlier
+	// resource would have created it, so that is reported as a change.
+	// Otherwise extracting reports the missing file.
+	var stamp string
+	if viaduct.FileExists(apath) || !env.DryRun {
+		var err error
+		if stamp, err = a.stamp(apath); err != nil {
+			return err
+		}
+
+		if a.extracted(dest, marker, stamp) {
+			log.Noop("up-to-date", "path", apath, "dest", dest)
+			return nil
+		}
+	}
+
+	if env.DryRun {
+		log.Info("extracted", "path", apath, "dest", dest)
 		return nil
 	}
 
@@ -99,14 +133,104 @@ func (a *Archive) Run(ctx context.Context, log *viaduct.Logger) error {
 		return err
 	}
 
-	count, err := a.extract(ctx, log, apath, dest)
+	// Removed first, so an extraction that fails part way is retried on the
+	// next run rather than matching the old marker
+	if err := os.Remove(marker); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+
+	count, err := a.extract(log, apath, dest)
 	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+		return err
+	}
+
+	if err := viaduct.WriteFileAtomic(marker, []byte(stamp), 0o644); err != nil {
 		return err
 	}
 
 	log.Info("extracted", "path", apath, "dest", dest, "files", strconv.Itoa(count))
 
 	return nil
+}
+
+// archiveMarker returns the path of the marker for an archive extracted into
+// dest. It is kept outside dest so that nothing viaduct needs ends up among
+// the extracted files. The name is a hash of both paths as declared, before
+// the root is applied, so each archive and destination pair has its own.
+func archiveMarker(env viaduct.Env, archive, dest string) (string, error) {
+	dir, err := archiveStateDir(env)
+	if err != nil {
+		return "", err
+	}
+
+	sum := sha256.Sum256([]byte(viaduct.ExpandPath(archive) + "\x00" + viaduct.ExpandPath(dest)))
+
+	return env.Path(filepath.Join(dir, hex.EncodeToString(sum[:16]))), nil
+}
+
+// archiveStateDir is where Archive keeps its markers: under /var/lib as root,
+// and in the user's XDG state directory otherwise, since an unprivileged run
+// cannot write to /var/lib.
+func archiveStateDir(env viaduct.Env) (string, error) {
+	if env.IsRoot() {
+		return "/var/lib/viaduct/archive", nil
+	}
+
+	if dir := os.Getenv("XDG_STATE_HOME"); filepath.IsAbs(dir) {
+		return filepath.Join(dir, "viaduct", "archive"), nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("finding where to keep the archive marker: %w", err)
+	}
+
+	return filepath.Join(home, ".local", "state", "viaduct", "archive"), nil
+}
+
+// stamp is what the marker holds: the archive's digest, and the options that
+// change what is extracted from it, so changing Strip or Pick extracts again
+func (a *Archive) stamp(apath string) (string, error) {
+	file, err := os.Open(apath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "sha256 %s\nstrip %d\n", hex.EncodeToString(hash.Sum(nil)), a.Strip)
+
+	for _, p := range a.Pick {
+		fmt.Fprintf(&b, "pick %s\n", p)
+	}
+
+	return b.String(), nil
+}
+
+// extracted reports whether the marker shows this archive was extracted with
+// the same options, and dest and every picked entry are still there
+func (a *Archive) extracted(dest, marker, stamp string) bool {
+	got, err := os.ReadFile(marker)
+	if err != nil || string(got) != stamp || !viaduct.DirExists(dest) {
+		return false
+	}
+
+	for _, p := range a.Pick {
+		if !viaduct.FileExists(filepath.Join(dest, p)) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // upToDate returns true if everything we would extract already exists
@@ -139,7 +263,7 @@ func archiveFormat(p string) (string, error) {
 	}
 }
 
-func (a *Archive) extract(ctx context.Context, log *viaduct.Logger, apath, dest string) (int, error) {
+func (a *Archive) extract(log *viaduct.Logger, apath, dest string) (int, error) {
 	format, err := archiveFormat(apath)
 	if err != nil {
 		return 0, err
@@ -168,10 +292,10 @@ func (a *Archive) extract(ctx context.Context, log *viaduct.Logger, apath, dest 
 		reader = bzip2.NewReader(file)
 	}
 
-	return a.extractTar(ctx, log, reader, dest)
+	return a.extractTar(log, reader, dest)
 }
 
-func (a *Archive) extractTar(ctx context.Context, log *viaduct.Logger, reader io.Reader, dest string) (int, error) {
+func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string) (int, error) {
 	tr := tar.NewReader(reader)
 
 	var count int

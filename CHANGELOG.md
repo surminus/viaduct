@@ -184,6 +184,11 @@ resources needs no change. Beyond that:
 - **This stops `Package` upgrading packages that are already installed.**
   Installing an installed package used to upgrade it, when the package
   manager had a newer version. That package is now left as it is
+- **`Archive` extracts an archive once.** After extracting it writes a
+  marker holding the archive's SHA-256, `Strip` and `Pick` under
+  `/var/lib/viaduct/archive`, or `~/.local/state/viaduct/archive` when not
+  running as root, and is a noop while the marker matches and `Dest` and the
+  picked entries exist. A changed archive or changed options extract again
 - A `Download` whose file already exists with a matching `Checksum` is a noop,
   rather than being downloaded again
 - **`File`, `Template`, `Line` and `Apt` write files atomically.** A

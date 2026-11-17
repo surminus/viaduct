@@ -9,6 +9,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/surminus/viaduct"
+	"github.com/surminus/viaduct/viaducttest"
 )
 
 func newTestTarGz(t *testing.T, files map[string]string) string {
@@ -296,4 +299,279 @@ func TestArchive(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, "shared", string(content))
 	})
+}
+
+// rootedTarGz builds a tarball and puts it at path under the test root
+func rootedTarGz(t *testing.T, env *viaducttest.Env, path string, files map[string]string) {
+	t.Helper()
+
+	content, err := os.ReadFile(newTestTarGz(t, files))
+	require.NoError(t, err)
+
+	env.WriteFile(path, string(content))
+}
+
+func TestArchiveRun(t *testing.T) {
+	t.Parallel()
+
+	t.Run("extract under the root, then a noop", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		rootedTarGz(t, env, "/tmp/app.tar.gz", map[string]string{"app/bin/app": "binary"})
+
+		a := &Archive{Path: "/tmp/app.tar.gz", Dest: "/opt", Pick: []string{"app/bin/app"}, NotIfExists: true}
+
+		log, err := env.Apply(env.Context(), a)
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, "binary", env.ReadFile("/opt/app/bin/app"))
+
+		log, err = env.Apply(env.Context(), a)
+		require.NoError(t, err)
+
+		assert.False(t, log.Changed())
+		assert.Empty(t, env.Runner.Commands())
+	})
+
+	t.Run("dry run extracts nothing", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		rootedTarGz(t, env, "/tmp/app.tar.gz", map[string]string{"app/bin/app": "binary"})
+
+		log, err := env.Apply(env.DryRunContext(), Extract("/tmp/app.tar.gz", "/opt"))
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.False(t, viaduct.DirExists(env.Path("/opt")))
+	})
+
+	t.Run("dry run reports extracted as a noop", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		env.WriteFile("/opt/app/bin/app", "binary")
+
+		a := &Archive{Path: "/tmp/app.tar.gz", Dest: "/opt", Pick: []string{"app/bin/app"}, NotIfExists: true}
+
+		log, err := env.Apply(env.DryRunContext(), a)
+		require.NoError(t, err)
+
+		assert.False(t, log.Changed())
+	})
+
+	t.Run("dry run with an archive an earlier resource would create", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+
+		log, err := env.Apply(env.DryRunContext(), Extract("/tmp/app.tar.gz", "/opt"))
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+	})
+}
+
+func TestArchiveMarker(t *testing.T) {
+	t.Parallel()
+
+	marker, err := archiveMarker(viaduct.Env{Root: "/"}, "/tmp/app.tar.gz", "/opt")
+	require.NoError(t, err)
+
+	t.Run("extract, then a noop", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		rootedTarGz(t, env, "/tmp/app.tar.gz", map[string]string{"app/bin/app": "binary"})
+
+		a := Extract("/tmp/app.tar.gz", "/opt")
+
+		log, err := env.Apply(env.Context(), a)
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, "binary", env.ReadFile("/opt/app/bin/app"))
+
+		// The marker is written under the root, not on the host, and
+		// outside Dest
+		assert.Contains(t, env.ReadFile(marker), "sha256 ")
+		assert.NoFileExists(t, marker)
+		entries, err := os.ReadDir(env.Path("/opt"))
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		assert.Equal(t, "app", entries[0].Name())
+
+		log, err = env.Apply(env.Context(), a)
+		require.NoError(t, err)
+
+		assert.False(t, log.Changed())
+		assert.Equal(t, []string{"up-to-date"}, env.Recorder.Messages(viaduct.LevelNoop))
+	})
+
+	t.Run("a changed archive extracts again", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		rootedTarGz(t, env, "/tmp/app.tar.gz", map[string]string{"app/bin/app": "v1"})
+
+		a := Extract("/tmp/app.tar.gz", "/opt")
+
+		_, err := env.Apply(env.Context(), a)
+		require.NoError(t, err)
+
+		rootedTarGz(t, env, "/tmp/app.tar.gz", map[string]string{"app/bin/app": "v2"})
+
+		log, err := env.Apply(env.Context(), a)
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, "v2", env.ReadFile("/opt/app/bin/app"))
+	})
+
+	t.Run("changing what is picked extracts again", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		rootedTarGz(t, env, "/tmp/app.tar.gz", map[string]string{"app/bin/app": "binary", "app/LICENSE": "license"})
+
+		_, err := env.Apply(env.Context(), &Archive{Path: "/tmp/app.tar.gz", Dest: "/opt", Pick: []string{"app/bin/app"}})
+		require.NoError(t, err)
+
+		log, err := env.Apply(env.Context(), &Archive{Path: "/tmp/app.tar.gz", Dest: "/opt", Pick: []string{"app/bin/app", "app/LICENSE"}})
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, "license", env.ReadFile("/opt/app/LICENSE"))
+	})
+
+	t.Run("a removed pick entry extracts again", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		rootedTarGz(t, env, "/tmp/app.tar.gz", map[string]string{"app/bin/app": "binary"})
+
+		a := &Archive{Path: "/tmp/app.tar.gz", Dest: "/opt", Pick: []string{"app/bin/app"}}
+
+		_, err := env.Apply(env.Context(), a)
+		require.NoError(t, err)
+
+		require.NoError(t, os.Remove(env.Path("/opt/app/bin/app")))
+
+		log, err := env.Apply(env.Context(), a)
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, "binary", env.ReadFile("/opt/app/bin/app"))
+	})
+
+	t.Run("a failed extraction removes the marker", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		rootedTarGz(t, env, "/tmp/app.tar.gz", map[string]string{"app/bin/app": "v1"})
+
+		a := Extract("/tmp/app.tar.gz", "/opt")
+
+		_, err := env.Apply(env.Context(), a)
+		require.NoError(t, err)
+		require.FileExists(t, env.Path(marker))
+
+		env.WriteFile("/tmp/app.tar.gz", "not an archive")
+
+		_, err = env.Apply(env.Context(), a)
+		require.Error(t, err)
+
+		assert.NoFileExists(t, env.Path(marker))
+	})
+
+	t.Run("dry run writes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		rootedTarGz(t, env, "/tmp/app.tar.gz", map[string]string{"app/bin/app": "binary"})
+
+		log, err := env.Apply(env.DryRunContext(), Extract("/tmp/app.tar.gz", "/opt"))
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.NoFileExists(t, env.Path(marker))
+		assert.False(t, viaduct.DirExists(env.Path("/opt")))
+	})
+
+	t.Run("dry run reports an extracted archive as a noop", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		rootedTarGz(t, env, "/tmp/app.tar.gz", map[string]string{"app/bin/app": "binary"})
+
+		a := Extract("/tmp/app.tar.gz", "/opt")
+
+		_, err := env.Apply(env.Context(), a)
+		require.NoError(t, err)
+
+		log, err := env.Apply(env.DryRunContext(), a)
+		require.NoError(t, err)
+
+		assert.False(t, log.Changed())
+	})
+
+	t.Run("a missing archive fails outside a dry run", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+
+		_, err := env.Apply(env.Context(), Extract("/tmp/app.tar.gz", "/opt"))
+		assert.ErrorIs(t, err, os.ErrNotExist)
+	})
+
+	t.Run("a removed destination extracts again", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		rootedTarGz(t, env, "/tmp/app.tar.gz", map[string]string{"app/bin/app": "binary"})
+
+		a := Extract("/tmp/app.tar.gz", "/opt")
+
+		_, err := env.Apply(env.Context(), a)
+		require.NoError(t, err)
+
+		require.NoError(t, os.RemoveAll(env.Path("/opt")))
+
+		log, err := env.Apply(env.Context(), a)
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, "binary", env.ReadFile("/opt/app/bin/app"))
+	})
+
+	t.Run("each archive and destination has its own marker", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaduct.Env{Root: "/"}
+		a, err := archiveMarker(env, "/tmp/a.tar.gz", "/opt")
+		require.NoError(t, err)
+		b, err := archiveMarker(env, "/tmp/b.tar.gz", "/opt")
+		require.NoError(t, err)
+		c, err := archiveMarker(env, "/tmp/a.tar.gz", "/srv")
+		require.NoError(t, err)
+
+		assert.NotEqual(t, a, b)
+		assert.NotEqual(t, a, c)
+		assert.Regexp(t, `^/var/lib/viaduct/archive/[0-9a-f]{32}$`, a)
+	})
+}
+
+func TestArchiveStateDir(t *testing.T) {
+	if viaduct.IsRoot() {
+		t.Skip("running as root")
+	}
+
+	t.Setenv("XDG_STATE_HOME", "/state")
+
+	marker, err := archiveMarker(viaduct.Env{}, "/tmp/a.tar.gz", "/opt")
+	require.NoError(t, err)
+
+	assert.Regexp(t, `^/state/viaduct/archive/[0-9a-f]{32}$`, marker)
 }
