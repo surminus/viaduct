@@ -172,6 +172,7 @@ func (m *Manifest) runWith(ctx context.Context, flags CliFlags, stdout, stderr i
 	if flags.JSON {
 		output := RunOutput{
 			Status:    "success",
+			DryRun:    flags.DryRun,
 			Duration:  duration,
 			Resources: collector.resources(report),
 			Failures:  failures,
@@ -304,6 +305,9 @@ type TextOptions struct {
 //	  --  File [Create]          up-to-date path=/home/user/.bashrc
 //	FAIL  Execute [Run]          command failed command="echo hello"
 //
+// In a dry run, a change that would have been made is tagged DRY rather than
+// OK.
+//
 // Command output is printed as it is, to the stream it came from.
 func NewTextHandler(o TextOptions) Handler {
 	if o.Out == nil {
@@ -342,8 +346,13 @@ func (h *textHandler) Handle(_ context.Context, e Event) {
 			fmt.Fprintln(info, formatLine(okTag, e))
 		}
 	case LevelChanged:
+		tag := okTag
+		if e.DryRun {
+			tag = dryTag
+		}
+
 		if !h.o.Quiet {
-			fmt.Fprintln(info, formatLine(okTag, e))
+			fmt.Fprintln(info, formatLine(tag, e))
 		}
 	case LevelNoop:
 		if !h.o.Quiet {
@@ -388,6 +397,7 @@ func quoteIfNeeded(v string) string {
 
 var (
 	okTag   = color.New(color.FgGreen).Sprintf("%4s", "OK")
+	dryTag  = color.New(color.FgCyan).Sprintf("%4s", "DRY")
 	noopTag = color.New(color.FgBlue, color.Faint).Sprintf("%4s", "--")
 	warnTag = color.New(color.FgYellow).Sprintf("%4s", "WARN")
 	failTag = color.New(color.FgRed).Sprintf("%4s", "FAIL")
@@ -488,6 +498,9 @@ type ResourceResult struct {
 type RunOutput struct {
 	// Status is "success", "failed" or "interrupted".
 	Status string `json:"status"`
+
+	// DryRun is true for a dry run.
+	DryRun bool `json:"dry_run,omitempty"`
 
 	// Error is why the run failed, including when it failed before any
 	// resource ran.

@@ -94,6 +94,9 @@ resources needs no change. Beyond that:
 - `Result.Cause` names the resource whose failure stopped a
   `StatusDependencyFailed` resource from running, and `--json` reports it as
   `cause`
+- `Event.DryRun` is set on every event in a dry run. `Run` tags changes that
+  would have been made `DRY` rather than `OK`, and `--json` has
+  `"dry_run": true`
 
 ### Changed
 

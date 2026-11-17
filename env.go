@@ -41,6 +41,12 @@ func EnvFrom(ctx context.Context) Env {
 	return env
 }
 
+// isDryRun reports whether the context carries a dry run Env.
+func isDryRun(ctx context.Context) bool {
+	env, _ := ctx.Value(envKey{}).(Env)
+	return env.DryRun
+}
+
 // Path returns where an absolute path is found, under Root when it is set.
 // ".." cannot climb above Root: "/../etc" is Root's etc. A relative path is
 // returned as it is.

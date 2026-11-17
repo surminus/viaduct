@@ -181,6 +181,7 @@ func TestRunJSON(t *testing.T) {
 
 		assert.Equal(t, "success", out.Status)
 		assert.Empty(t, out.Error)
+		assert.False(t, out.DryRun)
 		assert.Empty(t, out.Failures)
 		require.Len(t, out.Resources, 1)
 		assert.Equal(t, string(a.ResourceID), out.Resources[0].ResourceID)
@@ -237,6 +238,39 @@ func TestRunJSON(t *testing.T) {
 		assert.Equal(t, "failed", out.Status)
 		assert.Contains(t, out.Error, "is already in the manifest")
 		assert.NotNil(t, out.Resources, "resources is a list even when empty")
+	})
+}
+
+func TestRunDryRun(t *testing.T) {
+	ctx := context.Background()
+
+	newManifest := func() *Manifest {
+		m := New()
+		m.Add(&changingResource{testResourceType{Value: "a"}})
+
+		return m
+	}
+
+	t.Run("text marks changes as dry", func(t *testing.T) {
+		code, _, stderr := runOutput(t, ctx, newManifest(), CliFlags{DryRun: true})
+		assert.Equal(t, 0, code)
+
+		assert.Contains(t, stripColour(stderr), " DRY  changingResource [Test] changed value=a")
+		assert.NotContains(t, stripColour(stderr), "  OK  changingResource", "a change that was not made is not OK")
+		assert.Contains(t, stripColour(stderr), "WARN  Viaduct [Run]")
+		assert.Contains(t, stderr, "dry-run")
+	})
+
+	t.Run("text marks real changes as OK", func(t *testing.T) {
+		_, _, stderr := runOutput(t, ctx, newManifest(), CliFlags{})
+		assert.Contains(t, stripColour(stderr), "  OK  changingResource [Test] changed value=a")
+		assert.NotContains(t, stderr, "dry-run")
+	})
+
+	t.Run("JSON", func(t *testing.T) {
+		code, out := runJSON(t, ctx, newManifest(), CliFlags{DryRun: true})
+		assert.Equal(t, 0, code)
+		assert.True(t, out.DryRun)
 	})
 }
 
@@ -362,4 +396,13 @@ func (s *startedResource) Run(ctx context.Context, log *Logger) error {
 	<-ctx.Done()
 
 	return ctx.Err()
+}
+
+// stripColour removes the colour codes from the text handler's tags
+func stripColour(s string) string {
+	for _, code := range []string{"\x1b[32m", "\x1b[36m", "\x1b[34;2m", "\x1b[33m", "\x1b[31m", "\x1b[0m"} {
+		s = strings.ReplaceAll(s, code, "")
+	}
+
+	return s
 }

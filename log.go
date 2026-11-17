@@ -88,6 +88,10 @@ type Event struct {
 
 	Message string
 	Fields  []Field
+
+	// DryRun is true when the run is a dry run, so a LevelChanged event is a
+	// change that would have been made.
+	DryRun bool
 }
 
 // Field returns the value of the first field with the given key, and whether
@@ -237,6 +241,7 @@ func (l *Logger) emit(level Level, msg string, kv []any) {
 		Description: l.description,
 		Message:     msg,
 		Fields:      fieldsOf(kv),
+		DryRun:      isDryRun(l.ctx),
 	})
 }
 
