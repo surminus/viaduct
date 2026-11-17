@@ -174,21 +174,6 @@ func (l *Logger) Error(msg string, fields ...string) {
 	fmt.Fprintln(os.Stderr, formatLine(failTag, l.Resource, l.Action, msg, fields))
 }
 
-// Fatal logs an error message and exits.
-func (l *Logger) Fatal(msg string, fields ...string) {
-	if l.jsonMode {
-		l.addEntry("FATAL", msg, fields)
-		os.Exit(1)
-	}
-
-	if l.Silent {
-		os.Exit(1)
-	}
-
-	fmt.Fprintln(os.Stderr, formatLine(failTag, l.Resource, l.Action, msg, fields))
-	os.Exit(1)
-}
-
 func newEntry(level, msg string, fields []string) LogEntry {
 	entry := LogEntry{
 		Level:   level,

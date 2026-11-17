@@ -25,7 +25,7 @@ resources needs no change. Beyond that:
   `SystemAttributes.SetUser`, `SystemAttributes.JSON`,
   `resources.EmbeddedFile` and `resources.NewTemplate` return an error rather
   than exiting.
-  `SetUser` no longer logs
+  `Logger.Fatal` is gone. `SetUser` no longer logs
 - A directory whose contents change while its ownership is applied
   recursively no longer fails when a file disappears part way through
 - `ExpandPath` only expands `~` and `~/...`, and leaves every other path as it

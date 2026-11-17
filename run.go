@@ -52,6 +52,15 @@ func (m *Manifest) runWith(flags CliFlags) int {
 		_ = removeTmpDir()
 	}()
 
+	if len(m.errs) > 0 {
+		l := NewLogger("Viaduct", "Compile")
+		for _, err := range m.errs {
+			l.Error(err.Error())
+		}
+
+		return 1
+	}
+
 	l := NewLogger("Viaduct", "Run")
 
 	if _, err := LoadAttributes(); err != nil {

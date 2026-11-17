@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"slices"
 	"strings"
 	"sync"
@@ -51,8 +50,12 @@ type Manifest struct {
 
 	// abandoned holds the first resource the run gave up on, if any.
 	abandoned atomic.Pointer[ResourceID]
+
+	// errs holds build errors, which Run reports before running anything.
+	errs []error
 }
 
+// New returns an empty manifest.
 func New() *Manifest {
 	return &Manifest{
 		resources: make(map[ResourceID]Resource),
@@ -99,7 +102,7 @@ func (m *Manifest) SetName(r *Resource, newName string) {
 
 		delete(m.resources, old)
 	} else {
-		log.Fatalf("Unknown resource: %s", attrJSON(r.Attributes))
+		m.errs = append(m.errs, fmt.Errorf("SetName: unknown resource: %s", attrJSON(r.Attributes)))
 	}
 }
 
@@ -157,20 +160,21 @@ func (m *Manifest) addResource(r *Resource, a ResourceAttributes) (err error) {
 	return err
 }
 
+// Add adds a resource to the manifest, to run once every one of deps has
+// succeeded. A resource that cannot be added, such as an exact duplicate, is
+// recorded as an error that Run reports before running anything.
 func (m *Manifest) Add(attributes ResourceAttributes, deps ...*Resource) *Resource {
-	l := NewLogger("Viaduct", "Compile")
-
 	r, err := newResource(deps)
+	if err == nil {
+		err = r.init(attributes)
+	}
+
+	if err == nil {
+		err = m.addResource(r, attributes)
+	}
+
 	if err != nil {
-		l.Fatal(err.Error())
-	}
-
-	if err := r.init(attributes); err != nil {
-		l.Fatal(err.Error())
-	}
-
-	if err := m.addResource(r, attributes); err != nil {
-		l.Fatal(err.Error())
+		m.errs = append(m.errs, err)
 	}
 
 	return r
@@ -253,7 +257,7 @@ func (m *Manifest) ChainTo(to *Resource, attributes ...ResourceAttributes) Resou
 func attrJSON(a any) string {
 	str, err := json.MarshalIndent(a, "", "  ")
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Sprintf("%+v", a)
 	}
 
 	return string(str)

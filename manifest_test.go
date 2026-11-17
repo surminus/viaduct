@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSetName(t *testing.T) {
@@ -199,6 +200,31 @@ func TestAddResource(t *testing.T) {
 
 			assert.Equal(t, expected, res)
 		}
+	})
+}
+
+func TestAdd(t *testing.T) {
+	t.Parallel()
+
+	t.Run("error if resource repeated", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		m.Add(newTestResource("a"))
+		m.Add(newTestResource("a"))
+
+		require.Len(t, m.errs, 1)
+		assert.ErrorContains(t, m.errs[0], "resource already exists")
+	})
+
+	t.Run("a build error stops the run", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		m.Add(newTestResource("a"))
+		m.Add(newTestResource("a"))
+
+		assert.Equal(t, 1, m.runWith(CliFlags{}))
 	})
 }
 
