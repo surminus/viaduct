@@ -3,7 +3,7 @@ package resources
 import (
 	"context"
 	"fmt"
-	"os/exec"
+	"io"
 	"strings"
 
 	"github.com/surminus/viaduct"
@@ -81,8 +81,8 @@ func (s *Service) PreflightChecks(ctx context.Context, log *viaduct.Logger) erro
 		return fmt.Errorf("requires one of Action, Enable or Disable")
 	}
 
-	if !viaduct.IsRoot() {
-		return fmt.Errorf("service resource must be run as root")
+	if err := requireRoot(ctx, "service"); err != nil {
+		return err
 	}
 
 	return nil
@@ -132,12 +132,7 @@ func (s *Service) setEnabled(ctx context.Context, log *viaduct.Logger, enable bo
 		verb = "enable"
 	}
 
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info(verb+"d", "service", s.Name)
-		return nil
-	}
-
-	state := s.enableState()
+	state := s.enableState(ctx, log)
 
 	// A masked unit cannot be enabled, and systemctl errors with an
 	// opaque message, so fail with a clear one instead.
@@ -159,11 +154,13 @@ func (s *Service) setEnabled(ctx context.Context, log *viaduct.Logger, enable bo
 		return nil
 	}
 
+	if !change(ctx, log, verb+"d", "service", s.Name) {
+		return nil
+	}
+
 	if err := runCommand(ctx, log, "systemctl", verb, s.Name); err != nil {
 		return fmt.Errorf("systemctl %s failed for %s: %w", verb, s.Name, err)
 	}
-
-	log.Info(verb+"d", "service", s.Name)
 
 	return nil
 }
@@ -175,45 +172,56 @@ func (s *Service) runAction(ctx context.Context, log *viaduct.Logger) error {
 		"restart": "restarted",
 	}[s.Action]
 
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info(msg, "service", s.Name)
-		return nil
-	}
-
 	// Starting an active service or stopping an inactive one is a noop;
 	// restart always runs
 	switch s.Action {
 	case "start":
-		if s.isActive() {
+		if s.isActive(ctx, log) {
 			log.Noop(msg, "service", s.Name)
 			return nil
 		}
 	case "stop":
-		if !s.isActive() {
+		if !s.isActive(ctx, log) {
 			log.Noop(msg, "service", s.Name)
 			return nil
 		}
+	}
+
+	if !change(ctx, log, msg, "service", s.Name) {
+		return nil
 	}
 
 	if err := runCommand(ctx, log, "systemctl", s.Action, s.Name); err != nil {
 		return fmt.Errorf("systemctl %s failed for %s: %w", s.Action, s.Name, err)
 	}
 
-	log.Info(msg, "service", s.Name)
-
 	return nil
 }
 
 // enableState returns the systemctl enablement state of the unit, such as
 // "enabled", "disabled", "static" or "masked". Returns an empty string if
-// the state cannot be determined.
-func (s *Service) enableState() string {
+// the state cannot be determined. It runs in a dry run too.
+func (s *Service) enableState(ctx context.Context, log *viaduct.Logger) string {
 	// is-enabled prints the state to stdout and exits non-zero for some
-	// states (disabled, masked), so the exit code is ignored.
-	out, _ := exec.Command("systemctl", "is-enabled", s.Name).Output()
+	// states (disabled, masked), so the exit code is ignored. Its stderr
+	// adds nothing to the state, so it is dropped.
+	out, _ := viaduct.Command{
+		Name:   "systemctl",
+		Args:   []string{"is-enabled", s.Name},
+		Stderr: io.Discard,
+	}.Output(ctx, log)
+
 	return strings.TrimSpace(string(out))
 }
 
-func (s *Service) isActive() bool {
-	return exec.Command("systemctl", "is-active", "--quiet", s.Name).Run() == nil
+// isActive reports whether the unit is running. It runs in a dry run too.
+func (s *Service) isActive(ctx context.Context, log *viaduct.Logger) bool {
+	c := viaduct.Command{
+		Name:   "systemctl",
+		Args:   []string{"is-active", "--quiet", s.Name},
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+
+	return c.Run(ctx, log) == nil
 }
