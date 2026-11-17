@@ -33,6 +33,13 @@ func TestSysctlPreflightChecks(t *testing.T) {
 		assert.EqualError(t, err, "name must be a plain filename, not a path: ../sudoers")
 	})
 
+	t.Run("rejects keys that are not under /proc/sys", func(t *testing.T) {
+		for _, key := range []string{"net..x", "/etc/passwd", "a/../../b", "..", "vm.", ""} {
+			s := &Sysctl{Name: "99-test", Values: map[string]string{key: "1"}}
+			assert.ErrorContains(t, s.PreflightChecks(testCtx, testLogger), "invalid sysctl key", key)
+		}
+	})
+
 	t.Run("IgnoreMissing keys must be in Values", func(t *testing.T) {
 		s := &Sysctl{Name: "99-test", Values: map[string]string{"vm.swappiness": "10"}, IgnoreMissing: []string{"net.other"}}
 
@@ -179,6 +186,21 @@ func TestSysctlRun(t *testing.T) {
 		assert.EqualError(t, err, "sysctl -p "+file+" did not set vm.swappiness")
 	})
 
+	t.Run("a key with a dot in a component", func(t *testing.T) {
+		env := setup(t, "10")
+		env.WriteFile("/proc/sys/net/ipv4/conf/eth0.100/forwarding", "0\n")
+		fakeSysctl(env, "-p", file)
+
+		s := sysctl()
+		s.Values["net.ipv4.conf.eth0/100.forwarding"] = "1"
+
+		log, err := env.Apply(env.Context(), s)
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Contains(t, env.ReadFile(file), "net.ipv4.conf.eth0/100.forwarding = 1\n")
+	})
+
 	t.Run("dry run", func(t *testing.T) {
 		env := setup(t, "60")
 
@@ -214,6 +236,17 @@ func TestSysctlRun(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, os.SameFile(before, after))
 	})
+}
+
+func TestSysctlKeyPath(t *testing.T) {
+	for key, want := range map[string]string{
+		"vm.swappiness":                     "/proc/sys/vm/swappiness",
+		"net.ipv4.conf.eth0/100.forwarding": "/proc/sys/net/ipv4/conf/eth0.100/forwarding",
+		"net/ipv4/conf/eth0.100/forwarding": "/proc/sys/net/ipv4/conf/eth0.100/forwarding",
+		"kernel":                            "/proc/sys/kernel",
+	} {
+		assert.Equal(t, want, procSysPath(key), key)
+	}
 }
 
 // fakeSysctl answers sysctl with these arguments as "sysctl -p" does, setting

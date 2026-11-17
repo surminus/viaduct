@@ -20,7 +20,9 @@ type Sysctl struct {
 	// added if not present.
 	Name string
 
-	// Values are the sysctl keys and their desired values.
+	// Values are the sysctl keys and their desired values. As with sysctl, a
+	// "/" in a dotted key stands for a dot within one component, so
+	// net.ipv4.conf.eth0/100.forwarding is the forwarding key of eth0.100.
 	Values map[string]string
 
 	// IgnoreMissing lists keys in Values that the kernel may lack, such as
@@ -58,6 +60,12 @@ func (s *Sysctl) PreflightChecks(ctx context.Context, log *viaduct.Logger) error
 
 	if len(s.Values) == 0 {
 		return fmt.Errorf("required parameter: Values")
+	}
+
+	for key := range s.Values {
+		if !validKey(key) {
+			return fmt.Errorf("invalid sysctl key: %s", key)
+		}
 	}
 
 	for _, key := range s.IgnoreMissing {
@@ -167,7 +175,41 @@ func (s *Sysctl) ignoresMissing(key string) bool {
 
 // procSysPath returns the /proc/sys path of a key.
 func procSysPath(key string) string {
-	return filepath.Join("/proc", "sys", strings.ReplaceAll(key, ".", "/"))
+	return filepath.Join("/proc", "sys", keyPath(key))
+}
+
+// keyPath turns a key into a path relative to /proc/sys. As in sysctl, a key
+// whose first separator is a dot uses dots to separate and a slash for a
+// literal dot, so net.ipv4.conf.eth0/100.forwarding is
+// net/ipv4/conf/eth0.100/forwarding. A key whose first separator is a slash
+// is already a path.
+func keyPath(key string) string {
+	if i := strings.IndexAny(key, "./"); i < 0 || key[i] == '/' {
+		return key
+	}
+
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '.':
+			return '/'
+		case '/':
+			return '.'
+		default:
+			return r
+		}
+	}, key)
+}
+
+// validKey reports whether a key names a file under /proc/sys, with no
+// empty, "." or ".." component.
+func validKey(key string) bool {
+	for _, part := range strings.Split(keyPath(key), "/") {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (s *Sysctl) content() string {

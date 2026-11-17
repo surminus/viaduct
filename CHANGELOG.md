@@ -206,7 +206,10 @@ resources needs no change. Beyond that:
   `sysctl --system`, which reapplied every file on the host and undid anything
   set since boot. A key the kernel does not have, and that is not in
   `IgnoreMissing`, is an error before anything is written or applied, and so
-  is a value still not set once `sysctl` has run
+  is a value still not set once `sysctl` has run. A key
+  with a `/` in it, such as `net.ipv4.conf.eth0/100.forwarding`, is read from
+  the same place sysctl uses, with the `/` standing for a dot in one
+  component, and a key that would point outside `/proc/sys` is an error
 - **This can fail runs that used to pass.** `sysctl --system` exited cleanly
   when a key was missing, so a missing key was never reported, and the
   resource applied again on every run. A key from a module needs the module
