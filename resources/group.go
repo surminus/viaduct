@@ -48,8 +48,8 @@ func (g *Group) PreflightChecks(ctx context.Context, log *viaduct.Logger) error 
 		return fmt.Errorf("required parameter: Name")
 	}
 
-	if !viaduct.IsRoot() {
-		return fmt.Errorf("group resource must be run as root")
+	if err := requireRoot(ctx, "group"); err != nil {
+		return err
 	}
 
 	// Set optional defaults here
@@ -85,11 +85,6 @@ func (g *Group) create(ctx context.Context, log *viaduct.Logger) error {
 		return nil
 	}
 
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("created", "group", g.Name)
-		return nil
-	}
-
 	args := []string{"groupadd"}
 
 	if g.System {
@@ -102,11 +97,13 @@ func (g *Group) create(ctx context.Context, log *viaduct.Logger) error {
 
 	args = append(args, g.Name)
 
+	if !change(ctx, log, "created", "group", g.Name) {
+		return nil
+	}
+
 	if err := runCommand(ctx, log, args...); err != nil {
 		return fmt.Errorf("groupadd failed for %s: %w", g.Name, err)
 	}
-
-	log.Info("created", "group", g.Name)
 
 	return nil
 }
@@ -117,16 +114,13 @@ func (g *Group) delete(ctx context.Context, log *viaduct.Logger) error {
 		return nil
 	}
 
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("deleted", "group", g.Name)
+	if !change(ctx, log, "deleted", "group", g.Name) {
 		return nil
 	}
 
 	if err := runCommand(ctx, log, "groupdel", g.Name); err != nil {
 		return fmt.Errorf("groupdel failed for %s: %w", g.Name, err)
 	}
-
-	log.Info("deleted", "group", g.Name)
 
 	return nil
 }

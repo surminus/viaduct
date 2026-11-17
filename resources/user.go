@@ -62,8 +62,8 @@ func (u *User) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 		u.Shell = "/bin/bash"
 	}
 
-	if !viaduct.IsRoot() {
-		return fmt.Errorf("user resource must be run as root")
+	if err := requireRoot(ctx, "user"); err != nil {
+		return err
 	}
 
 	return nil
@@ -86,17 +86,16 @@ func (u *User) Run(ctx context.Context, log *viaduct.Logger) error {
 // create creates the group (if a GID is given), the user, and assigns
 // any supplementary groups
 func (u *User) create(ctx context.Context, log *viaduct.Logger) error {
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("created", "user", u.Name)
-		return nil
-	}
+	dryRun := viaduct.EnvFrom(ctx).DryRun
 
 	if u.GID != 0 && !groupExists(u.Name) {
-		if err := runCommand(ctx, log, "groupadd", "-g", strconv.Itoa(u.GID), u.Name); err != nil {
-			return fmt.Errorf("groupadd failed for %s: %w", u.Name, err)
-		}
-
 		log.Info("created", "group", u.Name, "gid", strconv.Itoa(u.GID))
+
+		if !dryRun {
+			if err := runCommand(ctx, log, "groupadd", "-g", strconv.Itoa(u.GID), u.Name); err != nil {
+				return fmt.Errorf("groupadd failed for %s: %w", u.Name, err)
+			}
+		}
 	}
 
 	args := []string{"useradd"}
@@ -119,11 +118,15 @@ func (u *User) create(ctx context.Context, log *viaduct.Logger) error {
 
 	args = append(args, "-s", u.Shell, u.Name)
 
+	log.Info("created", "user", u.Name)
+
+	if dryRun {
+		return nil
+	}
+
 	if err := runCommand(ctx, log, args...); err != nil {
 		return fmt.Errorf("useradd failed for %s: %w", u.Name, err)
 	}
-
-	log.Info("created", "user", u.Name)
 
 	return nil
 }
@@ -145,16 +148,13 @@ func (u *User) update(ctx context.Context, log *viaduct.Logger, usr *user.User) 
 		return nil
 	}
 
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("groups-added", "user", u.Name, "groups", strings.Join(missing, ","))
+	if !change(ctx, log, "groups-added", "user", u.Name, "groups", strings.Join(missing, ",")) {
 		return nil
 	}
 
 	if err := runCommand(ctx, log, "usermod", "-a", "-G", strings.Join(missing, ","), u.Name); err != nil {
 		return fmt.Errorf("usermod failed for %s: %w", u.Name, err)
 	}
-
-	log.Info("groups-added", "user", u.Name, "groups", strings.Join(missing, ","))
 
 	return nil
 }
