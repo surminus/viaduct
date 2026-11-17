@@ -64,7 +64,8 @@ The compiled binary comes with runtime flags, such as `--dry-run`:
 ```
 
 If your program has flags of its own, use `Apply` rather than `Run`. It
-returns a report instead of printing and exiting.
+returns a report instead of printing and exiting. See the
+[library example](examples/library).
 
 ## Embedded files and templates
 
