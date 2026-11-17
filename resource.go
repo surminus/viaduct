@@ -8,9 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 	"time"
 )
+
+// errInvalidDependency is returned when a dependency was not added to the
+// manifest.
+var errInvalidDependency = errors.New("dependency is not a valid resource")
 
 // errAbandoned is returned when a resource is still running once its timeout
 // has passed. The operation carries on, so the run treats it as a reason to
@@ -44,6 +47,16 @@ type Resource struct {
 	Timeout time.Duration `json:"Timeout,omitempty"`
 	// Error contains any errors raised during a run.
 	Error `json:"Error"`
+
+	// deps and depNames are the dependencies given to Add and SetDep. They are
+	// resolved into resolved and DependsOn when the manifest runs, so renames
+	// do not break them.
+	deps     []*Resource
+	depNames []ResourceID
+	resolved []*Resource
+
+	// invalid marks a resource that could not be added to the manifest.
+	invalid bool
 }
 
 type Error struct {
@@ -111,59 +124,50 @@ type ResourceAttributes interface {
 // ResourceID is an id of a resource.
 type ResourceID string
 
-func newResource(deps []*Resource) (*Resource, error) {
-	var dependsOn []ResourceID
-	for _, d := range deps {
-		if d.ResourceID == "" {
-			return &Resource{}, fmt.Errorf("dependency is not a valid resource: %s", attrJSON(d))
-		}
-		dependsOn = append(dependsOn, d.ResourceID)
-	}
-
-	return &Resource{
-		DependsOn: dependsOn,
-		Status:    StatusPending,
-	}, nil
-}
-
-func (r *Resource) init(a ResourceAttributes) error {
-	if err := r.setKind(a); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (r *Resource) setKind(a ResourceAttributes) error {
 	t := reflect.TypeOf(a)
 	if t.Kind() != reflect.Pointer {
 		return fmt.Errorf("cannot determine resource type")
 	}
 
-	k := t.Elem().Name()
-
-	r.ResourceKind = ResourceKind(k)
+	r.ResourceKind = ResourceKind(t.Elem().Name())
 
 	return nil
 }
 
-func (r *Resource) setID() error {
-	if r.ResourceKind == "" {
-		return fmt.Errorf("resource kind has not been set")
-	}
-
-	j, err := json.Marshal(r)
+// hashID returns an ID made from the resource kind and a hash of the resource.
+// Attributes that cannot be marshalled to JSON are hashed by kind alone.
+//
+// The hashed fields, including a fixed Status and an empty Error, are the
+// ones IDs are generated from in every version, so that IDs stay the same.
+// Timeout is not among them, so a timeout from the resource's params does not
+// change its ID.
+func (r *Resource) hashID() ResourceID {
+	j, err := json.Marshal(struct {
+		ResourceID   ResourceID
+		ResourceKind ResourceKind
+		Status       Status
+		Attributes   ResourceAttributes
+		DependsOn    []ResourceID `json:"DependsOn,omitempty"`
+		GlobalLock   bool
+		LockKey      string `json:"LockKey,omitempty"`
+		Error        struct{ Message string }
+	}{
+		ResourceKind: r.ResourceKind,
+		Status:       StatusPending,
+		Attributes:   r.Attributes,
+		DependsOn:    r.DependsOn,
+		GlobalLock:   r.GlobalLock,
+		LockKey:      string(r.LockKey),
+	})
 	if err != nil {
-		return err
+		j = []byte(r.ResourceKind)
 	}
 
-	h := sha1.New()
-	h.Write(j)
-	sha := hex.EncodeToString(h.Sum(nil))
+	sum := sha1.Sum(j)
+	sha := hex.EncodeToString(sum[:])
 
-	idstr := strings.Join([]string{"id", sha[0:8]}, "-")
-	r.ResourceID = ResourceID(strings.Join([]string{string(r.ResourceKind), idstr}, "_"))
-	return nil
+	return ResourceID(string(r.ResourceKind) + "_id-" + sha[0:8])
 }
 
 func (r *Resource) preflight(h Handler) error {

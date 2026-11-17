@@ -245,7 +245,7 @@ func TestJSONCollector(t *testing.T) {
 	fmt.Fprintln(l.Writer(Stdout), "dropped")
 	NewLogger(h, "Viaduct", "Run").progress("dropped")
 
-	got := c.resources(map[ResourceID]Resource{"a": {ResourceID: "a", ResourceKind: "File", Status: StatusSuccess, Attributes: newTestResource("a")}})
+	got := c.resources(map[ResourceID]*Resource{"a": {ResourceID: "a", ResourceKind: "File", Status: StatusSuccess, Attributes: newTestResource("a")}})
 	require.Len(t, got, 1)
 	assert.Equal(t, []LogEntry{
 		{Level: "OK", Message: "created", Fields: map[string]string{"path": "/tmp/a"}},

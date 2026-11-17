@@ -98,28 +98,24 @@ func (m *Manifest) runWith(flags CliFlags) int {
 	l.progress("started")
 	l.progress("preflight-checks")
 
-	// A cycle can never make progress, so fail before any resource does work
-	// rather than waiting for the dependency timeout to notice.
-	if err := m.dependencyCycle(); err != nil {
-		l.Error("dependency-cycle", "error", err.Error())
+	// A cycle can never progress, so fail before any resource does work.
+	if err := m.compile(); err != nil {
+		l.Error("invalid-manifest", "error", err.Error())
 		return 1
 	}
 
 	var preflightFailed bool
-	for id, resource := range m.resources {
+	for _, resource := range m.order {
 		if err := resource.preflight(handler); err != nil {
-			if r, ok := m.resources[id]; ok {
-				r.Err = err
-				r.Message = err.Error()
-				m.resources[id] = r
-			}
+			resource.Err = err
+			resource.Message = err.Error()
 
 			preflightFailed = true
 		}
 	}
 
 	if preflightFailed {
-		for _, resource := range m.resources {
+		for _, resource := range m.order {
 			if resource.Err != nil {
 				l.Error("preflight-failed",
 					"resource_id", string(resource.ResourceID),
@@ -137,17 +133,9 @@ func (m *Manifest) runWith(flags CliFlags) int {
 
 	locks := newLockSet()
 
-	// Take a copy before starting anything, because each resource writes its
-	// status back into m.resources as it runs. Ranging over the map while
-	// those writes happen is a fatal concurrent map iteration and write.
-	resources := make([]Resource, 0, len(m.resources))
-	for _, resource := range m.resources {
-		resources = append(resources, resource)
-	}
+	wg.Add(len(m.order))
 
-	wg.Add(len(resources))
-
-	for _, resource := range resources {
+	for _, resource := range m.order {
 		go m.apply(resource, &wg, &lock, locks)
 	}
 
@@ -390,7 +378,7 @@ func (c *jsonCollector) Handle(_ context.Context, e Event) {
 }
 
 // resources returns a result for each resource, sorted by ID.
-func (c *jsonCollector) resources(rs map[ResourceID]Resource) []ResourceResult {
+func (c *jsonCollector) resources(rs map[ResourceID]*Resource) []ResourceResult {
 	out := make([]ResourceResult, 0, len(rs))
 
 	for _, r := range rs {
@@ -450,7 +438,7 @@ type failureSummary struct {
 	Dependents   []failureDependent `json:"dependents,omitempty"`
 }
 
-func resourceToDependent(r Resource) failureDependent {
+func resourceToDependent(r *Resource) failureDependent {
 	return failureDependent{
 		ResourceID:   string(r.ResourceID),
 		ResourceKind: string(r.ResourceKind),
@@ -463,10 +451,10 @@ func resourceToDependent(r Resource) failureDependent {
 
 // collectFailures groups failed resources into root failures and their
 // cascading dependency failures.
-func collectFailures(resources map[ResourceID]Resource) []failureSummary {
+func collectFailures(resources map[ResourceID]*Resource) []failureSummary {
 	// Split into root failures and dependency failures.
-	var roots []Resource
-	depFailed := make(map[ResourceID]Resource)
+	var roots []*Resource
+	depFailed := make(map[ResourceID]*Resource)
 
 	for _, r := range resources {
 		switch {
@@ -528,7 +516,7 @@ func collectFailures(resources map[ResourceID]Resource) []failureSummary {
 	}
 
 	// Any unclaimed dependency failures get listed as their own entries.
-	var orphans []Resource
+	var orphans []*Resource
 	for id, r := range depFailed {
 		if _, ok := claimed[id]; !ok {
 			orphans = append(orphans, r)
@@ -553,7 +541,7 @@ func collectFailures(resources map[ResourceID]Resource) []failureSummary {
 
 // traceToRoot follows a dependency-failed resource's DependsOn chain to find
 // a root failure. Returns the root's ResourceID, or empty if none found.
-func traceToRoot(r Resource, resources map[ResourceID]Resource, rootIDs map[ResourceID]bool) ResourceID {
+func traceToRoot(r *Resource, resources map[ResourceID]*Resource, rootIDs map[ResourceID]bool) ResourceID {
 	seen := make(map[ResourceID]bool)
 	queue := []ResourceID{r.ResourceID}
 

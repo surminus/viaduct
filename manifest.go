@@ -1,9 +1,9 @@
 package viaduct
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -39,28 +39,66 @@ const (
 	StatusDependencyFailed Status = "DependencyFailed"
 )
 
-// Manifest is a map of resources to allow concurrent runs
+// Manifest is a set of resources and the dependencies between them, run
+// concurrently by Run.
 type Manifest struct {
-	resources map[ResourceID]Resource
-	// handler receives the events of the run.
-	handler Handler
+	resources map[ResourceID]*Resource
+
+	// order holds the resources in the order they were added.
+	order []*Resource
 
 	// resourceTimeout is the manifest-wide timeout for a single resource.
 	// Zero uses defaultResourceTimeout.
 	resourceTimeout time.Duration
 
-	// abandoned holds the first resource the run gave up on, if any.
-	abandoned atomic.Pointer[ResourceID]
-
 	// errs holds build errors, which Run reports before running anything.
 	errs []error
+
+	// handler receives the events of the run.
+	handler Handler
+
+	// abandoned holds the first resource the run gave up on, if any.
+	abandoned atomic.Pointer[ResourceID]
 }
 
 // New returns an empty manifest.
 func New() *Manifest {
-	return &Manifest{
-		resources: make(map[ResourceID]Resource),
+	return &Manifest{resources: make(map[ResourceID]*Resource)}
+}
+
+// errorf records an error from building the manifest.
+func (m *Manifest) errorf(format string, a ...any) {
+	m.errs = append(m.errs, fmt.Errorf(format, a...))
+}
+
+// owns reports whether a resource belongs to this manifest. A resource that
+// could not be added counts as owned, as its error is already recorded.
+func (m *Manifest) owns(r *Resource) bool {
+	if r == nil {
+		return false
 	}
+
+	return r.invalid || m.resources[r.ResourceID] == r
+}
+
+// lookup returns the manifest's copy of a resource, recording an error naming
+// the method if it is not in the manifest.
+func (m *Manifest) lookup(method string, r *Resource) (*Resource, bool) {
+	if r == nil {
+		m.errorf("%s: resource is nil", method)
+		return nil, false
+	}
+
+	if r.invalid {
+		return nil, false
+	}
+
+	if !m.owns(r) {
+		m.errorf("%s: %s is not in this manifest", method, r.ResourceID)
+		return nil, false
+	}
+
+	return r, true
 }
 
 // SetResourceTimeout sets how long each resource in this manifest is given to
@@ -83,47 +121,64 @@ func (m *Manifest) SetResourceTimeout(d time.Duration) {
 }
 
 // WithTimeout sets how long a single resource is given to run, overriding the
-// manifest setting.
+// manifest setting. A negative duration means no timeout.
 func (m *Manifest) WithTimeout(r *Resource, d time.Duration) {
-	if v, ok := m.resources[r.ResourceID]; ok {
-		v.Timeout = d
-		m.resources[r.ResourceID] = v
+	if r, ok := m.lookup("WithTimeout", r); ok {
+		r.Timeout = d
 	}
 }
 
-// SetName allows us to overwrite the generated ID with our name. This name
-// still needs to be unique.
-func (m *Manifest) SetName(r *Resource, newName string) {
-	if res, ok := m.resources[r.ResourceID]; ok {
-		old := r.ResourceID
-		newID := ResourceID(newName)
-
-		res.ResourceID = newID
-		m.resources[newID] = res
-
-		delete(m.resources, old)
-	} else {
-		m.errs = append(m.errs, fmt.Errorf("SetName: unknown resource: %s", attrJSON(r.Attributes)))
+// SetName replaces a resource's generated ID with a name, which must be unique
+// within the manifest.
+func (m *Manifest) SetName(r *Resource, name string) {
+	r, ok := m.lookup("SetName", r)
+	if !ok {
+		return
 	}
+
+	id := ResourceID(name)
+	if id == r.ResourceID {
+		return
+	}
+
+	if err := m.claim(id); err != nil {
+		m.errs = append(m.errs, err)
+		return
+	}
+
+	delete(m.resources, r.ResourceID)
+	r.ResourceID = id
+	m.resources[id] = r
 }
 
-// WithDep sets an explicit dependency using a name
+// claim checks that a name is free to use as an ID.
+func (m *Manifest) claim(id ResourceID) error {
+	if id == "" {
+		return errors.New("a resource name cannot be empty")
+	}
+
+	if _, ok := m.resources[id]; ok {
+		return fmt.Errorf("a resource named %s already exists", id)
+	}
+
+	return nil
+}
+
+// SetDep makes a resource depend on another by ID or name. The name must exist
+// when the manifest is run.
 func (m *Manifest) SetDep(r *Resource, name string) {
-	if v, ok := m.resources[r.ResourceID]; ok {
-		v.DependsOn = append(v.DependsOn, ResourceID(name))
-		m.resources[r.ResourceID] = v
+	if r, ok := m.lookup("SetDep", r); ok {
+		r.depNames = append(r.depNames, ResourceID(name))
 	}
 }
 
 // WithLock serialises the resource against every other lock holder in the
 // run. Use WithLockKey when you know which domain the resource contends on.
 func (m *Manifest) WithLock(r *Resource) {
-	if v, ok := m.resources[r.ResourceID]; ok {
-		v.GlobalLock = true
-		// Escalating to the keyless lock has to drop any key the resource
-		// already had, or it stays confined to that domain
-		v.LockKey = ""
-		m.resources[r.ResourceID] = v
+	if r, ok := m.lookup("WithLock", r); ok {
+		r.GlobalLock = true
+		// Drop any existing key, or the lock stays confined to that domain
+		r.LockKey = ""
 	}
 }
 
@@ -131,54 +186,132 @@ func (m *Manifest) WithLock(r *Resource) {
 // PackageLock or PasswdLock, so the resource only waits for other resources
 // using the same key.
 func (m *Manifest) WithLockKey(r *Resource, key LockKey) {
-	if v, ok := m.resources[r.ResourceID]; ok {
-		v.GlobalLock = true
-		v.LockKey = key
-		m.resources[r.ResourceID] = v
-	}
-}
-
-func (m *Manifest) addResource(r *Resource, a ResourceAttributes) (err error) {
-	// Set attributes
-	r.Attributes = a
-
-	if params := a.Params(); params.GlobalLock || params.LockKey != "" {
+	if r, ok := m.lookup("WithLockKey", r); ok {
 		r.GlobalLock = true
-		r.LockKey = params.LockKey
+		r.LockKey = key
 	}
-
-	// Create a string representation of our resource
-	if err := r.setID(); err != nil {
-		return err
-	}
-
-	if _, ok := m.resources[r.ResourceID]; ok {
-		return fmt.Errorf("resource already exists:\n%s", attrJSON(r))
-	}
-
-	m.resources[r.ResourceID] = *r
-
-	return err
 }
 
 // Add adds a resource to the manifest, to run once every one of deps has
-// succeeded. A resource that cannot be added, such as an exact duplicate, is
-// recorded as an error that Run reports before running anything.
+// succeeded. Its ID is generated from its kind and attributes.
+//
+// A resource that cannot be added, such as an exact duplicate, is recorded as
+// an error that Run reports. The returned resource can still be used as a
+// dependency.
 func (m *Manifest) Add(attributes ResourceAttributes, deps ...*Resource) *Resource {
-	r, err := newResource(deps)
-	if err == nil {
-		err = r.init(attributes)
+	return m.add("", attributes, deps)
+}
+
+// AddNamed is like Add, but uses the name as the resource's ID. The name has to
+// be unique within the manifest.
+func (m *Manifest) AddNamed(name string, attributes ResourceAttributes, deps ...*Resource) *Resource {
+	if name == "" {
+		m.errorf("AddNamed: a resource name cannot be empty")
+		return &Resource{Attributes: attributes, invalid: true}
 	}
 
+	return m.add(ResourceID(name), attributes, deps)
+}
+
+func (m *Manifest) add(name ResourceID, attributes ResourceAttributes, deps []*Resource) *Resource {
+	r, err := m.newResource(attributes, deps)
 	if err == nil {
-		err = m.addResource(r, attributes)
+		err = m.insert(r, name)
 	}
 
 	if err != nil {
-		m.errs = append(m.errs, err)
+		r.invalid = true
+
+		// Already reported when it was added
+		if !errors.Is(err, errInvalidDependency) {
+			m.errs = append(m.errs, err)
+		}
 	}
 
 	return r
+}
+
+// newResource builds a resource from its attributes, without adding it.
+func (m *Manifest) newResource(a ResourceAttributes, deps []*Resource) (*Resource, error) {
+	r := &Resource{Attributes: a}
+
+	if a == nil {
+		return r, errors.New("resource attributes are nil")
+	}
+
+	for _, d := range deps {
+		switch {
+		case d == nil:
+			return r, fmt.Errorf("%s depends on a nil resource", a.Description())
+		case d.invalid:
+			return r, errInvalidDependency
+		case !m.owns(d):
+			return r, fmt.Errorf("%s depends on %s, which is not in this manifest", a.Description(), d.ResourceID)
+		}
+
+		r.deps = append(r.deps, d)
+		r.DependsOn = append(r.DependsOn, d.ResourceID)
+	}
+
+	if err := r.setKind(a); err != nil {
+		return r, err
+	}
+
+	if params := a.Params(); params != nil {
+		if params.GlobalLock || params.LockKey != "" {
+			r.GlobalLock = true
+			r.LockKey = params.LockKey
+		}
+
+	}
+
+	return r, nil
+}
+
+// insert adds a built resource under its name, or a generated ID if unnamed.
+func (m *Manifest) insert(r *Resource, name ResourceID) error {
+	if name != "" {
+		if err := m.claim(name); err != nil {
+			return err
+		}
+
+		r.ResourceID = name
+	} else {
+		id, err := m.generateID(r)
+		if err != nil {
+			return err
+		}
+
+		r.ResourceID = id
+	}
+
+	m.resources[r.ResourceID] = r
+	m.order = append(m.order, r)
+
+	return nil
+}
+
+// generateID returns an ID from a hash of the resource's kind and attributes.
+// An identical resource is an error. One that differs only in attributes JSON
+// cannot represent gets a numbered suffix in order of addition.
+func (m *Manifest) generateID(r *Resource) (ResourceID, error) {
+	base := r.hashID()
+
+	existing, ok := m.resources[base]
+	if !ok {
+		return base, nil
+	}
+
+	if reflect.DeepEqual(existing.Attributes, r.Attributes) && slices.Equal(existing.DependsOn, r.DependsOn) {
+		return "", fmt.Errorf("%s %s is already in the manifest; use AddNamed to add it under another name", r.ResourceKind, r.Attributes.Description())
+	}
+
+	for n := 2; ; n++ {
+		id := ResourceID(fmt.Sprintf("%s-%d", base, n))
+		if _, ok := m.resources[id]; !ok {
+			return id, nil
+		}
+	}
 }
 
 // ResourceChain is the ordered sequence of resources returned by Chain,
@@ -247,150 +380,59 @@ func (m *Manifest) ChainTo(to *Resource, attributes ...ResourceAttributes) Resou
 	chain := m.Chain(attributes...)
 
 	if to != nil {
-		if last := chain.Last(); last != nil {
-			m.SetDep(to, string(last.ResourceID))
+		if last := chain.Last(); last != nil && !last.invalid {
+			if to, ok := m.lookup("ChainTo", to); ok {
+				to.deps = append(to.deps, last)
+			}
 		}
 	}
 
 	return chain
 }
 
-func attrJSON(a any) string {
-	str, err := json.MarshalIndent(a, "", "  ")
-	if err != nil {
-		return fmt.Sprintf("%+v", a)
-	}
+// compile resolves every dependency to a resource in the manifest, and checks
+// that they can all be satisfied.
+func (m *Manifest) compile() error {
+	var errs []error
 
-	return string(str)
-}
+	for _, r := range m.order {
+		r.DependsOn = nil
+		r.resolved = nil
 
-func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, locks *lockSet) {
-	defer wg.Done()
+		seen := map[*Resource]bool{}
 
-	if err := m.abandonedErr(); err != nil {
-		m.fail(&r, lock, StatusDependencyFailed, err)
-		return
-	}
-
-	if err := m.dependencyCheck(&r, lock); err != nil {
-		m.fail(&r, lock, StatusDependencyFailed, err)
-		return
-	}
-
-	if r.GlobalLock {
-		release := locks.acquire(r.LockKey)
-		defer release()
-	}
-
-	// The lock is released when a resource is abandoned, because holding it
-	// would block everything sharing the key for the rest of the run. That
-	// means whatever was waiting for it has to check again: an abandoned
-	// operation still holds the real lock, dpkg's or passwd's, so starting the
-	// next one now would just fail against it.
-	if err := m.abandonedErr(); err != nil {
-		m.fail(&r, lock, StatusDependencyFailed, err)
-		return
-	}
-
-	// Run the resource operation, bounded by its own timeout
-	runErr := r.run(m.handler, m.timeoutFor(&r))
-	if runErr != nil {
-		if errors.Is(runErr, errAbandoned) {
-			// The operation is still going and the machine is in a state we no
-			// longer know, so nothing else should start
-			id := r.ResourceID
-			m.abandoned.CompareAndSwap(nil, &id)
+		add := func(d *Resource) {
+			if !seen[d] {
+				seen[d] = true
+				r.resolved = append(r.resolved, d)
+				r.DependsOn = append(r.DependsOn, d.ResourceID)
+			}
 		}
 
-		m.setStatus(&r, lock, StatusFailed)
-		m.setError(&r, lock, runErr)
-	} else {
-		m.setStatus(&r, lock, StatusSuccess)
-	}
-}
+		for _, d := range r.deps {
+			add(d)
+		}
 
-// abandonedErr reports why nothing further should start, once the run has given
-// up on a resource that is still running.
-func (m *Manifest) abandonedErr() error {
-	if id := m.abandoned.Load(); id != nil {
-		return fmt.Errorf("not started: the run gave up on %s, which may still be running", *id)
-	}
-
-	return nil
-}
-
-// fail records a resource failure.
-func (m *Manifest) fail(r *Resource, lock *sync.RWMutex, status Status, err error) {
-	m.setStatus(r, lock, status)
-	m.setError(r, lock, err)
-}
-
-// dependencyCheck blocks until every dependency of the resource has succeeded,
-// returning an error if one of them failed.
-//
-// There is no timeout on the wait itself, because waiting is not what goes
-// wrong: every resource is bounded by its own timeout, and dependency cycles
-// are rejected before the run starts, so a dependency always reaches a
-// terminal status eventually. Timing out here would only fail whichever
-// resource happened to be waiting on the slow one, which is the least useful
-// place to report it.
-func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
-	if len(r.DependsOn) == 0 {
-		return nil
-	}
-
-	ticker := time.NewTicker(dependencyPollInterval)
-	defer ticker.Stop()
-
-	for {
-		depsSuccess := true
-
-		for _, dep := range r.DependsOn {
-			lock.RLock()
-			d, ok := m.resources[dep]
-			lock.RUnlock()
-
+		for _, name := range r.depNames {
+			d, ok := m.resources[name]
 			if !ok {
+				errs = append(errs, fmt.Errorf("%s depends on %s, which is not in this manifest", r.ResourceID, name))
 				continue
 			}
 
-			if d.Failed() {
-				return fmt.Errorf("upstream dependency %s returned an error", d.ResourceID)
-			}
-
-			if d.Status != StatusSuccess {
-				depsSuccess = false
-			}
+			add(d)
 		}
-
-		if depsSuccess {
-			return nil
-		}
-
-		<-ticker.C
 	}
-}
 
-// timeoutFor returns how long a resource is given to run. The
-// --resource-timeout flag wins, so a slow run can be rescued without
-// recompiling, then the resource, then the manifest, then the default. A
-// negative duration means no timeout.
-func (m *Manifest) timeoutFor(r *Resource) time.Duration {
-	switch {
-	case Cli.ResourceTimeout != 0:
-		return Cli.ResourceTimeout
-	case r.Timeout != 0:
-		return r.Timeout
-	case m.resourceTimeout != 0:
-		return m.resourceTimeout
-	default:
-		return defaultResourceTimeout
+	if err := errors.Join(errs...); err != nil {
+		return err
 	}
+
+	return m.dependencyCycle()
 }
 
 // dependencyCycle returns an error describing a cycle in the dependency graph,
-// if there is one. Dependencies on resources that aren't in the manifest are
-// ignored, matching how they are skipped during a run.
+// if there is one.
 func (m *Manifest) dependencyCycle() error {
 	const (
 		unvisited = iota
@@ -407,10 +449,6 @@ func (m *Manifest) dependencyCycle() error {
 		path = append(path, id)
 
 		for _, dep := range sortedIDs(m.resources[id].DependsOn) {
-			if _, ok := m.resources[dep]; !ok {
-				continue
-			}
-
 			switch state[dep] {
 			case visiting:
 				// Trim the path back to where the cycle starts, and close it.
@@ -464,20 +502,134 @@ func sortedIDs(ids []ResourceID) []ResourceID {
 	return out
 }
 
+func (m *Manifest) apply(r *Resource, wg *sync.WaitGroup, lock *sync.RWMutex, locks *lockSet) {
+	defer wg.Done()
+
+	if err := m.abandonedErr(); err != nil {
+		m.fail(r, lock, StatusDependencyFailed, err)
+		return
+	}
+
+	if err := m.dependencyCheck(r, lock); err != nil {
+		m.fail(r, lock, StatusDependencyFailed, err)
+		return
+	}
+
+	if r.GlobalLock {
+		release := locks.acquire(r.LockKey)
+		defer release()
+	}
+
+	// The lock is released when a resource is abandoned, because holding it
+	// would block everything sharing the key for the rest of the run. That
+	// means whatever was waiting for it has to check again: an abandoned
+	// operation still holds the real lock, dpkg's or passwd's, so starting the
+	// next one now would just fail against it.
+	if err := m.abandonedErr(); err != nil {
+		m.fail(r, lock, StatusDependencyFailed, err)
+		return
+	}
+
+	// Run the resource operation, bounded by its own timeout
+	runErr := r.run(m.handler, m.timeoutFor(r))
+	if runErr != nil {
+		if errors.Is(runErr, errAbandoned) {
+			// The operation is still going and the machine is in a state we no
+			// longer know, so nothing else should start
+			id := r.ResourceID
+			m.abandoned.CompareAndSwap(nil, &id)
+		}
+
+		m.setStatus(r, lock, StatusFailed)
+		m.setError(r, lock, runErr)
+	} else {
+		m.setStatus(r, lock, StatusSuccess)
+	}
+}
+
+// abandonedErr reports why nothing further should start, once the run has given
+// up on a resource that is still running.
+func (m *Manifest) abandonedErr() error {
+	if id := m.abandoned.Load(); id != nil {
+		return fmt.Errorf("not started: the run gave up on %s, which may still be running", *id)
+	}
+
+	return nil
+}
+
+// fail records a resource failure.
+func (m *Manifest) fail(r *Resource, lock *sync.RWMutex, status Status, err error) {
+	m.setStatus(r, lock, status)
+	m.setError(r, lock, err)
+}
+
+// dependencyCheck blocks until every dependency of the resource has succeeded,
+// returning an error if one of them failed.
+//
+// There is no timeout on the wait itself, because waiting is not what goes
+// wrong: every resource is bounded by its own timeout, and dependency cycles
+// are rejected before the run starts, so a dependency always reaches a
+// terminal status eventually. Timing out here would only fail whichever
+// resource happened to be waiting on the slow one, which is the least useful
+// place to report it.
+func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
+	if len(r.resolved) == 0 {
+		return nil
+	}
+
+	ticker := time.NewTicker(dependencyPollInterval)
+	defer ticker.Stop()
+
+	for {
+		depsSuccess := true
+
+		for _, d := range r.resolved {
+			lock.RLock()
+			status := d.Status
+			lock.RUnlock()
+
+			if status == StatusFailed || status == StatusDependencyFailed {
+				return fmt.Errorf("upstream dependency %s returned an error", d.ResourceID)
+			}
+
+			if status != StatusSuccess {
+				depsSuccess = false
+			}
+		}
+
+		if depsSuccess {
+			return nil
+		}
+
+		<-ticker.C
+	}
+}
+
+// timeoutFor returns how long a resource is given to run. The
+// --resource-timeout flag wins, so a slow run can be rescued without
+// recompiling, then the resource, then the manifest, then the default. A
+// negative duration means no timeout.
+func (m *Manifest) timeoutFor(r *Resource) time.Duration {
+	switch {
+	case Cli.ResourceTimeout != 0:
+		return Cli.ResourceTimeout
+	case r.Timeout != 0:
+		return r.Timeout
+	case m.resourceTimeout != 0:
+		return m.resourceTimeout
+	default:
+		return defaultResourceTimeout
+	}
+}
+
 func (m *Manifest) setStatus(r *Resource, lock *sync.RWMutex, s Status) {
 	lock.Lock()
-	if re, ok := m.resources[r.ResourceID]; ok {
-		re.Status = s
-		m.resources[r.ResourceID] = re
-	}
+	r.Status = s
 	lock.Unlock()
 }
 
 func (m *Manifest) setError(r *Resource, lock *sync.RWMutex, err error) {
 	lock.Lock()
-	if re, ok := m.resources[r.ResourceID]; ok {
-		re.Error = Error{Err: err, Message: err.Error()}
-		m.resources[r.ResourceID] = re
-	}
+	r.Error = Error{Err: err, Message: err.Error()}
 	lock.Unlock()
 }

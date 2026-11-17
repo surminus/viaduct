@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type testResourceType struct {
@@ -91,27 +92,11 @@ func TestSetKind(t *testing.T) {
 	assert.Equal(t, ResourceKind("testResourceType"), r.ResourceKind)
 }
 
-func TestSetID(t *testing.T) {
+func TestHashID(t *testing.T) {
 	t.Parallel()
 
 	r := Resource{}
+	require.NoError(t, r.setKind(testResource))
 
-	err := r.setKind(testResource)
-	assert.NoError(t, err)
-
-	err = r.setID()
-	assert.NoError(t, err)
-
-	assert.Contains(t, string(r.ResourceID), "testResourceType")
-}
-
-func TestNewResource(t *testing.T) {
-	t.Parallel()
-
-	t.Run("error if invalid dependency", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := newResource([]*Resource{{}})
-		assert.Error(t, err)
-	})
+	assert.Contains(t, string(r.hashID()), "testResourceType_id-")
 }

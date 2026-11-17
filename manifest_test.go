@@ -13,198 +13,204 @@ import (
 func TestSetName(t *testing.T) {
 	t.Parallel()
 
-	m := New()
-	r := m.Add(testResource)
-	m.SetName(r, "test-name")
+	t.Run("renames the caller's resource", func(t *testing.T) {
+		t.Parallel()
 
-	expected := map[ResourceID]Resource{
-		ResourceID("test-name"): {
-			Attributes:   testResource,
-			ResourceID:   "test-name",
-			Status:       StatusPending,
-			ResourceKind: ResourceKind("testResourceType"),
-		},
-	}
+		m := New()
+		r := m.Add(newTestResource("a"))
+		m.SetName(r, "test-name")
 
-	assert.Equal(t, m.resources, expected)
+		assert.Equal(t, ResourceID("test-name"), r.ResourceID)
+		assert.Same(t, r, m.resources["test-name"])
+		assert.Len(t, m.resources, 1)
+		assert.Empty(t, m.errs)
+	})
+
+	t.Run("dependants follow the new name", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		a := m.Add(newTestResource("a"))
+		b := m.Add(newTestResource("b"), a)
+		m.SetName(a, "renamed")
+
+		require.NoError(t, m.compile())
+		assert.Equal(t, []ResourceID{"renamed"}, b.DependsOn)
+	})
+
+	t.Run("names are unique", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		a := m.Add(newTestResource("a"))
+		b := m.Add(newTestResource("b"))
+		m.SetName(a, "same")
+		m.SetName(b, "same")
+
+		require.Len(t, m.errs, 1)
+		assert.EqualError(t, m.errs[0], "a resource named same already exists")
+	})
+}
+
+func TestAddNamed(t *testing.T) {
+	t.Parallel()
+
+	t.Run("uses the name as the ID", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		a := m.AddNamed("first", newTestResource("a"))
+		b := m.AddNamed("second", newTestResource("b"), a)
+
+		assert.Equal(t, ResourceID("first"), a.ResourceID)
+		assert.Equal(t, ResourceID("second"), b.ResourceID)
+		assert.Equal(t, []ResourceID{"first"}, b.DependsOn)
+		assert.Empty(t, m.errs)
+	})
+
+	t.Run("the same attributes can be added under different names", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		m.AddNamed("one", newTestResource("a"))
+		m.AddNamed("two", newTestResource("a"))
+
+		assert.Empty(t, m.errs)
+	})
+
+	t.Run("a duplicate name is an error", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		m.AddNamed("one", newTestResource("a"))
+		dup := m.AddNamed("one", newTestResource("b"))
+
+		require.Len(t, m.errs, 1)
+		assert.EqualError(t, m.errs[0], "a resource named one already exists")
+		assert.True(t, dup.invalid)
+	})
+
+	t.Run("an empty name is an error", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		m.AddNamed("", newTestResource("a"))
+
+		assert.Len(t, m.errs, 1)
+	})
 }
 
 func TestSetDep(t *testing.T) {
 	t.Parallel()
 
-	m := New()
-	r := m.Add(testResource)
-	m.SetDep(r, "test-dep")
+	t.Run("by name", func(t *testing.T) {
+		t.Parallel()
 
-	expected := map[ResourceID]Resource{
-		r.ResourceID: {
-			Attributes:   testResource,
-			DependsOn:    []ResourceID{"test-dep"},
-			ResourceID:   r.ResourceID,
-			Status:       StatusPending,
-			ResourceKind: ResourceKind("testResourceType"),
-		},
-	}
+		m := New()
+		a := m.AddNamed("a", newTestResource("a"))
+		b := m.Add(newTestResource("b"))
+		m.SetDep(b, "a")
 
-	assert.Equal(t, expected, m.resources)
+		require.NoError(t, m.compile())
+		assert.Equal(t, []ResourceID{a.ResourceID}, b.DependsOn)
+	})
+
+	t.Run("an unknown name is an error", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		b := m.Add(newTestResource("b"))
+		m.SetDep(b, "does-not-exist")
+
+		err := m.compile()
+		assert.ErrorContains(t, err, "depends on does-not-exist, which is not in this manifest")
+	})
+
+	t.Run("a resource from another manifest is an error", func(t *testing.T) {
+		t.Parallel()
+
+		other := New().Add(newTestResource("a"))
+
+		m := New()
+		m.Add(newTestResource("b"), other)
+
+		require.Len(t, m.errs, 1)
+		assert.ErrorContains(t, m.errs[0], "which is not in this manifest")
+	})
+
+	t.Run("a resource that was never added is an error", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		m.Add(newTestResource("b"), &Resource{})
+
+		assert.Len(t, m.errs, 1)
+	})
 }
 
 func TestWithLock(t *testing.T) {
 	t.Parallel()
 
 	m := New()
-	r := m.Add(testResource)
+	r := m.Add(newTestResource("a"))
+	m.WithLockKey(r, PackageLock)
 	m.WithLock(r)
 
-	expected := map[ResourceID]Resource{
-		r.ResourceID: {
-			Attributes:   testResource,
-			GlobalLock:   true,
-			ResourceID:   r.ResourceID,
-			Status:       StatusPending,
-			ResourceKind: ResourceKind("testResourceType"),
-		},
-	}
-
-	assert.Equal(t, expected, m.resources)
+	assert.True(t, r.GlobalLock)
+	assert.Empty(t, r.LockKey, "escalating to the keyless lock drops the key")
 }
 
 func TestWithLockKey(t *testing.T) {
 	t.Parallel()
 
 	m := New()
-	r := m.Add(testResource)
+	r := m.Add(newTestResource("a"))
 	m.WithLockKey(r, PackageLock)
 
-	expected := map[ResourceID]Resource{
-		r.ResourceID: {
-			Attributes:   testResource,
-			GlobalLock:   true,
-			LockKey:      PackageLock,
-			ResourceID:   r.ResourceID,
-			Status:       StatusPending,
-			ResourceKind: ResourceKind("testResourceType"),
-		},
-	}
-
-	assert.Equal(t, expected, m.resources)
+	assert.True(t, r.GlobalLock)
+	assert.Equal(t, PackageLock, r.LockKey)
 }
 
-func TestAddResource(t *testing.T) {
+func TestMethodsOnUnknownResources(t *testing.T) {
 	t.Parallel()
 
-	t.Run("basic", func(t *testing.T) {
-		t.Parallel()
+	other := New().Add(newTestResource("a"))
 
-		m := New()
-		r, err := newResource([]*Resource{{ResourceID: "test"}})
-		if err != nil {
-			t.Fatal(err)
-		}
+	m := New()
+	m.WithLock(other)
+	m.WithLockKey(other, PackageLock)
+	m.WithTimeout(other, time.Second)
+	m.SetDep(other, "x")
+	m.SetName(other, "x")
+	m.WithLock(nil)
 
-		err = r.setKind(testResource)
-		assert.NoError(t, err)
-
-		err = m.addResource(r, testResource)
-		assert.NoError(t, err)
-
-		assert.Equal(t, 1, len(m.resources))
-
-		for id, res := range m.resources {
-			// Set ResourceKind happens separately to this function,
-			// but should it?
-			expected := Resource{
-				Attributes:   testResource,
-				DependsOn:    []ResourceID{ResourceID("test")},
-				ResourceID:   id,
-				Status:       StatusPending,
-				ResourceKind: "testResourceType",
-			}
-
-			assert.Equal(t, expected, res)
-		}
-	})
-
-	t.Run("error if resource repeated", func(t *testing.T) {
-		t.Parallel()
-
-		m := New()
-		r, err := newResource([]*Resource{{ResourceID: "test"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = r.setKind(testResource)
-		assert.NoError(t, err)
-
-		err = m.addResource(r, testResource)
-		assert.NoError(t, err)
-
-		sameAttributes := newTestResource("test")
-		sameResource, err := newResource([]*Resource{{ResourceID: "test"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = m.addResource(sameResource, sameAttributes)
-		assert.Error(t, err)
-	})
-
-	t.Run("keyed lock from params", func(t *testing.T) {
-		t.Parallel()
-
-		m := New()
-		p := newTestResourceWithLockKey("test", PasswdLock)
-		r, err := newResource(nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = r.setKind(p)
-		assert.NoError(t, err)
-
-		err = m.addResource(r, p)
-		assert.NoError(t, err)
-
-		for _, res := range m.resources {
-			assert.True(t, res.GlobalLock)
-			assert.Equal(t, PasswdLock, res.LockKey)
-		}
-	})
-
-	t.Run("automatic global lock", func(t *testing.T) {
-		t.Parallel()
-
-		m := New()
-		p := newTestResourceWithLock("test")
-		r, err := newResource([]*Resource{{ResourceID: "test"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = r.setKind(p)
-		assert.NoError(t, err)
-
-		err = m.addResource(r, p)
-		assert.NoError(t, err)
-
-		for id, res := range m.resources {
-			expected := Resource{
-				Attributes:   p,
-				DependsOn:    []ResourceID{ResourceID("test")},
-				GlobalLock:   true,
-				ResourceID:   id,
-				Status:       StatusPending,
-				ResourceKind: ResourceKind("testResourceType"),
-			}
-
-			assert.Equal(t, expected, res)
-		}
-	})
+	assert.Len(t, m.errs, 6)
 }
 
 func TestAdd(t *testing.T) {
 	t.Parallel()
+
+	t.Run("returns the stored resource", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		a := m.Add(newTestResource("a"))
+		r := m.Add(newTestResource("b"), a)
+
+		assert.Same(t, r, m.resources[r.ResourceID])
+		assert.Equal(t, ResourceKind("testResourceType"), r.ResourceKind)
+		assert.Equal(t, []ResourceID{a.ResourceID}, r.DependsOn)
+		assert.Contains(t, string(r.ResourceID), "testResourceType_id-")
+	})
+
+	t.Run("generated IDs are stable", func(t *testing.T) {
+		t.Parallel()
+
+		a := New().Add(newTestResource("a"))
+		b := New().Add(newTestResource("a"))
+
+		assert.Equal(t, a.ResourceID, b.ResourceID)
+	})
 
 	t.Run("error if resource repeated", func(t *testing.T) {
 		t.Parallel()
@@ -214,18 +220,75 @@ func TestAdd(t *testing.T) {
 		m.Add(newTestResource("a"))
 
 		require.Len(t, m.errs, 1)
-		assert.ErrorContains(t, m.errs[0], "resource already exists")
+		assert.EqualError(t, m.errs[0], "testResourceType a is already in the manifest; use AddNamed to add it under another name")
 	})
 
-	t.Run("a build error stops the run", func(t *testing.T) {
+	t.Run("resources differing only in what JSON cannot show get their own IDs", func(t *testing.T) {
 		t.Parallel()
 
 		m := New()
-		m.Add(newTestResource("a"))
-		m.Add(newTestResource("a"))
+		a := m.Add(&hiddenResource{hidden: "a"})
+		b := m.Add(&hiddenResource{hidden: "b"})
+		c := m.Add(&hiddenResource{hidden: "c"})
 
-		assert.Equal(t, 1, m.runWith(CliFlags{}))
+		assert.Empty(t, m.errs)
+		assert.Equal(t, a.ResourceID+"-2", b.ResourceID)
+		assert.Equal(t, a.ResourceID+"-3", c.ResourceID)
 	})
+
+	t.Run("attributes that cannot be marshalled", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		a := m.Add(&funcResource{f: func() {}})
+		b := m.Add(&funcResource{f: func() {}})
+
+		assert.Empty(t, m.errs)
+		assert.NotEqual(t, a.ResourceID, b.ResourceID)
+	})
+
+	t.Run("keyed lock from params", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		r := m.Add(newTestResourceWithLockKey("test", PasswdLock))
+
+		assert.True(t, r.GlobalLock)
+		assert.Equal(t, PasswdLock, r.LockKey)
+	})
+
+	t.Run("automatic global lock", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		r := m.Add(newTestResourceWithLock("test"))
+
+		assert.True(t, r.GlobalLock)
+		assert.Empty(t, r.LockKey)
+	})
+
+	t.Run("nil attributes", func(t *testing.T) {
+		t.Parallel()
+
+		m := New()
+		r := m.Add(nil)
+
+		assert.True(t, r.invalid)
+		assert.Len(t, m.errs, 1)
+	})
+}
+
+// hiddenResource differs only in an unexported field
+type hiddenResource struct {
+	testResourceType
+	hidden string
+}
+
+// funcResource has a field that cannot be marshalled
+type funcResource struct {
+	testResourceType
+	F func() `json:"f"`
+	f func()
 }
 
 func TestChain(t *testing.T) {
@@ -324,8 +387,8 @@ func TestChainTo(t *testing.T) {
 
 		// The target is not part of the returned chain, but it now depends
 		// on the chain's last link.
-		stored := m.resources[target.ResourceID]
-		assert.Equal(t, []ResourceID{chain.Last().ResourceID}, stored.DependsOn)
+		require.NoError(t, m.compile())
+		assert.Equal(t, []ResourceID{chain.Last().ResourceID}, target.DependsOn)
 	})
 
 	t.Run("nil target behaves like Chain", func(t *testing.T) {
@@ -383,7 +446,7 @@ func TestDependencyCycle(t *testing.T) {
 			newTestResource("c"),
 		)
 
-		assert.NoError(t, m.dependencyCycle())
+		assert.NoError(t, m.compile())
 	})
 
 	t.Run("detects a cycle between two resources", func(t *testing.T) {
@@ -394,7 +457,7 @@ func TestDependencyCycle(t *testing.T) {
 		b := m.Add(newTestResource("b"), a)
 		m.SetDep(a, string(b.ResourceID))
 
-		err := m.dependencyCycle()
+		err := m.compile()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "dependency cycle detected")
 		assert.Contains(t, err.Error(), string(a.ResourceID))
@@ -408,18 +471,21 @@ func TestDependencyCycle(t *testing.T) {
 		a := m.Add(newTestResource("a"))
 		m.SetDep(a, string(a.ResourceID))
 
-		assert.Error(t, m.dependencyCycle())
+		assert.Error(t, m.compile())
 	})
+}
 
-	t.Run("ignores dependencies that are not in the manifest", func(t *testing.T) {
-		t.Parallel()
+func TestGeneratedIDs(t *testing.T) {
+	t.Parallel()
 
-		m := New()
-		a := m.Add(newTestResource("a"))
-		m.SetDep(a, "does-not-exist")
+	// Generated IDs are used in --dump-manifest, --json and SetDep, so they
+	// must not change between versions
+	m := New()
+	a := m.Add(newTestResource("a"))
+	b := m.Add(newTestResourceWithLockKey("b", PackageLock), a)
 
-		assert.NoError(t, m.dependencyCycle())
-	})
+	assert.Equal(t, ResourceID("testResourceType_id-81d59653"), a.ResourceID)
+	assert.Equal(t, ResourceID("testResourceType_id-3f0c4ec3"), b.ResourceID)
 }
 
 func TestDependencyCheck(t *testing.T) {
@@ -443,8 +509,8 @@ func TestDependencyCheck(t *testing.T) {
 			m.setStatus(a, &lock, StatusSuccess)
 		}()
 
-		r := m.resources[b.ResourceID]
-		assert.NoError(t, m.dependencyCheck(&r, &lock))
+		require.NoError(t, m.compile())
+		assert.NoError(t, m.dependencyCheck(b, &lock))
 	})
 
 	t.Run("fails when a dependency failed", func(t *testing.T) {
@@ -455,8 +521,8 @@ func TestDependencyCheck(t *testing.T) {
 		var lock sync.RWMutex
 		m.setStatus(a, &lock, StatusFailed)
 
-		r := m.resources[b.ResourceID]
-		err := m.dependencyCheck(&r, &lock)
+		require.NoError(t, m.compile())
+		err := m.dependencyCheck(b, &lock)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "upstream dependency")
 	})
@@ -477,8 +543,8 @@ func TestDependencyCheck(t *testing.T) {
 			m.setStatus(a, &lock, StatusSuccess)
 		}()
 
-		r := m.resources[b.ResourceID]
-		assert.NoError(t, m.dependencyCheck(&r, &lock))
+		require.NoError(t, m.compile())
+		assert.NoError(t, m.dependencyCheck(b, &lock))
 	})
 }
 
@@ -495,7 +561,7 @@ func TestResourceTimeout(t *testing.T) {
 		var wg sync.WaitGroup
 
 		wg.Add(1)
-		m.apply(*r, &wg, &lock, newLockSet())
+		m.apply(r, &wg, &lock, newLockSet())
 		wg.Wait()
 
 		// The failure is reported against the resource that overran, rather
@@ -514,6 +580,8 @@ func TestResourceTimeout(t *testing.T) {
 		a := m.Add(blocked)
 		b := m.Add(newTestResource("b"), a)
 		m.SetResourceTimeout(20 * time.Millisecond)
+
+		require.NoError(t, m.compile())
 
 		var lock sync.RWMutex
 		var wg sync.WaitGroup
@@ -571,7 +639,7 @@ func TestResourceTimeout(t *testing.T) {
 		var wg sync.WaitGroup
 
 		wg.Add(1)
-		m.apply(*r, &wg, &lock, newLockSet())
+		m.apply(r, &wg, &lock, newLockSet())
 		wg.Wait()
 
 		assert.Equal(t, StatusSuccess, m.resources[r.ResourceID].Status)
@@ -594,7 +662,7 @@ func TestResourceTimeout(t *testing.T) {
 		}()
 
 		wg.Add(1)
-		m.apply(*r, &wg, &lock, newLockSet())
+		m.apply(r, &wg, &lock, newLockSet())
 		wg.Wait()
 
 		assert.Equal(t, StatusSuccess, m.resources[r.ResourceID].Status)
@@ -620,12 +688,12 @@ func TestTimeoutFor(t *testing.T) {
 	// The resource overrides the manifest
 	m.WithTimeout(r, 2*time.Minute)
 	stored := m.resources[r.ResourceID]
-	assert.Equal(t, 2*time.Minute, m.timeoutFor(&stored))
+	assert.Equal(t, 2*time.Minute, m.timeoutFor(stored))
 
 	// The flag overrides everything, so a slow run can be rescued without
 	// recompiling the configuration
 	Cli.ResourceTimeout = 3 * time.Minute
-	assert.Equal(t, 3*time.Minute, m.timeoutFor(&stored))
+	assert.Equal(t, 3*time.Minute, m.timeoutFor(stored))
 }
 
 func TestCollectFailures(t *testing.T) {
@@ -634,7 +702,7 @@ func TestCollectFailures(t *testing.T) {
 	t.Run("single root failure with no dependents", func(t *testing.T) {
 		t.Parallel()
 
-		resources := map[ResourceID]Resource{
+		resources := map[ResourceID]*Resource{
 			"file-1": {
 				ResourceID:   "file-1",
 				ResourceKind: "File",
@@ -661,7 +729,7 @@ func TestCollectFailures(t *testing.T) {
 	t.Run("root failure with dependency failures", func(t *testing.T) {
 		t.Parallel()
 
-		resources := map[ResourceID]Resource{
+		resources := map[ResourceID]*Resource{
 			"file-1": {
 				ResourceID:   "file-1",
 				ResourceKind: "File",
@@ -696,7 +764,7 @@ func TestCollectFailures(t *testing.T) {
 	t.Run("transitive dependency failure traces to root", func(t *testing.T) {
 		t.Parallel()
 
-		resources := map[ResourceID]Resource{
+		resources := map[ResourceID]*Resource{
 			"file-1": {
 				ResourceID:   "file-1",
 				ResourceKind: "File",
@@ -731,7 +799,7 @@ func TestCollectFailures(t *testing.T) {
 	t.Run("multiple independent root failures", func(t *testing.T) {
 		t.Parallel()
 
-		resources := map[ResourceID]Resource{
+		resources := map[ResourceID]*Resource{
 			"file-1": {
 				ResourceID:   "file-1",
 				ResourceKind: "File",
@@ -757,7 +825,7 @@ func TestCollectFailures(t *testing.T) {
 
 		// A resource that gave up waiting has no failed dependency to blame,
 		// so it has to be reported in its own right
-		resources := map[ResourceID]Resource{
+		resources := map[ResourceID]*Resource{
 			"file-1": {
 				ResourceID:   "file-1",
 				ResourceKind: "File",
@@ -785,7 +853,7 @@ func TestCollectFailures(t *testing.T) {
 
 		// Whether a run failed and what gets reported come from the same
 		// place, so a resource cannot fail a run without being named
-		resources := map[ResourceID]Resource{
+		resources := map[ResourceID]*Resource{
 			"exec-1": {
 				ResourceID:   "exec-1",
 				ResourceKind: "Execute",
@@ -804,7 +872,7 @@ func TestCollectFailures(t *testing.T) {
 	t.Run("no failures returns empty", func(t *testing.T) {
 		t.Parallel()
 
-		resources := map[ResourceID]Resource{
+		resources := map[ResourceID]*Resource{
 			"file-1": {
 				ResourceID:   "file-1",
 				ResourceKind: "File",

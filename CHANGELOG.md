@@ -29,6 +29,7 @@ resources needs no change. Beyond that:
   one per line, with a `stream` field of `stdout` or `stderr`. A line ends at
   `\n`, `\r` or `\r\n`, so progress output arrives a step at a time, and a
   line longer than 64 KiB is split
+- `AddNamed`, which adds a resource under a name rather than a generated ID
 
 ### Changed
 
@@ -54,6 +55,17 @@ resources needs no change. Beyond that:
   `NewSilentLogger`, and its fields take any value rather than only strings.
   `Logger.Entries`, `Logger.Quiet`, `Logger.Silent`, `ResultCollector` and the
   package-level `Log` are gone
+- **`Add` returns the resource the manifest holds.** `SetName` therefore
+  renames the caller's `*Resource`, and resources that depend on it follow the
+  new name
+- Dependencies are resolved when the manifest is applied. A dependency on a
+  resource from another manifest, or on a name that does not exist, is an
+  error rather than being skipped, which used to lose the ordering silently
+- Resources that differ only in what cannot be represented as JSON, such as
+  unexported fields or a func, no longer collide. The second and later get a
+  numbered suffix on their ID. An exact duplicate is still an error
+- Every method that takes a resource records an error when the resource is not
+  in the manifest, rather than doing nothing
 
 - **Importing viaduct no longer does anything.** Flags are parsed, system
   attributes are read and the temporary directory is created when they are
