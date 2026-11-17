@@ -84,6 +84,8 @@ resources needs no change. Beyond that:
   timeout. One that stops when its timeout passes is retried. Each attempt
   has its own `Result`, with `Attempt` and `Final`, and `Report.Final`
   returns the last result of each resource
+- `Skip(reason)`, returned by a resource with nothing to do, gives it the new
+  `StatusSkipped` status. Anything depending on it runs
 - `Result.Cause` names the resource whose failure stopped a
   `StatusDependencyFailed` resource from running, and `--json` reports it as
   `cause`

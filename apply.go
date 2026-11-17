@@ -98,7 +98,8 @@ type Result struct {
 	// a change it would have made.
 	Changed bool
 
-	// Err is why the resource failed. It is nil otherwise.
+	// Err is why the resource failed, or for one that was skipped, the
+	// error from Skip. It is nil otherwise.
 	Err error
 
 	// Cause is the resource whose failure stopped this one from running, for
@@ -434,7 +435,12 @@ func (rn *run) attempt(ctx context.Context, r *Resource, n int) (Result, bool) {
 	result.Start = start
 	result.Duration = time.Since(start)
 
-	if runErr != nil {
+	switch {
+	case runErr == nil:
+	case IsSkip(runErr):
+		result.Status = StatusSkipped
+		log.Noop("skipped", "reason", runErr.Error())
+	default:
 		result.Status = StatusFailed
 
 		if errors.Is(runErr, errAbandoned) {
@@ -514,14 +520,14 @@ const (
 )
 
 // settled maps a dependency's final status to a dependency state. Only
-// success lets dependants run.
+// success and skipping let dependants run.
 func (rn *run) settled(d *Resource) int {
 	if !rn.finished(d) {
 		return depWaiting
 	}
 
 	switch rn.states[d].final.Status {
-	case StatusSuccess:
+	case StatusSuccess, StatusSkipped:
 		return depSatisfied
 	default:
 		return depFailed

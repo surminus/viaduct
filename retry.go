@@ -95,3 +95,24 @@ func IsPermanent(err error) bool {
 	var p *permanentError
 	return errors.As(err, &p)
 }
+
+// skipError is a resource deciding it has nothing to do.
+type skipError struct {
+	reason string
+}
+
+func (e *skipError) Error() string {
+	return "skipped: " + e.reason
+}
+
+// Skip is returned by a resource that has nothing to do. Its status is
+// Skipped, and resources depending on it still run.
+func Skip(reason string) error {
+	return &skipError{reason: reason}
+}
+
+// IsSkip reports whether an error came from Skip.
+func IsSkip(err error) bool {
+	var s *skipError
+	return errors.As(err, &s)
+}

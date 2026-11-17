@@ -32,6 +32,10 @@ const (
 	// StatusDependencyFailed is a resource that did not run because a dependency
 	// failed or the run stopped first.
 	StatusDependencyFailed Status = "DependencyFailed"
+
+	// StatusSkipped is a resource that returned Skip. Resources depending on it
+	// still run.
+	StatusSkipped Status = "Skipped"
 )
 
 // Manifest is a set of resources and the dependencies between them, run

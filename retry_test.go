@@ -377,6 +377,55 @@ func (l *lockedOther) Run(ctx context.Context, log *Logger) error {
 	return nil
 }
 
+// skipper skips itself
+type skipper struct {
+	testResourceType
+}
+
+func (s *skipper) Run(ctx context.Context, log *Logger) error {
+	return Skip("not on this platform")
+}
+
+func TestSkip(t *testing.T) {
+	t.Run("a skip is not a failure, and dependants run", func(t *testing.T) {
+		after := newTestResource("after")
+
+		m := New()
+		s := m.Add(&skipper{})
+		m.Add(after, s)
+
+		rec := &recorder{}
+		report, err := m.Apply(context.Background(), Options{Handler: rec})
+		require.NoError(t, err)
+
+		assert.True(t, after.ran.Load())
+
+		byID := map[ResourceID]Result{}
+		for _, r := range report.Results {
+			byID[r.ID] = r
+		}
+
+		assert.Equal(t, StatusSkipped, byID[s.ResourceID].Status)
+		assert.True(t, IsSkip(byID[s.ResourceID].Err))
+		assert.EqualError(t, byID[s.ResourceID].Err, "skipped: not on this platform")
+		assert.False(t, byID[s.ResourceID].Changed)
+		assert.Empty(t, report.Failed())
+		assert.Contains(t, rec.messages(LevelNoop), "skipped")
+	})
+
+	t.Run("a skip is not retried", func(t *testing.T) {
+		r := &flakyResource{failures: 10, err: Skip("nothing to do")}
+
+		m := New()
+		res := m.Add(r)
+		m.WithRetry(res, fastRetry(3))
+
+		_, err := m.Apply(context.Background(), Options{})
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, r.attempts.Load())
+	})
+}
+
 func TestJSONCollectorRetries(t *testing.T) {
 	c := newJSONCollector()
 
