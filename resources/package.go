@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -9,9 +10,12 @@ import (
 	"github.com/surminus/viaduct"
 )
 
-// Package installs one or more packages. Specify the package names. It has
-// no timeout by default; WithTimeout and the ResourceTimeout option still
-// apply.
+// Package installs one or more packages. Specify the package names. Only the
+// packages that are not installed are passed to the package manager, and
+// uninstalling or purging only touches the ones that are there. A name with
+// a version, release or glob in it, such as "curl=8.5.0", cannot be checked,
+// so it is always passed on. It has no timeout by default; WithTimeout and
+// the ResourceTimeout option still apply.
 type Package struct {
 	// Names are the package names
 	Names []string
@@ -196,34 +200,298 @@ func (p *Package) Run(ctx context.Context, log *viaduct.Logger) error {
 }
 
 func (p *Package) install(ctx context.Context, log *viaduct.Logger) error {
-	args, err := installArgs(viaduct.Attributes().Platform.ID, p.Names)
+	platform := viaduct.Attributes().Platform.ID
+
+	if _, err := installArgs(platform, p.Names); err != nil {
+		return err
+	}
+
+	states, err := packageStates(ctx, log, platform, p.Names)
 	if err != nil {
 		return err
 	}
 
-	if !change(ctx, log, "installing", "packages", strings.Join(p.Names, ", ")) {
+	missing := packagesToChange(p.Names, states, needsInstall)
+	if len(missing) == 0 {
+		log.Noop("up-to-date", "packages", strings.Join(p.Names, ", "))
 		return nil
+	}
+
+	if !change(ctx, log, "installing", "packages", strings.Join(missing, ", ")) {
+		return nil
+	}
+
+	args, err := installArgs(platform, missing)
+	if err != nil {
+		return err
 	}
 
 	return runPkgCmd(ctx, log, args, p.Verbose)
 }
 
 func (p *Package) uninstall(ctx context.Context, log *viaduct.Logger) error {
-	args, err := removeArgs(viaduct.Attributes().Platform.ID, p.Names, p.Purge)
+	platform := viaduct.Attributes().Platform.ID
+
+	if _, err := removeArgs(platform, p.Names, p.Purge); err != nil {
+		return err
+	}
+
+	states, err := packageStates(ctx, log, platform, p.Names)
 	if err != nil {
 		return err
 	}
 
-	msg := "uninstalling"
+	needed, msg := needsRemove, "uninstalling"
 	if p.Purge {
-		msg = "purging"
+		needed, msg = needsPurge, "purging"
 	}
 
-	if !change(ctx, log, msg, "packages", strings.Join(p.Names, ", ")) {
+	present := packagesToChange(p.Names, states, needed)
+	if len(present) == 0 {
+		log.Noop("up-to-date", "packages", strings.Join(p.Names, ", "))
 		return nil
 	}
 
+	if !change(ctx, log, msg, "packages", strings.Join(present, ", ")) {
+		return nil
+	}
+
+	args, err := removeArgs(platform, present, p.Purge)
+	if err != nil {
+		return err
+	}
+
 	return runPkgCmd(ctx, log, args, p.Verbose)
+}
+
+// Package states, named after dpkg's. rpm and pacman only ever report
+// stateInstalled, or nothing for a package they do not have.
+const (
+	stateInstalled    = "installed"
+	stateConfigFiles  = "config-files"
+	stateNotInstalled = "not-installed"
+)
+
+// needsInstall reports whether a package in this state still needs
+// installing. dpkg's triggers states come after configuration, so the
+// package is usable; the others are a broken install that apt-get install
+// finishes.
+func needsInstall(state string) bool {
+	switch state {
+	case stateInstalled, "triggers-pending", "triggers-awaited":
+		return false
+	default:
+		return true
+	}
+}
+
+// needsRemove reports whether a package in this state still needs removing.
+// A half-installed package counts, since it has files on disk.
+func needsRemove(state string) bool {
+	return state != "" && state != stateNotInstalled && state != stateConfigFiles
+}
+
+// needsPurge is needsRemove, plus a removed package whose configuration is
+// still there
+func needsPurge(state string) bool {
+	return state != "" && state != stateNotInstalled
+}
+
+// packagesToChange returns the names whose state needs changing. A name that
+// cannot be queried is always included, leaving the package manager to decide.
+func packagesToChange(names []string, states map[string]string, needed func(string) bool) []string {
+	var out []string
+
+	for _, name := range names {
+		if !queryable(name) || needed(states[name]) {
+			out = append(out, name)
+		}
+	}
+
+	return out
+}
+
+// queryable reports whether a name is a plain package name the query
+// commands can look up. A version ("curl=8.5.0"), a release ("curl/sid") or a
+// glob is something only the installing command understands: the query
+// would report it as unknown, which would make removing it a noop.
+func queryable(name string) bool {
+	return !strings.ContainsAny(name, "=<>/*?[]")
+}
+
+// packageStates returns the state of each named package the package manager
+// knows. A package missing from the map is not installed. It runs in a dry
+// run too.
+//
+// Each query runs with LC_ALL=C because the "not installed" messages are
+// parsed and would otherwise be translated, and with stderr captured so a
+// noop does not log a line for every missing package.
+func packageStates(ctx context.Context, log *viaduct.Logger, platform string, names []string) (map[string]string, error) {
+	var query []string
+	for _, name := range names {
+		if queryable(name) {
+			query = append(query, name)
+		}
+	}
+
+	if len(query) == 0 {
+		return map[string]string{}, nil
+	}
+
+	switch platform {
+	case "debian", "ubuntu", "linuxmint":
+		return dpkgStates(ctx, log, query)
+	case "fedora", "centos":
+		return rpmStates(ctx, log, query)
+	case "arch", "manjaro":
+		return pacmanStates(ctx, log, query)
+	default:
+		return nil, fmt.Errorf("unrecognised distribution: %s", platform)
+	}
+}
+
+// pkgQuery runs a package query, returning its stdout and stderr, and its
+// exit status. An error is returned only when the command could not run.
+func pkgQuery(ctx context.Context, log *viaduct.Logger, name string, args ...string) (string, string, int, error) {
+	var stderr bytes.Buffer
+
+	out, err := viaduct.Command{
+		Name:   name,
+		Args:   args,
+		Env:    []string{"LC_ALL=C"},
+		Stderr: &stderr,
+	}.Output(ctx, log)
+
+	code, exited := viaduct.ExitCode(err)
+	if err != nil && !exited {
+		return "", "", 0, fmt.Errorf("%s failed: %w", name, err)
+	}
+
+	return string(out), stderr.String(), code, nil
+}
+
+// queryError describes a query that failed in a way its output does not
+// explain
+func queryError(name string, code int, stderr string) error {
+	if msg := strings.TrimSpace(stderr); msg != "" {
+		return fmt.Errorf("%s failed with exit status %d: %s", name, code, msg)
+	}
+
+	return fmt.Errorf("%s failed with exit status %d", name, code)
+}
+
+// dpkgStates asks dpkg for each package's ${db:Status-Status}, a single word
+// such as "installed" or "config-files". The abbreviated "ii" form is not
+// used because its first letter is the wanted state, which is "h" for a held
+// package. Each line also carries both ${Package} and ${binary:Package}, so
+// "libc6" and "libc6:arm64" are both found.
+//
+// dpkg-query exits 1 when any name is unknown to it, and still prints the
+// rest, so that is not a failure. A purged package it still knows of is
+// reported as "not-installed" with exit status 0.
+func dpkgStates(ctx context.Context, log *viaduct.Logger, names []string) (map[string]string, error) {
+	args := append([]string{"-W", "-f", "${Package}\t${binary:Package}\t${db:Status-Status}\n"}, names...)
+
+	out, stderr, code, err := pkgQuery(ctx, log, "dpkg-query", args...)
+	if err != nil {
+		return nil, err
+	}
+
+	if code != 0 && code != 1 {
+		return nil, queryError("dpkg-query", code, stderr)
+	}
+
+	states := make(map[string]string)
+	for line := range strings.Lines(out) {
+		fields := strings.Split(strings.TrimRight(line, "\n"), "\t")
+		if len(fields) != 3 {
+			continue
+		}
+
+		for _, name := range fields[:2] {
+			// Two architectures of a package share ${Package}, so one
+			// installed architecture is not hidden by another that is not
+			if states[name] != stateInstalled {
+				states[name] = fields[2]
+			}
+		}
+	}
+
+	return states, nil
+}
+
+// rpmStates runs "rpm -q", which prints "package NAME is not installed" on
+// stdout for each missing name, and exits with the number of them. Anything
+// else on stdout is an installed package's full version, which is not the
+// name asked for, so installed is taken to be every name not reported
+// missing. An exit status that does not match the count is a failed query.
+func rpmStates(ctx context.Context, log *viaduct.Logger, names []string) (map[string]string, error) {
+	out, stderr, code, err := pkgQuery(ctx, log, "rpm", append([]string{"-q"}, names...)...)
+	if err != nil {
+		return nil, err
+	}
+
+	missing := make(map[string]bool)
+	var lines int
+	for line := range strings.Lines(out) {
+		name, ok := strings.CutPrefix(strings.TrimSpace(line), "package ")
+		if !ok {
+			continue
+		}
+
+		if name, ok = strings.CutSuffix(name, " is not installed"); ok {
+			missing[name] = true
+			lines++
+		}
+	}
+
+	if code != min(lines, 255) {
+		return nil, queryError("rpm -q", code, stderr)
+	}
+
+	return installedExcept(names, missing), nil
+}
+
+// pacmanStates runs "pacman -Q", which prints "error: package 'NAME' was not
+// found" on stderr for each missing name and exits 1 if there are any. Its
+// stdout is not used, since a name no package has falls back to an installed
+// package that provides it, which is printed under its own name.
+func pacmanStates(ctx context.Context, log *viaduct.Logger, names []string) (map[string]string, error) {
+	_, stderr, code, err := pkgQuery(ctx, log, "pacman", append([]string{"-Q"}, names...)...)
+	if err != nil {
+		return nil, err
+	}
+
+	missing := make(map[string]bool)
+	for line := range strings.Lines(stderr) {
+		name, ok := strings.CutPrefix(strings.TrimSpace(line), "error: package '")
+		if !ok {
+			continue
+		}
+
+		if name, ok = strings.CutSuffix(name, "' was not found"); ok {
+			missing[name] = true
+		}
+	}
+
+	if (code == 0) != (len(missing) == 0) || code > 1 {
+		return nil, queryError("pacman -Q", code, stderr)
+	}
+
+	return installedExcept(names, missing), nil
+}
+
+// installedExcept marks every name installed apart from the missing ones
+func installedExcept(names []string, missing map[string]bool) map[string]string {
+	states := make(map[string]string)
+
+	for _, name := range names {
+		if !missing[name] {
+			states[name] = stateInstalled
+		}
+	}
+
+	return states
 }
 
 // hold marks packages as held back, or releases them, leaving alone any that

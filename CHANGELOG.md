@@ -174,6 +174,16 @@ resources needs no change. Beyond that:
   finish. `WithTimeout` and `--resource-timeout` still apply to them
 - **A failed `Execute` or `Shell` reports no change.** They log the command
   once it has finished, or in a dry run, the command they would have run
+- **`Package` checks what is installed first.** It asks `dpkg-query`,
+  `rpm -q` or `pacman -Q` which of the packages are there, installs only the
+  missing ones, and uninstalls or purges only the ones present. A package
+  left with only its configuration still counts for `Purge` on Debian
+  derivatives. When nothing needs doing it is a noop rather than running the
+  package manager and reporting a change. A name with a version, release or
+  glob in it, such as `curl=8.5.0`, is always passed to the package manager
+- **This stops `Package` upgrading packages that are already installed.**
+  Installing an installed package used to upgrade it, when the package
+  manager had a newer version. That package is now left as it is
 - **`File`, `Template` and `Line` write files atomically.** A
   crash part way through a write leaves the old file or the new one, never a
   truncated mixture. The file is replaced rather than rewritten, so its inode
