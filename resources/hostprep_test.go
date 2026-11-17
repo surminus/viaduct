@@ -2,6 +2,7 @@ package resources
 
 import (
 	"os"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -575,5 +576,97 @@ func TestSwap(t *testing.T) {
 		assert.True(t, log.Changed())
 		assert.Equal(t, []string{"blkid -p -o export /dev/sdb"}, env.Runner.Commands())
 		assert.Equal(t, "LABEL=root / ext4 defaults 0 1\n", env.ReadFile("/etc/fstab"))
+	})
+}
+
+func TestSysfsValue(t *testing.T) {
+	const thp = "/sys/kernel/mm/transparent_hugepage/enabled"
+
+	t.Run("preflight", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+
+		assert.Error(t, (&SysfsValue{Value: "never"}).PreflightChecks(env.Context(), env.Log))
+		assert.Error(t, (&SysfsValue{Path: "/etc/passwd", Value: "x"}).PreflightChecks(env.Context(), env.Log))
+		assert.Error(t, (&SysfsValue{Path: "/sys/../etc/passwd", Value: "x"}).PreflightChecks(env.Context(), env.Log))
+		assert.Error(t, (&SysfsValue{Path: thp}).PreflightChecks(env.Context(), env.Log))
+		assert.NoError(t, (&SysfsValue{Path: thp, Value: "never"}).PreflightChecks(env.Context(), env.Log))
+	})
+
+	t.Run("selected value", func(t *testing.T) {
+		assert.Equal(t, "never", sysfsSelected("always madvise [never]\n"))
+		assert.Equal(t, "madvise", sysfsSelected("always [madvise] never"))
+		assert.Equal(t, "128", sysfsSelected("128\n"))
+	})
+
+	t.Run("sets a bracketed value", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.WriteFile(thp, "[always] madvise never\n")
+
+		// A real sysfs file reports the selection after a write. A plain file
+		// holds what was written, which gives the same result
+		log, err := env.Apply(env.Context(), &SysfsValue{Path: thp, Value: "never"})
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, "never", env.ReadFile(thp))
+	})
+
+	t.Run("already set is a noop", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.WriteFile(thp, "always madvise [never]\n")
+
+		log, err := env.Apply(env.Context(), &SysfsValue{Path: thp, Value: "never"})
+		require.NoError(t, err)
+
+		assert.False(t, log.Changed())
+		assert.Equal(t, "always madvise [never]\n", env.ReadFile(thp))
+	})
+
+	t.Run("dry run", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.WriteFile(thp, "[always] madvise never\n")
+
+		log, err := env.Apply(env.DryRunContext(), &SysfsValue{Path: thp, Value: "never"})
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, "[always] madvise never\n", env.ReadFile(thp))
+	})
+
+	t.Run("a missing file is an error", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+
+		_, err := env.Apply(env.Context(), &SysfsValue{Path: thp, Value: "never"})
+		assert.ErrorIs(t, err, os.ErrNotExist)
+	})
+
+	// replaceWrite swaps the sysfs write for one that behaves like the kernel
+	replaceWrite := func(t *testing.T, fn func(path, value string) error) {
+		orig := writeSysfs
+		writeSysfs = fn
+		t.Cleanup(func() { writeSysfs = orig })
+	}
+
+	t.Run("a refused write is an error", func(t *testing.T) {
+		replaceWrite(t, func(string, string) error { return syscall.EINVAL })
+
+		env := viaducttest.NewEnv(t)
+		env.WriteFile(thp, "[always] madvise never\n")
+
+		_, err := env.Apply(env.Context(), &SysfsValue{Path: thp, Value: "bogus"})
+		assert.ErrorIs(t, err, syscall.EINVAL)
+		assert.ErrorContains(t, err, "writing bogus to "+thp)
+	})
+
+	t.Run("a value the kernel does not keep is an error", func(t *testing.T) {
+		replaceWrite(t, func(path, _ string) error {
+			return os.WriteFile(path, []byte("always [madvise] never\n"), 0o644)
+		})
+
+		env := viaducttest.NewEnv(t)
+		env.WriteFile(thp, "[always] madvise never\n")
+
+		_, err := env.Apply(env.Context(), &SysfsValue{Path: thp, Value: "never"})
+		assert.ErrorContains(t, err, "is madvise after writing never")
 	})
 }
