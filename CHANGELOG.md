@@ -37,6 +37,12 @@ resources needs no change. Beyond that:
   it, including a partition table, is a permanent error. It never formats a
   device that has something on it, or anything that is not a block device.
   `msdos`, `fat` and `vfat` count as the same type. It takes `FstabLock`
+- A new `Swap` resource, which runs `mkswap` on an empty device, never forced,
+  records the swap in `/etc/fstab` by UUID, runs `systemctl daemon-reload`
+  when the entry changes, and turns it on. An active swap missing from
+  `/etc/fstab` is recorded, and one with a different priority is a warning,
+  since changing it means turning the swap off. A device that is not a block
+  device is an error
 - `FstabLock` and `NetworkLock`, alongside `PackageLock` and `PasswdLock`
 
 - `Apply(ctx, Options)` runs a manifest and returns a `Report` with a `Result`
