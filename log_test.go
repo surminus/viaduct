@@ -3,6 +3,7 @@ package viaduct
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -32,6 +33,19 @@ func (r *recorder) all() []Event {
 	defer r.mu.Unlock()
 
 	return append([]Event(nil), r.events...)
+}
+
+// messages returns the message of each event at the given level
+func (r *recorder) messages(level Level) []string {
+	var out []string
+
+	for _, e := range r.all() {
+		if e.Level == level {
+			out = append(out, e.Message)
+		}
+	}
+
+	return out
 }
 
 func TestLogger(t *testing.T) {
@@ -73,6 +87,53 @@ func TestLogger(t *testing.T) {
 	})
 }
 
+func TestLoggerWriter(t *testing.T) {
+	rec := &recorder{}
+	l := NewLogger(rec, "Execute", "Run")
+
+	w := l.Writer(Stderr)
+	fmt.Fprint(w, "one\ntw")
+	fmt.Fprint(w, "o\r\nthree")
+
+	assert.Equal(t, []string{"one", "two"}, rec.messages(LevelOutput))
+
+	require.NoError(t, w.Close())
+	assert.Equal(t, []string{"one", "two", "three"}, rec.messages(LevelOutput), "close flushes the last partial line")
+
+	for _, e := range rec.all() {
+		stream, _ := e.Field("stream")
+		assert.Equal(t, Stderr, stream)
+	}
+
+	t.Run("a carriage return ends a line", func(t *testing.T) {
+		rec := &recorder{}
+		w := NewLogger(rec, "Execute", "Run").Writer(Stdout)
+
+		fmt.Fprint(w, "10%\r20%\r")
+		fmt.Fprint(w, "\ndone\r\n")
+		require.NoError(t, w.Close())
+
+		assert.Equal(t, []string{"10%", "20%", "done"}, rec.messages(LevelOutput), "\\r\\n is one line break, even split across writes")
+	})
+
+	t.Run("a long line is emitted in pieces", func(t *testing.T) {
+		rec := &recorder{}
+		w := NewLogger(rec, "Execute", "Run").Writer(Stdout)
+
+		long := strings.Repeat("x", maxLineLength+10)
+		fmt.Fprint(w, long)
+
+		got := rec.messages(LevelOutput)
+		require.Len(t, got, 1, "the full buffer is emitted without waiting for a newline")
+		assert.Len(t, got[0], maxLineLength)
+
+		require.NoError(t, w.Close())
+		got = rec.messages(LevelOutput)
+		require.Len(t, got, 2)
+		assert.Equal(t, strings.Repeat("x", 10), got[1])
+	})
+}
+
 func TestNilLogger(t *testing.T) {
 	var l *Logger
 
@@ -82,6 +143,10 @@ func TestNilLogger(t *testing.T) {
 		l.Warn("c")
 		l.Error("d")
 		l.progress("e")
+
+		w := l.Writer(Stdout)
+		fmt.Fprintln(w, "dropped")
+		require.NoError(t, w.Close())
 	})
 }
 
@@ -116,19 +181,23 @@ func TestTextHandler(t *testing.T) {
 		l.Error("command failed", "command", "echo hello")
 		l.progress("started")
 
+		fmt.Fprintln(l.Writer(Stdout), "from stdout")
+		fmt.Fprintln(l.Writer(Stderr), "from stderr")
+
 		return strip(out.String()), strip(errs.String())
 	}
 
 	t.Run("default", func(t *testing.T) {
 		out, errs := emit(TextOptions{})
 
-		assert.Empty(t, out)
+		assert.Equal(t, "from stdout\n", out)
 		assert.Equal(t, strings.Join([]string{
 			"  OK  File [Create]          created path=/home/user/.bashrc",
 			"  --  File [Create]          up-to-date path=/home/user/.bashrc",
 			"WARN  File [Create]          odd msg=\"has spaces\"",
 			"FAIL  File [Create]          command failed command=\"echo hello\"",
 			"  OK  File [Create]          started",
+			"from stderr",
 			"",
 		}, "\n"), errs)
 	})
@@ -140,11 +209,13 @@ func TestTextHandler(t *testing.T) {
 			"  OK  File [Create]          created path=/home/user/.bashrc",
 			"  --  File [Create]          up-to-date path=/home/user/.bashrc",
 			"  OK  File [Create]          started",
+			"from stdout",
 			"",
 		}, "\n"), out)
 		assert.Equal(t, strings.Join([]string{
 			"WARN  File [Create]          odd msg=\"has spaces\"",
 			"FAIL  File [Create]          command failed command=\"echo hello\"",
+			"from stderr",
 			"",
 		}, "\n"), errs)
 	})
@@ -156,6 +227,7 @@ func TestTextHandler(t *testing.T) {
 		assert.Equal(t, strings.Join([]string{
 			"WARN  File [Create]          odd msg=\"has spaces\"",
 			"FAIL  File [Create]          command failed command=\"echo hello\"",
+			"from stderr",
 			"",
 		}, "\n"), errs)
 	})
@@ -170,6 +242,7 @@ func TestJSONCollector(t *testing.T) {
 	l := newResourceLogger(context.Background(), h, r, "Create")
 	l.Info("created", "path", "/tmp/a")
 	l.Noop("up-to-date")
+	fmt.Fprintln(l.Writer(Stdout), "dropped")
 	NewLogger(h, "Viaduct", "Run").progress("dropped")
 
 	got := c.resources(map[ResourceID]Resource{"a": {ResourceID: "a", ResourceKind: "File", Status: StatusSuccess, Attributes: newTestResource("a")}})

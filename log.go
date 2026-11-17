@@ -1,8 +1,10 @@
 package viaduct
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 )
@@ -247,4 +249,92 @@ func fieldsOf(kv []any) []Field {
 	}
 
 	return fields
+}
+
+// maxLineLength is the longest line a Logger's writer holds. A longer line
+// is logged in pieces of this length.
+const maxLineLength = 64 * 1024
+
+// Writer returns a writer that logs each line written to it as a LevelOutput
+// event on the given stream, Stdout or Stderr. A line ends at "\n", "\r" or
+// "\r\n", and one longer than 64 KiB is logged in pieces. Close it to log a
+// final line that has no line break.
+func (l *Logger) Writer(stream string) io.WriteCloser {
+	if l == nil {
+		return nopCloser{io.Discard}
+	}
+
+	return &lineWriter{log: l, stream: stream}
+}
+
+type nopCloser struct {
+	io.Writer
+}
+
+func (nopCloser) Close() error {
+	return nil
+}
+
+// lineWriter splits what is written to it into lines, logging each one.
+type lineWriter struct {
+	log    *Logger
+	stream string
+
+	mu  sync.Mutex
+	buf []byte
+
+	// afterCR is set when the last line ended in "\r", so a "\n" that
+	// follows in the next write completes "\r\n" rather than ending an empty
+	// line.
+	afterCR bool
+}
+
+func (w *lineWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.buf = append(w.buf, p...)
+
+	for len(w.buf) > 0 {
+		if w.afterCR {
+			w.afterCR = false
+
+			if w.buf[0] == '\n' {
+				w.buf = w.buf[1:]
+				continue
+			}
+		}
+
+		i := bytes.IndexAny(w.buf, "\r\n")
+		if i < 0 {
+			break
+		}
+
+		w.line(w.buf[:i])
+		w.afterCR = w.buf[i] == '\r'
+		w.buf = w.buf[i+1:]
+	}
+
+	for len(w.buf) >= maxLineLength {
+		w.line(w.buf[:maxLineLength])
+		w.buf = w.buf[maxLineLength:]
+	}
+
+	return len(p), nil
+}
+
+func (w *lineWriter) Close() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if len(w.buf) > 0 {
+		w.line(w.buf)
+		w.buf = nil
+	}
+
+	return nil
+}
+
+func (w *lineWriter) line(b []byte) {
+	w.log.emit(LevelOutput, string(b), []any{"stream", w.stream})
 }

@@ -25,6 +25,10 @@ resources needs no change. Beyond that:
   `LevelWarn`, `LevelError`), the resource ID, kind, operation and
   description, a message and fields. A `Handler` receives them, and is
   never called concurrently. `NewTextHandler` gives the output `Run` prints
+- `Logger.Writer` reports what is written to it as `LevelOutput` events,
+  one per line, with a `stream` field of `stdout` or `stderr`. A line ends at
+  `\n`, `\r` or `\r\n`, so progress output arrives a step at a time, and a
+  line longer than 64 KiB is split
 
 ### Changed
 
