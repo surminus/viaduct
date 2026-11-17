@@ -178,6 +178,11 @@ resources needs no change. Beyond that:
   finish. `WithTimeout` and `--resource-timeout` still apply to them
 - **A failed `Execute` or `Shell` reports no change.** They log the command
   once it has finished, or in a dry run, the command they would have run
+- **Dry run checks everything and skips only the changes.** Resources compare
+  the current state as usual, so a dry run reports what is already correct as
+  a noop rather than every resource as changing. Read-only commands, such as
+  `apt-mark showhold`, `dpkg-query`, `systemctl is-enabled` and `Unless`
+  guards, run in a dry run
 - **`Package` checks what is installed first.** It asks `dpkg-query`,
   `rpm -q` or `pacman -Q` which of the packages are there, installs only the
   missing ones, and uninstalls or purges only the ones present. A package
