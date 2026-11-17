@@ -10,6 +10,8 @@ A manifest that only uses `New`, `Add`, `Chain` and `Run` with the standard
 resources needs no change. Beyond that:
 
 - `viaduct.Attribute.X` becomes `viaduct.Attributes().X`
+- `NewLogger(kind, operation)` in tests becomes
+  `viaduct.NewLogger(nil, kind, operation)`
 - `Pending`, `Success`, `Failed` and `DependencyFailed` become
   `StatusPending`, `StatusSuccess`, `StatusFailed` and
   `StatusDependencyFailed`, and a lock key is a `viaduct.LockKey`
@@ -18,6 +20,11 @@ resources needs no change. Beyond that:
 
 - `Must`, for using a function that returns an error inline when the error
   would be a bug, such as `viaduct.Must(resources.NewTemplate(...))`
+- **Events and handlers.** Everything a run reports is an `Event`, with a
+  time, a level (`LevelInfo`, `LevelOutput`, `LevelNoop`, `LevelChanged`,
+  `LevelWarn`, `LevelError`), the resource ID, kind, operation and
+  description, a message and fields. A `Handler` receives them, and is
+  never called concurrently. `NewTextHandler` gives the output `Run` prints
 
 ### Changed
 
@@ -38,6 +45,11 @@ resources needs no change. Beyond that:
   and `DependencyFailed` are `StatusPending`, `StatusSuccess`, `StatusFailed`
   and `StatusDependencyFailed`. Their values, as they appear in `--json`, are
   unchanged
+- **`Logger` is backed by a `Handler`.** `NewLogger(handler, kind, operation)`
+  replaces `NewLogger`, `NewStandardLogger`, `NewQuietLogger` and
+  `NewSilentLogger`, and its fields take any value rather than only strings.
+  `Logger.Entries`, `Logger.Quiet`, `Logger.Silent`, `ResultCollector` and the
+  package-level `Log` are gone
 
 - **Importing viaduct no longer does anything.** Flags are parsed, system
   attributes are read and the temporary directory is created when they are

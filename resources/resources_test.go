@@ -13,7 +13,7 @@ var testLogger *viaduct.Logger
 
 func init() {
 	viaduct.Cli.SetSilent()
-	testLogger = viaduct.NewLogger("Test", "Testing")
+	testLogger = viaduct.NewLogger(nil, "Test", "Testing")
 }
 
 // assertMode checks the mode of a path

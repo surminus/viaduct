@@ -1,6 +1,7 @@
 package viaduct
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fatih/color"
 	flag "github.com/spf13/pflag"
 )
 
@@ -52,8 +54,28 @@ func (m *Manifest) runWith(flags CliFlags) int {
 		_ = removeTmpDir()
 	}()
 
+	var (
+		handler   Handler
+		collector *jsonCollector
+	)
+
+	switch {
+	case flags.JSON:
+		collector = newJSONCollector()
+		handler = collector
+	case flags.Silent:
+		handler = DiscardHandler
+	default:
+		handler = NewTextHandler(TextOptions{Stdout: flags.Stdout, Quiet: flags.Quiet})
+	}
+
+	// Shared by the resources and the run's own logger, so they never write
+	// at once
+	handler = serialise(handler)
+	m.handler = handler
+
 	if len(m.errs) > 0 {
-		l := NewLogger("Viaduct", "Compile")
+		l := NewLogger(handler, "Viaduct", "Compile")
 		for _, err := range m.errs {
 			l.Error(err.Error())
 		}
@@ -61,7 +83,7 @@ func (m *Manifest) runWith(flags CliFlags) int {
 		return 1
 	}
 
-	l := NewLogger("Viaduct", "Run")
+	l := NewLogger(handler, "Viaduct", "Run")
 
 	if _, err := LoadAttributes(); err != nil {
 		l.Error("attributes", "error", err.Error())
@@ -73,12 +95,8 @@ func (m *Manifest) runWith(flags CliFlags) int {
 	}
 
 	start := time.Now()
-	l.Info("started")
-	l.Info("preflight-checks")
-
-	if flags.JSON {
-		m.collector = newResultCollector()
-	}
+	l.progress("started")
+	l.progress("preflight-checks")
 
 	// A cycle can never make progress, so fail before any resource does work
 	// rather than waiting for the dependency timeout to notice.
@@ -89,7 +107,7 @@ func (m *Manifest) runWith(flags CliFlags) int {
 
 	var preflightFailed bool
 	for id, resource := range m.resources {
-		if err := resource.preflight(); err != nil {
+		if err := resource.preflight(handler); err != nil {
 			if r, ok := m.resources[id]; ok {
 				r.Err = err
 				r.Message = err.Error()
@@ -151,7 +169,7 @@ func (m *Manifest) runWith(flags CliFlags) int {
 		output := RunOutput{
 			Status:    status,
 			Duration:  timeTaken,
-			Resources: m.collector.Results(),
+			Resources: collector.resources(m.resources),
 			Failures:  failures,
 		}
 
@@ -169,7 +187,7 @@ func (m *Manifest) runWith(flags CliFlags) int {
 		if withErrors {
 			l.Warn("completed-with-errors", "duration", timeTaken)
 		} else {
-			l.Info("completed", "duration", timeTaken)
+			l.progress("completed", "duration", timeTaken)
 		}
 
 		if withErrors {
@@ -192,12 +210,12 @@ func (m *Manifest) runWith(flags CliFlags) int {
 			return 1
 		}
 
-		l.Info("manifest-written", "path", tmpName)
+		l.progress("manifest-written", "path", tmpName)
 	}
 
 	if withErrors {
 		if !flags.DumpManifest && !flags.JSON {
-			l.Info("hint", "msg", "to see all resources, run with --dump-manifest")
+			l.progress("hint", "msg", "to see all resources, run with --dump-manifest")
 		}
 		return 1
 	}
@@ -219,31 +237,178 @@ func flagsExit(err error, stderr io.Writer) (int, bool) {
 	}
 }
 
-// ResultCollector gathers per-resource results from concurrent goroutines.
-type ResultCollector struct {
-	mu      sync.Mutex
-	results []ResourceResult
+// TextOptions configures a TextHandler.
+type TextOptions struct {
+	// Stdout writes everything except warnings and errors to Out rather
+	// than Err. Command output keeps its own stream either way.
+	Stdout bool
+
+	// Quiet drops everything except warnings, errors and command output on
+	// stderr.
+	Quiet bool
+
+	// Out and Err are where output goes. The defaults are os.Stdout and
+	// os.Stderr.
+	Out, Err io.Writer
 }
 
-func newResultCollector() *ResultCollector {
-	return &ResultCollector{}
+// NewTextHandler returns the handler Run uses, which prints a line per event:
+//
+//	  OK  File [Create]          created path=/home/user/.bashrc
+//	  --  File [Create]          up-to-date path=/home/user/.bashrc
+//	FAIL  Execute [Run]          command failed command="echo hello"
+//
+// Command output is printed as it is, to the stream it came from.
+func NewTextHandler(o TextOptions) Handler {
+	if o.Out == nil {
+		o.Out = os.Stdout
+	}
+
+	if o.Err == nil {
+		o.Err = os.Stderr
+	}
+
+	return &textHandler{o: o}
 }
 
-func (c *ResultCollector) Add(r ResourceResult) {
-	c.mu.Lock()
-	c.results = append(c.results, r)
-	c.mu.Unlock()
+type textHandler struct {
+	o TextOptions
 }
 
-func (c *ResultCollector) Results() []ResourceResult {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (h *textHandler) Handle(_ context.Context, e Event) {
+	info := h.o.Err
+	if h.o.Stdout {
+		info = h.o.Out
+	}
 
-	out := make([]ResourceResult, len(c.results))
-	copy(out, c.results)
+	switch e.Level {
+	case LevelOutput:
+		stream, _ := e.Field("stream")
+		if stream == Stdout {
+			if !h.o.Quiet {
+				fmt.Fprintln(h.o.Out, e.Message)
+			}
+		} else {
+			fmt.Fprintln(h.o.Err, e.Message)
+		}
+	case LevelInfo:
+		if !h.o.Quiet {
+			fmt.Fprintln(info, formatLine(okTag, e))
+		}
+	case LevelChanged:
+		if !h.o.Quiet {
+			fmt.Fprintln(info, formatLine(okTag, e))
+		}
+	case LevelNoop:
+		if !h.o.Quiet {
+			fmt.Fprintln(info, formatLine(noopTag, e))
+		}
+	case LevelWarn:
+		fmt.Fprintln(h.o.Err, formatLine(warnTag, e))
+	case LevelError:
+		fmt.Fprintln(h.o.Err, formatLine(failTag, e))
+	}
+}
+
+// resourceActionWidth is the width of the "Kind [Operation]" column.
+const resourceActionWidth = 22
+
+// formatLine builds a human-readable output line:
+//
+//	  OK  File [Create] created path=/home/user/.bashrc
+//	  --  File [Create] up-to-date path=/home/user/.bashrc
+//	FAIL  Execute [Run] command failed command="echo hello"
+func formatLine(tag string, e Event) string {
+	var b strings.Builder
+
+	ra := fmt.Sprintf("%s [%s]", e.Kind, e.Operation)
+	fmt.Fprintf(&b, "%s  %-*s %s", tag, resourceActionWidth, ra, e.Message)
+
+	for _, f := range e.Fields {
+		fmt.Fprintf(&b, " %s=%s", f.Key, quoteIfNeeded(fmt.Sprint(f.Value)))
+	}
+
+	return b.String()
+}
+
+// quoteIfNeeded wraps a value in double quotes if it contains spaces or
+// special characters.
+func quoteIfNeeded(v string) string {
+	if strings.ContainsAny(v, " \t\n\"=") {
+		return fmt.Sprintf("%q", v)
+	}
+	return v
+}
+
+var (
+	okTag   = color.New(color.FgGreen).Sprintf("%4s", "OK")
+	noopTag = color.New(color.FgBlue, color.Faint).Sprintf("%4s", "--")
+	warnTag = color.New(color.FgYellow).Sprintf("%4s", "WARN")
+	failTag = color.New(color.FgRed).Sprintf("%4s", "FAIL")
+)
+
+// LogEntry is a single event in the JSON output of Run.
+type LogEntry struct {
+	Level   string            `json:"level"`
+	Message string            `json:"msg"`
+	Fields  map[string]string `json:"fields,omitempty"`
+}
+
+// jsonCollector keeps each resource's events for the JSON output of Run.
+// Command output and events about the run itself are left out.
+type jsonCollector struct {
+	entries map[ResourceID][]LogEntry
+}
+
+func newJSONCollector() *jsonCollector {
+	return &jsonCollector{entries: make(map[ResourceID][]LogEntry)}
+}
+
+var jsonLevels = map[Level]string{
+	LevelChanged: "OK",
+	LevelNoop:    "NOOP",
+	LevelWarn:    "WARN",
+	LevelError:   "ERR",
+}
+
+func (c *jsonCollector) Handle(_ context.Context, e Event) {
+	level, ok := jsonLevels[e.Level]
+	if !ok || e.ResourceID == "" {
+		return
+	}
+
+	entry := LogEntry{Level: level, Message: e.Message}
+
+	if len(e.Fields) > 0 {
+		entry.Fields = make(map[string]string, len(e.Fields))
+		for _, f := range e.Fields {
+			entry.Fields[f.Key] = fmt.Sprint(f.Value)
+		}
+	}
+
+	c.entries[e.ResourceID] = append(c.entries[e.ResourceID], entry)
+}
+
+// resources returns a result for each resource, sorted by ID.
+func (c *jsonCollector) resources(rs map[ResourceID]Resource) []ResourceResult {
+	out := make([]ResourceResult, 0, len(rs))
+
+	for _, r := range rs {
+		out = append(out, ResourceResult{
+			ResourceID:   string(r.ResourceID),
+			ResourceKind: string(r.ResourceKind),
+			Description:  r.Attributes.Description(),
+			Operation:    r.Attributes.OperationName(),
+			Status:       string(r.Status),
+			Error:        r.Message,
+			Log:          c.entries[r.ResourceID],
+		})
+	}
+
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].ResourceID < out[j].ResourceID
 	})
+
 	return out
 }
 

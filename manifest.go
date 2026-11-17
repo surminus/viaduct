@@ -42,7 +42,8 @@ const (
 // Manifest is a map of resources to allow concurrent runs
 type Manifest struct {
 	resources map[ResourceID]Resource
-	collector *ResultCollector
+	// handler receives the events of the run.
+	handler Handler
 
 	// resourceTimeout is the manifest-wide timeout for a single resource.
 	// Zero uses defaultResourceTimeout.
@@ -292,7 +293,7 @@ func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, loc
 	}
 
 	// Run the resource operation, bounded by its own timeout
-	logger, runErr := r.run(m.timeoutFor(&r))
+	runErr := r.run(m.handler, m.timeoutFor(&r))
 	if runErr != nil {
 		if errors.Is(runErr, errAbandoned) {
 			// The operation is still going and the machine is in a state we no
@@ -306,25 +307,6 @@ func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, loc
 	} else {
 		m.setStatus(&r, lock, StatusSuccess)
 	}
-
-	if m.collector != nil {
-		status := string(StatusSuccess)
-		errMsg := ""
-		if runErr != nil {
-			status = string(StatusFailed)
-			errMsg = runErr.Error()
-		}
-
-		m.collector.Add(ResourceResult{
-			ResourceID:   string(r.ResourceID),
-			ResourceKind: string(r.ResourceKind),
-			Description:  r.Attributes.Description(),
-			Operation:    r.Attributes.OperationName(),
-			Status:       status,
-			Error:        errMsg,
-			Log:          logger.Entries(),
-		})
-	}
 }
 
 // abandonedErr reports why nothing further should start, once the run has given
@@ -337,22 +319,10 @@ func (m *Manifest) abandonedErr() error {
 	return nil
 }
 
-// fail records a resource failure, along with its result when collecting for
-// JSON output.
+// fail records a resource failure.
 func (m *Manifest) fail(r *Resource, lock *sync.RWMutex, status Status, err error) {
 	m.setStatus(r, lock, status)
 	m.setError(r, lock, err)
-
-	if m.collector != nil {
-		m.collector.Add(ResourceResult{
-			ResourceID:   string(r.ResourceID),
-			ResourceKind: string(r.ResourceKind),
-			Description:  r.Attributes.Description(),
-			Operation:    r.Attributes.OperationName(),
-			Status:       string(status),
-			Error:        err.Error(),
-		})
-	}
 }
 
 // dependencyCheck blocks until every dependency of the resource has succeeded,

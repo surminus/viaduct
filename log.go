@@ -1,225 +1,250 @@
 package viaduct
 
 import (
+	"context"
 	"fmt"
-	"io"
-	"os"
-	"strings"
 	"sync"
-
-	"github.com/fatih/color"
+	"time"
 )
 
-// infoWriter returns the destination for non-error output. By default this is
-// STDERR, but the --stdout flag (or VIADUCT_STDOUT) routes it to STDOUT.
-// Errors always go to STDERR.
-func infoWriter() io.Writer {
-	if Cli.Stdout {
-		return os.Stdout
-	}
-	return os.Stderr
-}
+// Level is the kind of event a resource or the run reports.
+type Level int
 
-// LogEntry captures a single structured log call.
-type LogEntry struct {
-	Level   string            `json:"level"`
-	Message string            `json:"msg"`
-	Fields  map[string]string `json:"fields,omitempty"`
-}
+const (
+	// LevelInfo is progress of the run itself, such as starting or finishing.
+	LevelInfo Level = iota
 
-// Logger provides structured Viaduct log output.
-type Logger struct {
-	// Resource is the resource type, such as File or Git.
-	Resource string
+	// LevelOutput is a line of command output. The "stream" field is Stdout
+	// or Stderr.
+	LevelOutput
 
-	// Action is the operation, such as Create or Delete.
-	Action string
+	// LevelNoop is a resource finding something already as it should be.
+	LevelNoop
 
-	// Quiet suppresses OK and NOOP output, shows WARN and ERR.
-	Quiet bool
+	// LevelChanged is a resource changing something, or in a dry run, a
+	// change it would have made.
+	LevelChanged
 
-	// Silent suppresses all output except FATAL.
-	Silent bool
+	// LevelWarn is something worth knowing that did not stop the resource.
+	LevelWarn
 
-	// jsonMode buffers entries instead of printing.
-	jsonMode bool
+	// LevelError is a failure.
+	LevelError
+)
 
-	// mu guards entries. A resource that outlives its timeout keeps logging
-	// after the run has moved on, so writes can overlap a read.
-	mu sync.Mutex
-
-	// entries collects log entries in JSON mode.
-	entries []LogEntry
-}
-
-// addEntry buffers an entry in JSON mode.
-func (l *Logger) addEntry(level, msg string, fields []string) {
-	l.mu.Lock()
-	l.entries = append(l.entries, newEntry(level, msg, fields))
-	l.mu.Unlock()
-}
-
-// Log emits a user-level message.
-func Log(msg string, fields ...string) {
-	l := NewLogger("Viaduct", "User")
-	if l.Silent || l.Quiet || l.jsonMode {
-		return
-	}
-	l.Info(msg, fields...)
-}
-
-func NewLogger(resource, action string) *Logger {
-	if Cli.JSON {
-		return &Logger{Resource: resource, Action: action, jsonMode: true}
-	}
-
-	if Cli.Silent {
-		return NewSilentLogger()
-	}
-
-	if Cli.Quiet {
-		return NewQuietLogger(resource, action)
-	}
-
-	return &Logger{
-		Resource: resource,
-		Action:   action,
+// String returns the lower case name of the level.
+func (l Level) String() string {
+	switch l {
+	case LevelInfo:
+		return "info"
+	case LevelOutput:
+		return "output"
+	case LevelNoop:
+		return "noop"
+	case LevelChanged:
+		return "changed"
+	case LevelWarn:
+		return "warn"
+	case LevelError:
+		return "error"
+	default:
+		return fmt.Sprintf("level(%d)", int(l))
 	}
 }
 
-func NewStandardLogger(resource, action string) *Logger {
-	return &Logger{
-		Resource: resource,
-		Action:   action,
-	}
+// Output streams, as the value of the "stream" field on a LevelOutput event.
+const (
+	Stdout = "stdout"
+	Stderr = "stderr"
+)
+
+// Field is a key and value attached to an event.
+type Field struct {
+	Key   string
+	Value any
 }
 
-func NewQuietLogger(resource, action string) *Logger {
-	return &Logger{
-		Resource: resource,
-		Action:   action,
-		Quiet:    true,
-	}
+// Event is a single thing a resource or the run reports.
+type Event struct {
+	Time  time.Time
+	Level Level
+
+	// ResourceID is empty for events about the run itself.
+	ResourceID ResourceID
+
+	// Kind is the resource kind, such as "File", or "Viaduct" for events
+	// about the run itself.
+	Kind ResourceKind
+
+	// Operation is what the resource is doing, such as "Create", or "Run"
+	// for events about the run itself.
+	Operation string
+
+	// Description identifies the resource, such as a file path.
+	Description string
+
+	Message string
+	Fields  []Field
 }
 
-func NewSilentLogger() *Logger {
-	return &Logger{Silent: true}
-}
-
-// Entries returns the buffered log entries (for JSON mode).
-func (l *Logger) Entries() []LogEntry {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	out := make([]LogEntry, len(l.entries))
-	copy(out, l.entries)
-
-	return out
-}
-
-// Info logs that an action was taken. Suppressed in Quiet and Silent modes.
-func (l *Logger) Info(msg string, fields ...string) {
-	if l.jsonMode {
-		l.addEntry("OK", msg, fields)
-		return
-	}
-
-	if l.Silent || l.Quiet {
-		return
-	}
-
-	fmt.Fprintln(infoWriter(), formatLine(okTag, l.Resource, l.Action, msg, fields))
-}
-
-// Noop logs that a resource is already in the desired state.
-// Suppressed in Quiet and Silent modes.
-func (l *Logger) Noop(msg string, fields ...string) {
-	if l.jsonMode {
-		l.addEntry("NOOP", msg, fields)
-		return
-	}
-
-	if l.Silent || l.Quiet {
-		return
-	}
-
-	fmt.Fprintln(infoWriter(), formatLine(noopTag, l.Resource, l.Action, msg, fields))
-}
-
-// Warn logs a warning message. Suppressed only in Silent mode.
-func (l *Logger) Warn(msg string, fields ...string) {
-	if l.jsonMode {
-		l.addEntry("WARN", msg, fields)
-		return
-	}
-
-	if l.Silent {
-		return
-	}
-
-	fmt.Fprintln(os.Stderr, formatLine(warnTag, l.Resource, l.Action, msg, fields))
-}
-
-// Error logs an error message. Suppressed only in Silent mode.
-func (l *Logger) Error(msg string, fields ...string) {
-	if l.jsonMode {
-		l.addEntry("ERR", msg, fields)
-		return
-	}
-
-	if l.Silent {
-		return
-	}
-
-	fmt.Fprintln(os.Stderr, formatLine(failTag, l.Resource, l.Action, msg, fields))
-}
-
-func newEntry(level, msg string, fields []string) LogEntry {
-	entry := LogEntry{
-		Level:   level,
-		Message: msg,
-	}
-
-	if len(fields) >= 2 {
-		entry.Fields = make(map[string]string)
-		for i := 0; i+1 < len(fields); i += 2 {
-			entry.Fields[fields[i]] = fields[i+1]
+// Field returns the value of the first field with the given key, and whether
+// there was one.
+func (e Event) Field(key string) (any, bool) {
+	for _, f := range e.Fields {
+		if f.Key == key {
+			return f.Value, true
 		}
 	}
 
-	return entry
+	return nil, false
 }
 
-// formatLine builds a human-readable output line:
-//
-//	  OK  File [Create] created path=/home/user/.bashrc
-//	  --  File [Create] up-to-date path=/home/user/.bashrc
-//	FAIL  Execute [Run] command failed command="echo hello"
-const resourceActionWidth = 22
+// Handler receives the events from a run. Handle is not called concurrently
+// within a run, so a handler needs its own locking only if shared between
+// runs.
+type Handler interface {
+	Handle(ctx context.Context, e Event)
+}
 
-func formatLine(tag, resource, action, msg string, fields []string) string {
-	var b strings.Builder
+// HandlerFunc adapts a function to a Handler.
+type HandlerFunc func(ctx context.Context, e Event)
 
-	ra := fmt.Sprintf("%s [%s]", resource, action)
-	fmt.Fprintf(&b, "%s  %-*s %s", tag, resourceActionWidth, ra, msg)
+// Handle calls f.
+func (f HandlerFunc) Handle(ctx context.Context, e Event) {
+	f(ctx, e)
+}
 
-	for i := 0; i+1 < len(fields); i += 2 {
-		fmt.Fprintf(&b, " %s=%s", fields[i], quoteIfNeeded(fields[i+1]))
+// DiscardHandler drops every event.
+var DiscardHandler Handler = HandlerFunc(func(context.Context, Event) {})
+
+// serialHandler stops a handler being called concurrently.
+type serialHandler struct {
+	mu sync.Mutex
+	h  Handler
+}
+
+func (s *serialHandler) Handle(ctx context.Context, e Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.h.Handle(ctx, e)
+}
+
+// serialise wraps a handler to serialise its calls.
+func serialise(h Handler) Handler {
+	if h == nil {
+		return DiscardHandler
 	}
 
-	return b.String()
-}
-
-// quoteIfNeeded wraps a value in double quotes if it contains spaces or
-// special characters.
-func quoteIfNeeded(v string) string {
-	if strings.ContainsAny(v, " \t\n\"=") {
-		return fmt.Sprintf("%q", v)
+	if _, ok := h.(*serialHandler); ok {
+		return h
 	}
-	return v
+
+	return &serialHandler{h: h}
 }
 
-var okTag = color.New(color.FgGreen).Sprintf("%4s", "OK")
-var noopTag = color.New(color.FgBlue, color.Faint).Sprintf("%4s", "--")
-var warnTag = color.New(color.FgYellow).Sprintf("%4s", "WARN")
-var failTag = color.New(color.FgRed).Sprintf("%4s", "FAIL")
+// Logger reports what a resource does. Apply gives each resource its own.
+// Every method of a nil Logger does nothing.
+type Logger struct {
+	ctx     context.Context
+	handler Handler
+
+	id          ResourceID
+	kind        ResourceKind
+	operation   string
+	description string
+}
+
+// NewLogger returns a logger that sends events to h, attributed to the given
+// kind and operation. Apply creates each resource's logger, so this is for
+// testing a resource or using one outside a manifest. A nil handler drops
+// every event.
+func NewLogger(h Handler, kind, operation string) *Logger {
+	return &Logger{
+		ctx:       context.Background(),
+		handler:   serialise(h),
+		kind:      ResourceKind(kind),
+		operation: operation,
+	}
+}
+
+// newResourceLogger returns the logger for one attempt at a resource.
+func newResourceLogger(ctx context.Context, h Handler, r *Resource, operation string) *Logger {
+	return &Logger{
+		ctx:         ctx,
+		handler:     h,
+		id:          r.ResourceID,
+		kind:        r.ResourceKind,
+		operation:   operation,
+		description: r.Attributes.Description(),
+	}
+}
+
+// Info logs a change the resource made, or in a dry run, a change it would
+// have made.
+func (l *Logger) Info(msg string, fields ...any) {
+	l.emit(LevelChanged, msg, fields)
+}
+
+// Noop logs that something is already as it should be.
+func (l *Logger) Noop(msg string, fields ...any) {
+	l.emit(LevelNoop, msg, fields)
+}
+
+// Warn logs something worth knowing that does not stop the resource.
+func (l *Logger) Warn(msg string, fields ...any) {
+	l.emit(LevelWarn, msg, fields)
+}
+
+// Error logs a failure.
+func (l *Logger) Error(msg string, fields ...any) {
+	l.emit(LevelError, msg, fields)
+}
+
+// progress logs the progress of the run itself.
+func (l *Logger) progress(msg string, fields ...any) {
+	l.emit(LevelInfo, msg, fields)
+}
+
+func (l *Logger) emit(level Level, msg string, kv []any) {
+	if l == nil {
+		return
+	}
+
+	l.handler.Handle(l.ctx, Event{
+		Time:        time.Now(),
+		Level:       level,
+		ResourceID:  l.id,
+		Kind:        l.kind,
+		Operation:   l.operation,
+		Description: l.description,
+		Message:     msg,
+		Fields:      fieldsOf(kv),
+	})
+}
+
+// fieldsOf pairs alternating keys and values. Non-string keys are formatted,
+// and a key without a value gets an empty one.
+func fieldsOf(kv []any) []Field {
+	if len(kv) == 0 {
+		return nil
+	}
+
+	fields := make([]Field, 0, (len(kv)+1)/2)
+
+	for i := 0; i < len(kv); i += 2 {
+		key, ok := kv[i].(string)
+		if !ok {
+			key = fmt.Sprint(kv[i])
+		}
+
+		var value any = ""
+		if i+1 < len(kv) {
+			value = kv[i+1]
+		}
+
+		fields = append(fields, Field{Key: key, Value: value})
+	}
+
+	return fields
+}

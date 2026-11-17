@@ -1,6 +1,7 @@
 package viaduct
 
 import (
+	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -165,8 +166,8 @@ func (r *Resource) setID() error {
 	return nil
 }
 
-func (r *Resource) preflight() error {
-	log := NewLogger(string(r.ResourceKind), "Preflight")
+func (r *Resource) preflight(h Handler) error {
+	log := newResourceLogger(context.Background(), h, r, "Preflight")
 	return r.Attributes.PreflightChecks(log)
 }
 
@@ -177,11 +178,11 @@ func (r *Resource) preflight() error {
 // abandoned resource carries on in the background: giving up means the run
 // stops waiting for it and reports it as failed, not that whatever it was
 // doing has stopped.
-func (r *Resource) run(timeout time.Duration) (*Logger, error) {
-	log := NewLogger(string(r.ResourceKind), r.Attributes.OperationName())
+func (r *Resource) run(h Handler, timeout time.Duration) error {
+	log := newResourceLogger(context.Background(), h, r, r.Attributes.OperationName())
 
 	if timeout <= 0 {
-		return log, r.Attributes.Run(log)
+		return r.Attributes.Run(log)
 	}
 
 	done := make(chan error, 1)
@@ -191,9 +192,9 @@ func (r *Resource) run(timeout time.Duration) (*Logger, error) {
 
 	select {
 	case err := <-done:
-		return log, err
+		return err
 	case <-time.After(timeout):
-		return log, fmt.Errorf(
+		return fmt.Errorf(
 			"%w after %s: the operation was abandoned and may still be running. Raise the limit with WithTimeout, SetResourceTimeout or --resource-timeout",
 			errAbandoned,
 			timeout,
