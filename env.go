@@ -64,3 +64,14 @@ func (e Env) Path(path string) string {
 func (e Env) IsRoot() bool {
 	return e.Root != "" || IsRoot()
 }
+
+// ResolveSymlink is ResolveSymlink for a path a resource reads or writes. It
+// applies Path, and with Root set, an absolute symlink is resolved from Root
+// rather than from "/", and ".." cannot climb above it.
+func (e Env) ResolveSymlink(path string) (string, error) {
+	if e.Root == "" || !filepath.IsAbs(path) {
+		return ResolveSymlink(path)
+	}
+
+	return resolveIn(e.Root, e.Path(path))
+}

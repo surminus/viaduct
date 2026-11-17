@@ -87,6 +87,15 @@ resources needs no change. Beyond that:
   returns the last result of each resource
 - `Skip(reason)`, returned by a resource with nothing to do, gives it the new
   `StatusSkipped` status. Anything depending on it runs
+- `WriteFileAtomic`, which replaces a file through a temporary file in the
+  same directory, synced and renamed, keeping its mode, including setuid,
+  setgid and sticky bits, and its ownership. `WriteAtomic` does the same for
+  content streamed by a function, and `ResolveSymlink` returns the file
+  either of them writes. A symlink is followed, at the path, in a directory
+  above it or in what another link points to, only when the effective user or
+  root owns it. Running as root, a link another user made is refused.
+  `Env.ResolveSymlink` resolves a path under `Env.Root`, so an absolute link
+  there stays under it
 - `AllowFailure` lets a resource fail without failing the run. The failure is in
   its result, marked `AllowFailure`, and logged as a warning. Resources that
   depend on it do not run: they are `StatusDependencyFailed`, and fail the run
