@@ -37,7 +37,7 @@ type Resource struct {
 	// LockKey narrows the lock to a single domain, so the resource only
 	// waits for other resources using the same key. Empty means the
 	// resource is serialised against every other lock holder.
-	LockKey string `json:"LockKey,omitempty"`
+	LockKey LockKey `json:"LockKey,omitempty"`
 	// Timeout overrides how long this resource is given to run. Zero uses
 	// the manifest setting, and a negative duration means no timeout.
 	Timeout time.Duration `json:"Timeout,omitempty"`
@@ -61,7 +61,7 @@ type ResourceParams struct {
 	// PasswdLock. The resource then only waits for other resources using the
 	// same key, rather than for every lock holder in the run. Setting a key
 	// implies a lock.
-	LockKey string
+	LockKey LockKey
 }
 
 // NewResourceParams creates a new ResourceParams.
@@ -79,7 +79,7 @@ func NewResourceParamsWithLock() *ResourceParams {
 
 // NewResourceParamsWithLockKey creates a new ResourceParams with a lock that
 // only applies to the given domain, such as PackageLock or PasswdLock.
-func NewResourceParamsWithLockKey(key string) *ResourceParams {
+func NewResourceParamsWithLockKey(key LockKey) *ResourceParams {
 	return &ResourceParams{GlobalLock: true, LockKey: key}
 }
 
@@ -121,7 +121,7 @@ func newResource(deps []*Resource) (*Resource, error) {
 
 	return &Resource{
 		DependsOn: dependsOn,
-		Status:    Pending,
+		Status:    StatusPending,
 	}, nil
 }
 
@@ -202,5 +202,5 @@ func (r *Resource) run(timeout time.Duration) (*Logger, error) {
 }
 
 func (r *Resource) Failed() bool {
-	return r.Status == Failed || r.Status == DependencyFailed
+	return r.Status == StatusFailed || r.Status == StatusDependencyFailed
 }

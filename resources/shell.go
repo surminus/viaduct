@@ -43,7 +43,7 @@ type Shell struct {
 	// LockKey narrows the lock to a single domain, such as
 	// viaduct.PackageLock, so the script only waits for other resources using
 	// the same key. Implies Lock. Optional.
-	LockKey string
+	LockKey viaduct.LockKey
 }
 
 // Bash runs a script with bash

@@ -20,7 +20,7 @@ func TestSetName(t *testing.T) {
 		ResourceID("test-name"): {
 			Attributes:   testResource,
 			ResourceID:   "test-name",
-			Status:       Pending,
+			Status:       StatusPending,
 			ResourceKind: ResourceKind("testResourceType"),
 		},
 	}
@@ -40,7 +40,7 @@ func TestSetDep(t *testing.T) {
 			Attributes:   testResource,
 			DependsOn:    []ResourceID{"test-dep"},
 			ResourceID:   r.ResourceID,
-			Status:       Pending,
+			Status:       StatusPending,
 			ResourceKind: ResourceKind("testResourceType"),
 		},
 	}
@@ -60,7 +60,7 @@ func TestWithLock(t *testing.T) {
 			Attributes:   testResource,
 			GlobalLock:   true,
 			ResourceID:   r.ResourceID,
-			Status:       Pending,
+			Status:       StatusPending,
 			ResourceKind: ResourceKind("testResourceType"),
 		},
 	}
@@ -81,7 +81,7 @@ func TestWithLockKey(t *testing.T) {
 			GlobalLock:   true,
 			LockKey:      PackageLock,
 			ResourceID:   r.ResourceID,
-			Status:       Pending,
+			Status:       StatusPending,
 			ResourceKind: ResourceKind("testResourceType"),
 		},
 	}
@@ -116,7 +116,7 @@ func TestAddResource(t *testing.T) {
 				Attributes:   testResource,
 				DependsOn:    []ResourceID{ResourceID("test")},
 				ResourceID:   id,
-				Status:       Pending,
+				Status:       StatusPending,
 				ResourceKind: "testResourceType",
 			}
 
@@ -193,7 +193,7 @@ func TestAddResource(t *testing.T) {
 				DependsOn:    []ResourceID{ResourceID("test")},
 				GlobalLock:   true,
 				ResourceID:   id,
-				Status:       Pending,
+				Status:       StatusPending,
 				ResourceKind: ResourceKind("testResourceType"),
 			}
 
@@ -414,7 +414,7 @@ func TestDependencyCheck(t *testing.T) {
 
 		go func() {
 			time.Sleep(20 * time.Millisecond)
-			m.setStatus(a, &lock, Success)
+			m.setStatus(a, &lock, StatusSuccess)
 		}()
 
 		r := m.resources[b.ResourceID]
@@ -427,7 +427,7 @@ func TestDependencyCheck(t *testing.T) {
 		b := m.Add(newTestResource("b"), a)
 
 		var lock sync.RWMutex
-		m.setStatus(a, &lock, Failed)
+		m.setStatus(a, &lock, StatusFailed)
 
 		r := m.resources[b.ResourceID]
 		err := m.dependencyCheck(&r, &lock)
@@ -448,7 +448,7 @@ func TestDependencyCheck(t *testing.T) {
 
 		go func() {
 			time.Sleep(100 * time.Millisecond)
-			m.setStatus(a, &lock, Success)
+			m.setStatus(a, &lock, StatusSuccess)
 		}()
 
 		r := m.resources[b.ResourceID]
@@ -475,7 +475,7 @@ func TestResourceTimeout(t *testing.T) {
 		// The failure is reported against the resource that overran, rather
 		// than against whatever happened to be waiting for it
 		stored := m.resources[r.ResourceID]
-		assert.Equal(t, Failed, stored.Status)
+		assert.Equal(t, StatusFailed, stored.Status)
 		assert.Contains(t, stored.Message, "timed out after 20ms")
 		assert.Contains(t, stored.Message, "may still be running")
 	})
@@ -497,8 +497,8 @@ func TestResourceTimeout(t *testing.T) {
 		go m.apply(m.resources[b.ResourceID], &wg, &lock, newLockSet())
 		wg.Wait()
 
-		assert.Equal(t, Failed, m.resources[a.ResourceID].Status)
-		assert.Equal(t, DependencyFailed, m.resources[b.ResourceID].Status)
+		assert.Equal(t, StatusFailed, m.resources[a.ResourceID].Status)
+		assert.Equal(t, StatusDependencyFailed, m.resources[b.ResourceID].Status)
 
 		// Both are reported, with the overrun as the root of the failure
 		failures := collectFailures(m.resources)
@@ -531,7 +531,7 @@ func TestResourceTimeout(t *testing.T) {
 		// The abandoned operation is still running and still holds whatever it
 		// locked, so the rest of the run does not go near it
 		assert.False(t, later.ran.Load())
-		assert.Equal(t, DependencyFailed, m.resources[b.ResourceID].Status)
+		assert.Equal(t, StatusDependencyFailed, m.resources[b.ResourceID].Status)
 		assert.Contains(t, m.resources[b.ResourceID].Message, "not started")
 		assert.Contains(t, m.resources[b.ResourceID].Message, string(a.ResourceID))
 	})
@@ -548,7 +548,7 @@ func TestResourceTimeout(t *testing.T) {
 		m.apply(*r, &wg, &lock, newLockSet())
 		wg.Wait()
 
-		assert.Equal(t, Success, m.resources[r.ResourceID].Status)
+		assert.Equal(t, StatusSuccess, m.resources[r.ResourceID].Status)
 		assert.NoError(t, m.resources[r.ResourceID].Err)
 	})
 
@@ -571,7 +571,7 @@ func TestResourceTimeout(t *testing.T) {
 		m.apply(*r, &wg, &lock, newLockSet())
 		wg.Wait()
 
-		assert.Equal(t, Success, m.resources[r.ResourceID].Status)
+		assert.Equal(t, StatusSuccess, m.resources[r.ResourceID].Status)
 	})
 }
 
@@ -612,14 +612,14 @@ func TestCollectFailures(t *testing.T) {
 			"file-1": {
 				ResourceID:   "file-1",
 				ResourceKind: "File",
-				Status:       Failed,
+				Status:       StatusFailed,
 				Attributes:   testResource,
 				Error:        Error{Err: fmt.Errorf("permission denied"), Message: "permission denied"},
 			},
 			"git-1": {
 				ResourceID:   "git-1",
 				ResourceKind: "Git",
-				Status:       Success,
+				Status:       StatusSuccess,
 				Attributes:   testResource,
 			},
 		}
@@ -639,14 +639,14 @@ func TestCollectFailures(t *testing.T) {
 			"file-1": {
 				ResourceID:   "file-1",
 				ResourceKind: "File",
-				Status:       Failed,
+				Status:       StatusFailed,
 				Attributes:   testResource,
 				Error:        Error{Err: fmt.Errorf("permission denied"), Message: "permission denied"},
 			},
 			"git-1": {
 				ResourceID:   "git-1",
 				ResourceKind: "Git",
-				Status:       DependencyFailed,
+				Status:       StatusDependencyFailed,
 				DependsOn:    []ResourceID{"file-1"},
 				Attributes:   testResource,
 				Error:        Error{Err: fmt.Errorf("upstream dependency file-1 returned an error"), Message: "upstream dependency file-1 returned an error"},
@@ -654,7 +654,7 @@ func TestCollectFailures(t *testing.T) {
 			"exec-1": {
 				ResourceID:   "exec-1",
 				ResourceKind: "Execute",
-				Status:       DependencyFailed,
+				Status:       StatusDependencyFailed,
 				DependsOn:    []ResourceID{"file-1"},
 				Attributes:   testResource,
 				Error:        Error{Err: fmt.Errorf("upstream dependency file-1 returned an error"), Message: "upstream dependency file-1 returned an error"},
@@ -674,14 +674,14 @@ func TestCollectFailures(t *testing.T) {
 			"file-1": {
 				ResourceID:   "file-1",
 				ResourceKind: "File",
-				Status:       Failed,
+				Status:       StatusFailed,
 				Attributes:   testResource,
 				Error:        Error{Err: fmt.Errorf("permission denied"), Message: "permission denied"},
 			},
 			"git-1": {
 				ResourceID:   "git-1",
 				ResourceKind: "Git",
-				Status:       DependencyFailed,
+				Status:       StatusDependencyFailed,
 				DependsOn:    []ResourceID{"file-1"},
 				Attributes:   testResource,
 				Error:        Error{Err: fmt.Errorf("upstream"), Message: "upstream"},
@@ -689,7 +689,7 @@ func TestCollectFailures(t *testing.T) {
 			"exec-1": {
 				ResourceID:   "exec-1",
 				ResourceKind: "Execute",
-				Status:       DependencyFailed,
+				Status:       StatusDependencyFailed,
 				DependsOn:    []ResourceID{"git-1"},
 				Attributes:   testResource,
 				Error:        Error{Err: fmt.Errorf("upstream"), Message: "upstream"},
@@ -709,14 +709,14 @@ func TestCollectFailures(t *testing.T) {
 			"file-1": {
 				ResourceID:   "file-1",
 				ResourceKind: "File",
-				Status:       Failed,
+				Status:       StatusFailed,
 				Attributes:   testResource,
 				Error:        Error{Err: fmt.Errorf("error 1"), Message: "error 1"},
 			},
 			"file-2": {
 				ResourceID:   "file-2",
 				ResourceKind: "File",
-				Status:       Failed,
+				Status:       StatusFailed,
 				Attributes:   testResource,
 				Error:        Error{Err: fmt.Errorf("error 2"), Message: "error 2"},
 			},
@@ -735,13 +735,13 @@ func TestCollectFailures(t *testing.T) {
 			"file-1": {
 				ResourceID:   "file-1",
 				ResourceKind: "File",
-				Status:       Success,
+				Status:       StatusSuccess,
 				Attributes:   testResource,
 			},
 			"exec-1": {
 				ResourceID:   "exec-1",
 				ResourceKind: "Execute",
-				Status:       DependencyFailed,
+				Status:       StatusDependencyFailed,
 				DependsOn:    []ResourceID{"file-1"},
 				Attributes:   testResource,
 				Error:        Error{Err: fmt.Errorf("gave up waiting"), Message: "gave up waiting"},
@@ -763,7 +763,7 @@ func TestCollectFailures(t *testing.T) {
 			"exec-1": {
 				ResourceID:   "exec-1",
 				ResourceKind: "Execute",
-				Status:       Pending,
+				Status:       StatusPending,
 				Attributes:   testResource,
 				Error:        Error{Err: fmt.Errorf("something went wrong"), Message: "something went wrong"},
 			},
@@ -782,7 +782,7 @@ func TestCollectFailures(t *testing.T) {
 			"file-1": {
 				ResourceID:   "file-1",
 				ResourceKind: "File",
-				Status:       Success,
+				Status:       StatusSuccess,
 				Attributes:   testResource,
 			},
 		}
@@ -808,7 +808,7 @@ func TestRun(t *testing.T) {
 		m.Run()
 
 		for _, r := range m.resources {
-			assert.Equal(t, Success, r.Status, r.ResourceID)
+			assert.Equal(t, StatusSuccess, r.Status, r.ResourceID)
 		}
 	})
 }

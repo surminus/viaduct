@@ -37,7 +37,7 @@ type Execute struct {
 	// LockKey narrows the lock to a single domain, such as
 	// viaduct.PackageLock, so the command only waits for other resources
 	// using the same key. Implies Lock. Optional.
-	LockKey string
+	LockKey viaduct.LockKey
 }
 
 // Exec is a shortcut for running a command

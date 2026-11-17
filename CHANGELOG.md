@@ -2,6 +2,27 @@
 
 A configuration management framework written in Go.
 
+## v1.0.0 (unreleased)
+
+### Upgrading from v0.8.0
+
+A manifest that only uses `New`, `Add`, `Chain` and `Run` with the standard
+resources needs no change. Beyond that:
+- `Pending`, `Success`, `Failed` and `DependencyFailed` become
+  `StatusPending`, `StatusSuccess`, `StatusFailed` and
+  `StatusDependencyFailed`, and a lock key is a `viaduct.LockKey`
+
+### Changed
+
+- **Lock keys have their own type, `LockKey`.** `PackageLock` and
+  `PasswdLock` are `LockKey` constants, and `WithLockKey`,
+  `NewResourceParamsWithLockKey` and the `LockKey` fields take one. A
+  custom key is written as `viaduct.LockKey("name")`
+- **Status constants have a `Status` prefix.** `Pending`, `Success`, `Failed`
+  and `DependencyFailed` are `StatusPending`, `StatusSuccess`, `StatusFailed`
+  and `StatusDependencyFailed`. Their values, as they appear in `--json`, are
+  unchanged
+
 ## v0.8.0
 
 ### Added

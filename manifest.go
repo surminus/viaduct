@@ -25,14 +25,22 @@ const (
 	dependencyPollInterval = 10 * time.Millisecond
 )
 
+// Status is the outcome of a resource in a run.
 type Status string
 
 const (
-	// Statuses
-	DependencyFailed Status = "DependencyFailed"
-	Failed           Status = "Failed"
-	Pending          Status = "Pending"
-	Success          Status = "Success"
+	// StatusPending is a resource that has not finished yet.
+	StatusPending Status = "Pending"
+
+	// StatusSuccess is a resource that ran without error.
+	StatusSuccess Status = "Success"
+
+	// StatusFailed is a resource that returned an error.
+	StatusFailed Status = "Failed"
+
+	// StatusDependencyFailed is a resource that did not run because a dependency
+	// failed or the run stopped first.
+	StatusDependencyFailed Status = "DependencyFailed"
 )
 
 // Manifest is a map of resources to allow concurrent runs
@@ -121,7 +129,7 @@ func (m *Manifest) WithLock(r *Resource) {
 // WithLockKey takes a lock that only applies to the given domain, such as
 // PackageLock or PasswdLock, so the resource only waits for other resources
 // using the same key.
-func (m *Manifest) WithLockKey(r *Resource, key string) {
+func (m *Manifest) WithLockKey(r *Resource, key LockKey) {
 	if v, ok := m.resources[r.ResourceID]; ok {
 		v.GlobalLock = true
 		v.LockKey = key
@@ -396,12 +404,12 @@ func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, loc
 	defer wg.Done()
 
 	if err := m.abandonedErr(); err != nil {
-		m.fail(&r, lock, DependencyFailed, err)
+		m.fail(&r, lock, StatusDependencyFailed, err)
 		return
 	}
 
 	if err := m.dependencyCheck(&r, lock); err != nil {
-		m.fail(&r, lock, DependencyFailed, err)
+		m.fail(&r, lock, StatusDependencyFailed, err)
 		return
 	}
 
@@ -416,7 +424,7 @@ func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, loc
 	// operation still holds the real lock, dpkg's or passwd's, so starting the
 	// next one now would just fail against it.
 	if err := m.abandonedErr(); err != nil {
-		m.fail(&r, lock, DependencyFailed, err)
+		m.fail(&r, lock, StatusDependencyFailed, err)
 		return
 	}
 
@@ -430,17 +438,17 @@ func (m *Manifest) apply(r Resource, wg *sync.WaitGroup, lock *sync.RWMutex, loc
 			m.abandoned.CompareAndSwap(nil, &id)
 		}
 
-		m.setStatus(&r, lock, Failed)
+		m.setStatus(&r, lock, StatusFailed)
 		m.setError(&r, lock, runErr)
 	} else {
-		m.setStatus(&r, lock, Success)
+		m.setStatus(&r, lock, StatusSuccess)
 	}
 
 	if m.collector != nil {
-		status := string(Success)
+		status := string(StatusSuccess)
 		errMsg := ""
 		if runErr != nil {
-			status = string(Failed)
+			status = string(StatusFailed)
 			errMsg = runErr.Error()
 		}
 
@@ -517,7 +525,7 @@ func (m *Manifest) dependencyCheck(r *Resource, lock *sync.RWMutex) error {
 				return fmt.Errorf("upstream dependency %s returned an error", d.ResourceID)
 			}
 
-			if d.Status != Success {
+			if d.Status != StatusSuccess {
 				depsSuccess = false
 			}
 		}
@@ -727,9 +735,9 @@ func collectFailures(resources map[ResourceID]Resource) []failureSummary {
 
 	for _, r := range resources {
 		switch {
-		case r.Status == DependencyFailed:
+		case r.Status == StatusDependencyFailed:
 			depFailed[r.ResourceID] = r
-		case r.Status == Failed, r.Err != nil:
+		case r.Status == StatusFailed, r.Err != nil:
 			// A resource that recorded an error without a status is still a
 			// failure, and reporting it as a root is better than dropping it
 			// and leaving the run to fail with nothing to look at.

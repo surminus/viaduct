@@ -11,7 +11,7 @@ import (
 type testResourceType struct {
 	Value    string
 	WithLock bool
-	LockKey  string
+	LockKey  LockKey
 
 	// block holds Run until it is released, standing in for a resource that
 	// takes longer than its timeout allows
@@ -69,7 +69,7 @@ func newTestResourceWithLock(value string) *testResourceType {
 	return &testResourceType{Value: value, WithLock: true}
 }
 
-func newTestResourceWithLockKey(value, key string) *testResourceType {
+func newTestResourceWithLockKey(value string, key LockKey) *testResourceType {
 	return &testResourceType{Value: value, LockKey: key}
 }
 

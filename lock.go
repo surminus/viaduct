@@ -5,17 +5,21 @@ import (
 	"sync"
 )
 
-// Lock keys for the domains that the standard resources serialise on. A
-// resource only contends with other resources sharing its key, so package
-// work and passwd work can run at the same time.
+// LockKey names a domain that resources serialise on. A resource only
+// contends with other resources sharing its key, so package work and passwd
+// work can run at the same time. An empty key serialises against every other
+// lock holder.
+type LockKey string
+
+// Lock keys for the domains that the standard resources serialise on.
 const (
 	// PackageLock is for anything that takes the package manager lock, such
 	// as apt-get, dpkg, dnf or pacman.
-	PackageLock = "package"
+	PackageLock LockKey = "package"
 
 	// PasswdLock is for anything that writes the passwd or group databases,
 	// such as useradd, usermod or groupadd.
-	PasswdLock = "passwd"
+	PasswdLock LockKey = "passwd"
 )
 
 // lockDomains lists the keys a lock key covers, for domains that are not
@@ -26,19 +30,19 @@ const (
 // resource holds the passwd lock as well as the package one. Otherwise a
 // package install running alongside a User resource fails with "cannot lock
 // /etc/passwd, try again later".
-var lockDomains = map[string][]string{
+var lockDomains = map[LockKey][]LockKey{
 	PackageLock: {PackageLock, PasswdLock},
 }
 
 // keysFor returns every key a lock key covers, in a stable order so that
 // holders acquiring overlapping sets cannot deadlock against each other.
-func keysFor(key string) []string {
+func keysFor(key LockKey) []LockKey {
 	keys, ok := lockDomains[key]
 	if !ok {
-		return []string{key}
+		return []LockKey{key}
 	}
 
-	out := make([]string, len(keys))
+	out := make([]LockKey, len(keys))
 	copy(out, keys)
 	slices.Sort(out)
 
@@ -59,17 +63,17 @@ type lockSet struct {
 	global sync.RWMutex
 
 	mu    sync.Mutex
-	keyed map[string]*sync.Mutex
+	keyed map[LockKey]*sync.Mutex
 }
 
 func newLockSet() *lockSet {
-	return &lockSet{keyed: make(map[string]*sync.Mutex)}
+	return &lockSet{keyed: make(map[LockKey]*sync.Mutex)}
 }
 
 // acquire takes the locks for a key, returning the function that releases them.
 // An empty key takes the keyless lock, which excludes all other lock holders. A
 // key that covers other domains takes those too, see lockDomains.
-func (l *lockSet) acquire(key string) func() {
+func (l *lockSet) acquire(key LockKey) func() {
 	if key == "" {
 		l.global.Lock()
 		return l.global.Unlock
@@ -95,7 +99,7 @@ func (l *lockSet) acquire(key string) func() {
 	}
 }
 
-func (l *lockSet) keyMutex(key string) *sync.Mutex {
+func (l *lockSet) keyMutex(key LockKey) *sync.Mutex {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 

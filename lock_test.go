@@ -66,7 +66,7 @@ func TestLockSet(t *testing.T) {
 
 		// Package maintainer scripts call adduser, so the two domains are not
 		// independent and must not run at the same time
-		for _, keys := range [][2]string{
+		for _, keys := range [][2]LockKey{
 			{PackageLock, PasswdLock},
 			{PasswdLock, PackageLock},
 		} {
