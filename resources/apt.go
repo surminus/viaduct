@@ -239,12 +239,12 @@ func (a *Apt) createApt(ctx context.Context, log *viaduct.Logger) error {
 	path := env.Path(a.path)
 	altpath := env.Path(a.altpath)
 
-	existing, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	before, err := takeSnapshot(path, altpath)
+	if err != nil {
 		return err
 	}
 
-	if err == nil && string(existing) == content {
+	if before.has(path, content) {
 		log.Noop("up-to-date", "name", a.Name)
 		return nil
 	}
@@ -260,11 +260,80 @@ func (a *Apt) createApt(ctx context.Context, log *viaduct.Logger) error {
 		}
 	}
 
-	if a.Update {
-		return a.updateApt(ctx, log)
+	return a.updateOrRestore(ctx, log, before)
+}
+
+// updateOrRestore runs "apt-get update" if Update is set. If it fails, the
+// files are put back as they were, so the next run sees the change again and
+// retries the update.
+func (a *Apt) updateOrRestore(ctx context.Context, log *viaduct.Logger, before snapshot) error {
+	if !a.Update {
+		return nil
 	}
 
-	return nil
+	err := a.updateApt(ctx, log)
+	if err == nil || viaduct.EnvFrom(ctx).DryRun {
+		return err
+	}
+
+	if rerr := before.restore(); rerr != nil {
+		return errors.Join(err, fmt.Errorf("restoring the previous apt sources: %w", rerr))
+	}
+
+	return err
+}
+
+// snapshot holds the contents of files before a change, so they can be put
+// back. A nil entry is a file that did not exist.
+type snapshot map[string][]byte
+
+// takeSnapshot reads the files at paths.
+func takeSnapshot(paths ...string) (snapshot, error) {
+	s := snapshot{}
+
+	for _, p := range paths {
+		b, err := os.ReadFile(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			s[p] = nil
+			continue
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		s[p] = b
+	}
+
+	return s, nil
+}
+
+// has reports whether a file had the given content.
+func (s snapshot) has(path, content string) bool {
+	b := s[path]
+
+	return b != nil && string(b) == content
+}
+
+// restore puts every file back as it was.
+func (s snapshot) restore() error {
+	var errs []error
+
+	for p, b := range s {
+		if b == nil {
+			if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				errs = append(errs, err)
+			}
+
+			continue
+		}
+
+		if err := viaduct.WriteFileAtomic(p, b, 0o644); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
 }
 
 func (a *Apt) listContent(ctx context.Context, log *viaduct.Logger) (string, error) {
@@ -434,17 +503,18 @@ func (a *Apt) deleteApt(ctx context.Context, log *viaduct.Logger) error {
 		return nil
 	}
 
+	before, err := takeSnapshot(path)
+	if err != nil {
+		return err
+	}
+
 	if change(ctx, log, "deleted", "name", a.Name) {
 		if err := os.Remove(path); err != nil {
 			return err
 		}
 	}
 
-	if a.Update {
-		return a.updateApt(ctx, log)
-	}
-
-	return nil
+	return a.updateOrRestore(ctx, log, before)
 }
 
 // formatPublicGpgKey by adding an indent and adding a dot to any empty line

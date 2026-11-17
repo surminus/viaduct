@@ -254,6 +254,9 @@ resources needs no change. Beyond that:
 - `Apt` writes its `Parameters` in a stable order. With more than one, the
   order changed between runs, so the file was rewritten and `apt-get update`
   ran again on an otherwise unchanged host
+- When `apt-get update` fails, `Apt` puts its sources file back as it was, so
+  the next run sees the change and runs the update again. It used to keep the
+  new file, and the next run found it up to date and skipped the update
 - `Apt` fetches an https `SigningKeyURL` with curl restricted to https, so a
   redirect cannot fetch the key over http
 

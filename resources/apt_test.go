@@ -453,3 +453,67 @@ func TestAptSourcesFormat(t *testing.T) {
 		assert.Empty(t, env.Runner.Commands(), "an existing keyring is not fetched again")
 	})
 }
+
+func TestAptUpdateFailureRestores(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a new file is removed, and the next run updates again", func(t *testing.T) {
+		t.Parallel()
+
+		env := newAptEnv(t)
+		env.Runner.On("apt-get", "update", "-y").Exit(100)
+
+		a := newTestApt()
+		a.Update = true
+
+		_, err := env.Apply(env.Context(), a)
+		require.Error(t, err)
+		assert.NoFileExists(t, env.Path(testAptList))
+
+		env.Runner.On("apt-get", "update", "-y")
+
+		a = newTestApt()
+		a.Update = true
+
+		log, err := env.Apply(env.Context(), a)
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, testAptContent, env.ReadFile(testAptList))
+		assert.Equal(t, []string{"apt-get update -y", "apt-get update -y"}, env.Runner.Commands())
+	})
+
+	t.Run("a changed file and the other format are put back", func(t *testing.T) {
+		t.Parallel()
+
+		env := newAptEnv(t)
+		env.WriteFile(testAptList, "old\n")
+		env.WriteFile(testAptSources, "other\n")
+		env.Runner.On("apt-get", "update", "-y").Exit(100)
+
+		a := newTestApt()
+		a.Update = true
+
+		_, err := env.Apply(env.Context(), a)
+		require.Error(t, err)
+
+		assert.Equal(t, "old\n", env.ReadFile(testAptList))
+		assert.Equal(t, "other\n", env.ReadFile(testAptSources))
+	})
+
+	t.Run("a deleted file is put back", func(t *testing.T) {
+		t.Parallel()
+
+		env := newAptEnv(t)
+		env.WriteFile(testAptList, testAptContent)
+		env.Runner.On("apt-get", "update", "-y").Exit(100)
+
+		a := newTestApt()
+		a.Delete = true
+		a.Update = true
+
+		_, err := env.Apply(env.Context(), a)
+		require.Error(t, err)
+		assert.Equal(t, testAptContent, env.ReadFile(testAptList))
+	})
+}
