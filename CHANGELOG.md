@@ -18,7 +18,7 @@ resources needs no change. Beyond that:
   func (r *MyResource) Run(ctx context.Context, log *viaduct.Logger) error
   ```
 - `NewLogger(kind, operation)` in tests becomes
-  `viaduct.NewLogger(nil, kind, operation)`
+  `viaduct.NewLogger(nil, kind, operation)`, or use `viaducttest.NewEnv`
 - `Pending`, `Success`, `Failed` and `DependencyFailed` become
   `StatusPending`, `StatusSuccess`, `StatusFailed` and
   `StatusDependencyFailed`, and a lock key is a `viaduct.LockKey`
@@ -68,6 +68,8 @@ resources needs no change. Beyond that:
   each command in its own process group, which is sent SIGTERM when the
   context is cancelled, and SIGKILL if it has not stopped 30 seconds later. `ExitCode` reads the exit
   status from an error, and `ExitError` is the one a fake runner returns
+- The `viaducttest` package, with a fake `Runner`, a `Recorder` handler and a
+  test `Env` rooted in a temporary directory
 - `ApplyOne`, which runs a resource's preflight checks and then the resource,
   so a custom resource can use others once it knows a value only available
   part way through a run
