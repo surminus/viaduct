@@ -99,6 +99,10 @@ resources needs no change. Beyond that:
   root owns it. Running as root, a link another user made is refused.
   `Env.ResolveSymlink` resolves a path under `Env.Root`, so an absolute link
   there stays under it
+- `IgnoreMissing` on `Sysctl`, for keys the kernel may not have, such as one
+  from a module that is not loaded. They are written as `-key = value`, so
+  neither viaduct nor systemd-sysctl at boot fails on them, and a missing one
+  no longer makes the resource apply again on every run
 - `AllowFailure` lets a resource fail without failing the run. The failure is in
   its result, marked `AllowFailure`, and logged as a warning. Resources that
   depend on it do not run: they are `StatusDependencyFailed`, and fail the run
@@ -192,7 +196,18 @@ resources needs no change. Beyond that:
 - A `Download` whose file already exists with a matching `Checksum` is a noop,
   rather than being downloaded again
 - Downloads and Git clones and pulls stop when the context is cancelled
-- **`File`, `Template`, `Line` and `Apt` write files atomically.** A
+- **`Sysctl` applies only its own file**, with `sysctl -p <file>`, or
+  `sysctl -e -p <file>` when `IgnoreMissing` is set. It used to run
+  `sysctl --system`, which reapplied every file on the host and undid anything
+  set since boot. A key the kernel does not have, and that is not in
+  `IgnoreMissing`, is an error before anything is written or applied, and so
+  is a value still not set once `sysctl` has run
+- **This can fail runs that used to pass.** `sysctl --system` exited cleanly
+  when a key was missing, so a missing key was never reported, and the
+  resource applied again on every run. A key from a module needs the module
+  loaded before the resource runs, such as with a dependency on whatever
+  loads it. List any key that may legitimately be missing in `IgnoreMissing`
+- **`File`, `Template`, `Line`, `Sysctl` and `Apt` write files atomically.** A
   crash part way through a write leaves the old file or the new one, never a
   truncated mixture. The file is replaced rather than rewritten, so its inode
   changes, and a symlink is followed to the file it points to only when the
