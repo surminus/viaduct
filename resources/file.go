@@ -172,16 +172,17 @@ func (f *File) createFile(ctx context.Context, log *viaduct.Logger) error {
 // setPermissions applies the mode and ownership to a file that already exists,
 // leaving its content alone
 func (f *File) setPermissions(ctx context.Context, log *viaduct.Logger) error {
-	path := viaduct.ExpandPath(f.Path)
-
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("permissions-managed", "path", path)
-		return nil
-	}
+	path := viaduct.EnvFrom(ctx).Path(viaduct.ExpandPath(f.Path))
 
 	// There is no content to fall back on, so a missing file is an error
-	// rather than something to create
+	// rather than something to create. In a dry run, an earlier resource may
+	// be what creates it
 	if !viaduct.FileExists(path) {
+		if viaduct.EnvFrom(ctx).DryRun {
+			log.Info("permissions-managed", "path", path)
+			return nil
+		}
+
 		return fmt.Errorf("file does not exist: %s", path)
 	}
 
@@ -220,12 +221,8 @@ func (f *File) setPermissions(ctx context.Context, log *viaduct.Logger) error {
 
 // Delete deletes a file
 func (f *File) deleteFile(ctx context.Context, log *viaduct.Logger) error {
-	path := viaduct.ExpandPath(f.Path)
-
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("deleted", "path", path)
-		return nil
-	}
+	env := viaduct.EnvFrom(ctx)
+	path := env.Path(viaduct.ExpandPath(f.Path))
 
 	// If the file does not exist, return early
 	if !viaduct.FileExists(path) {
@@ -233,11 +230,9 @@ func (f *File) deleteFile(ctx context.Context, log *viaduct.Logger) error {
 		return nil
 	}
 
-	if err := os.Remove(path); err != nil {
-		return err
+	if !change(ctx, log, "deleted", "path", path) {
+		return nil
 	}
 
-	log.Info("deleted", "path", path)
-
-	return nil
+	return os.Remove(path)
 }

@@ -106,24 +106,19 @@ func (l *Line) Run(ctx context.Context, log *viaduct.Logger) error {
 }
 
 func (l *Line) updateLine(ctx context.Context, log *viaduct.Logger) error {
-	path := viaduct.ExpandPath(l.Path)
-
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("updated", "path", path, "line", l.Line)
-		return nil
-	}
+	env := viaduct.EnvFrom(ctx)
+	path := env.Path(viaduct.ExpandPath(l.Path))
 
 	// Serialise edits to this file so a concurrent Line resource on the
 	// same path can't clobber our read-modify-write.
 	defer lockPath(path)()
 
 	if !viaduct.FileExists(path) {
-		if err := writeLines(path, []string{l.Line}); err != nil {
-			return err
+		if !change(ctx, log, "created", "path", path, "line", l.Line) {
+			return nil
 		}
 
-		log.Info("created", "path", path, "line", l.Line)
-		return nil
+		return writeLines(path, []string{l.Line})
 	}
 
 	lines, err := readLines(path)
@@ -168,22 +163,16 @@ func (l *Line) updateLine(ctx context.Context, log *viaduct.Logger) error {
 		return nil
 	}
 
-	if err := writeLines(path, out); err != nil {
-		return err
+	if !change(ctx, log, "updated", "path", path, "line", l.Line) {
+		return nil
 	}
 
-	log.Info("updated", "path", path, "line", l.Line)
-
-	return nil
+	return writeLines(path, out)
 }
 
 func (l *Line) deleteLine(ctx context.Context, log *viaduct.Logger) error {
-	path := viaduct.ExpandPath(l.Path)
-
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("deleted", "path", path)
-		return nil
-	}
+	env := viaduct.EnvFrom(ctx)
+	path := env.Path(viaduct.ExpandPath(l.Path))
 
 	// Serialise edits to this file so a concurrent Line resource on the
 	// same path can't clobber our read-modify-write.
@@ -217,13 +206,11 @@ func (l *Line) deleteLine(ctx context.Context, log *viaduct.Logger) error {
 		return nil
 	}
 
-	if err := writeLines(path, out); err != nil {
-		return err
+	if !change(ctx, log, "deleted", "path", path) {
+		return nil
 	}
 
-	log.Info("deleted", "path", path)
-
-	return nil
+	return writeLines(path, out)
 }
 
 func readLines(path string) ([]string, error) {
@@ -239,12 +226,8 @@ func readLines(path string) ([]string, error) {
 	return strings.Split(strings.TrimSuffix(string(content), "\n"), "\n"), nil
 }
 
+// writeLines replaces a file with the lines, keeping an existing file's mode
+// and ownership
 func writeLines(path string, lines []string) error {
-	// Preserve the mode of an existing file
-	mode := os.FileMode(0o644)
-	if info, err := os.Stat(path); err == nil {
-		mode = info.Mode()
-	}
-
-	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), mode)
+	return viaduct.WriteFileAtomic(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
 }

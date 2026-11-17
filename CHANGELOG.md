@@ -121,8 +121,11 @@ resources needs no change. Beyond that:
 - **Mode and ownership are never set through a symlink.** `File`,
   `Template`, `Download`, `Directory` and `Git` change a file through a
   descriptor opened without following links, and a symlink at a path whose
-  permissions are managed is an error. Applying ownership recursively changes
-  a symlink itself rather than what it points to
+  permissions are managed is an error. `File` and `Template`
+  follow a symlink to write the file, under the same rule as
+  `WriteFileAtomic`, and set the permissions on the file it points to.
+  Applying ownership recursively changes a symlink itself rather than what it
+  points to
 - A directory whose contents change while its ownership is applied
   recursively no longer fails when a file disappears part way through
 - `ExpandPath` only expands `~` and `~/...`, and leaves every other path as it
@@ -161,6 +164,13 @@ resources needs no change. Beyond that:
   40 seconds after its context is cancelled is abandoned. SIGINT or
   SIGTERM cancels running resources too, and a second signal exits straight
   away
+- **`File`, `Template` and `Line` write files atomically.** A
+  crash part way through a write leaves the old file or the new one, never a
+  truncated mixture. The file is replaced rather than rewritten, so its inode
+  changes, and a symlink is followed to the file it points to only when the
+  effective user owns the link. A file that
+  cannot be replaced, such as one bind mounted on its own or one in a
+  directory that cannot be written to, is still written in place
 
 - **Importing viaduct no longer does anything.** Flags are parsed, system
   attributes are read and the temporary directory is created when they are

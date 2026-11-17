@@ -37,7 +37,8 @@ func lockPath(path string) func() {
 //
 // The parent is created with 0755 and default ownership. If you need the
 // parent managed with specific permissions or ownership, declare a Directory
-// resource (or use Chain) instead. path is expected to be already expanded.
+// resource (or use Chain) instead. path is expected to be already expanded
+// and under the root.
 func ensureParentDir(ctx context.Context, log *viaduct.Logger, path string) error {
 	dir := filepath.Dir(path)
 
@@ -74,7 +75,13 @@ func writeManagedFile(
 	perms *Permissions,
 	createDirIfMissing bool,
 ) error {
-	path = viaduct.ExpandPath(path)
+	env := viaduct.EnvFrom(ctx)
+
+	// Resolved once, so the content and the permissions go to the same file
+	path, err := env.ResolveSymlink(viaduct.ExpandPath(path))
+	if err != nil {
+		return err
+	}
 
 	if createDirIfMissing {
 		if err := ensureParentDir(ctx, log, path); err != nil {
@@ -82,13 +89,10 @@ func writeManagedFile(
 		}
 	}
 
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("created", "path", path)
-		return nil
-	}
+	exists := viaduct.FileExists(path)
 
 	shouldWriteFile := true
-	if viaduct.FileExists(path) {
+	if exists {
 		existing, err := os.ReadFile(path)
 		if err != nil {
 			return err
@@ -97,14 +101,22 @@ func writeManagedFile(
 		shouldWriteFile = string(existing) != content
 	}
 
-	if shouldWriteFile {
-		if err := os.WriteFile(path, []byte(content), perms.Mode); err != nil {
-			return err
+	if !shouldWriteFile {
+		log.Noop("up-to-date", "path", path)
+		return perms.setFilePermissions(ctx, log, path)
+	}
+
+	if !change(ctx, log, "created", "path", path) {
+		if !exists {
+			// Nothing to set permissions on yet
+			return nil
 		}
 
-		log.Info("created", "path", path)
-	} else {
-		log.Noop("up-to-date", "path", path)
+		return perms.setFilePermissions(ctx, log, path)
+	}
+
+	if err := viaduct.WriteFileAtomic(path, []byte(content), perms.Mode); err != nil {
+		return err
 	}
 
 	return perms.setFilePermissions(ctx, log, path)

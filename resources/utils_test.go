@@ -27,6 +27,37 @@ func TestPermissionsDoNotFollowSymlinks(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), "the target is untouched")
 	})
+
+	t.Run("permissions only on a symlink is an error", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		outside := filepath.Join(t.TempDir(), "secret")
+		require.NoError(t, os.WriteFile(outside, nil, 0o600))
+		require.NoError(t, os.MkdirAll(env.Path("/etc"), 0o755))
+		require.NoError(t, os.Symlink(outside, env.Path("/etc/app.conf")))
+
+		_, err := env.Apply(env.Context(), SetPermissions("/etc/app.conf", 0o644))
+		assert.ErrorContains(t, err, "is a symlink")
+	})
+
+	t.Run("a managed file behind a safe symlink is written and set at its target", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.WriteFile("/etc/real.conf", "old\n")
+		require.NoError(t, os.Symlink("real.conf", env.Path("/etc/app.conf")))
+
+		f := &File{Path: "/etc/app.conf", Content: "new\n", Permissions: Permissions{Mode: 0o600, UID: os.Getuid(), GID: os.Getgid()}}
+		_, err := env.Apply(env.Context(), f)
+		require.NoError(t, err)
+
+		assert.Equal(t, "new\n", env.ReadFile("/etc/real.conf"))
+
+		info, err := os.Lstat(env.Path("/etc/app.conf"))
+		require.NoError(t, err)
+		assert.NotZero(t, info.Mode()&fs.ModeSymlink, "the link is kept")
+
+		info, err = os.Stat(env.Path("/etc/real.conf"))
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	})
 }
 
 // Not parallel: these replace the package's lstat and lchown.

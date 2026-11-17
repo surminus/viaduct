@@ -65,19 +65,16 @@ func (t *Template) OperationName() string {
 }
 
 func (t *Template) Run(ctx context.Context, log *viaduct.Logger) error {
-	if viaduct.EnvFrom(ctx).DryRun {
-		if t.CreateDirIfMissing {
-			if err := ensureParentDir(ctx, log, viaduct.ExpandPath(t.Dest)); err != nil {
-				return err
-			}
+	env := viaduct.EnvFrom(ctx)
+
+	source := env.Path(viaduct.ExpandPath(t.Source))
+	if !viaduct.FileExists(source) {
+		// In a dry run, an earlier resource may be what creates it
+		if env.DryRun {
+			log.Info("created", "path", env.Path(viaduct.ExpandPath(t.Dest)))
+			return nil
 		}
 
-		log.Info("created", "path", viaduct.ExpandPath(t.Dest))
-		return nil
-	}
-
-	source := viaduct.ExpandPath(t.Source)
-	if !viaduct.FileExists(source) {
 		return fmt.Errorf("source template does not exist: %s", source)
 	}
 

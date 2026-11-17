@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/surminus/viaduct/viaducttest"
 )
 
 func newTestLine(t *testing.T, content string, line *Line) *Line {
@@ -219,4 +221,27 @@ func TestLineHelpers(t *testing.T) {
 	assert.Equal(t, &Line{Path: "/tmp/f", Line: "foo"}, AppendLine("/tmp/f", "foo"))
 	assert.Equal(t, &Line{Path: "/tmp/f", Match: "^foo", Line: "foo=1"}, ReplaceLine("/tmp/f", "^foo", "foo=1"))
 	assert.Equal(t, &Line{Path: "/tmp/f", Match: "^foo", Delete: true}, DeleteLine("/tmp/f", "^foo"))
+}
+
+func TestLineAtomicWrite(t *testing.T) {
+	env := viaducttest.NewEnv(t)
+	env.WriteFile("/etc/fstab", "LABEL=root / ext4 defaults 0 1\n")
+	require.NoError(t, os.Chmod(env.Path("/etc/fstab"), 0o600))
+
+	before, err := os.Stat(env.Path("/etc/fstab"))
+	require.NoError(t, err)
+
+	_, err = env.Apply(env.Context(), AppendLine("/etc/fstab", "tmpfs /tmp tmpfs defaults 0 0"))
+	require.NoError(t, err)
+
+	after, err := os.Stat(env.Path("/etc/fstab"))
+	require.NoError(t, err)
+
+	assert.Equal(t, "LABEL=root / ext4 defaults 0 1\ntmpfs /tmp tmpfs defaults 0 0\n", env.ReadFile("/etc/fstab"))
+	assert.False(t, os.SameFile(before, after), "the file is replaced rather than truncated")
+	assert.Equal(t, os.FileMode(0o600), after.Mode().Perm(), "the mode is kept")
+
+	entries, err := os.ReadDir(env.Path("/etc"))
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "no temporary file is left behind")
 }

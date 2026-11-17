@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/surminus/viaduct"
+	"github.com/surminus/viaduct/viaducttest"
 )
 
 func newTestFile(t *testing.T, path string) *File {
@@ -29,7 +31,7 @@ func TestFile(t *testing.T) {
 	t.Run("create", func(t *testing.T) {
 		t.Parallel()
 
-		f := newTestFile(t, "test/acceptance/file/create.txt")
+		f := newTestFile(t, filepath.Join(t.TempDir(), "create.txt"))
 
 		err := f.Run(testCtx, testLogger)
 		assert.NoError(t, err)
@@ -37,41 +39,22 @@ func TestFile(t *testing.T) {
 		assert.Equal(t, true, viaduct.FileExists(f.Path))
 		assertMode(t, f.Path, DefaultFilePermissions)
 		assert.Equal(t, f.Content, fileContents(t, f.Path))
-
-		err = os.Remove(f.Path)
-		if err != nil {
-			t.Fatal(err)
-		}
 	})
 
 	t.Run("create with missing parent dir", func(t *testing.T) {
 		t.Parallel()
 
-		dir := "test/acceptance/file/createp"
+		dir := filepath.Join(t.TempDir(), "createp")
 		f := CreateFileP(dir+"/nested/create.txt", "Test Content")
 
 		err := f.PreflightChecks(testCtx, testLogger)
 		assert.NoError(t, err)
-
-		// Clear any leftover state from an interrupted previous run so the
-		// precondition below is reliable.
-		if err := os.RemoveAll(dir); err != nil {
-			t.Fatal(err)
-		}
-
-		// The parent directory should not exist yet.
-		assert.Equal(t, false, viaduct.DirExists(dir))
 
 		err = f.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.FileExists(f.Path))
 		assert.Equal(t, f.Content, fileContents(t, f.Path))
-
-		err = os.RemoveAll(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
 	})
 
 	t.Run("permissions only leaves the content alone", func(t *testing.T) {
@@ -136,8 +119,14 @@ func TestFile(t *testing.T) {
 		}
 
 		// Setting the user to whoever is already running is a noop we can make
-		// without root, and the group must come through untouched
-		f := &File{Path: path, PermissionsOnly: true, Permissions: Permissions{UID: before.uid}}
+		// without root, and the group must come through untouched. UID 0
+		// counts as unset, so root sets another user instead.
+		uid := before.uid
+		if uid == 0 {
+			uid = 1
+		}
+
+		f := &File{Path: path, PermissionsOnly: true, Permissions: Permissions{UID: uid}}
 		if err := f.PreflightChecks(testCtx, testLogger); err != nil {
 			t.Fatal(err)
 		}
@@ -146,6 +135,7 @@ func TestFile(t *testing.T) {
 
 		after, err := fileOwnership(path)
 		assert.NoError(t, err)
+		assert.Equal(t, uid, after.uid)
 		assert.Equal(t, before.gid, after.gid)
 
 		// The mode was not asked for, so it is left as it was
@@ -169,15 +159,12 @@ func TestFile(t *testing.T) {
 	t.Run("delete", func(t *testing.T) {
 		t.Parallel()
 
-		f := newTestFile(t, "test/acceptance/file/delete.txt")
+		f := newTestFile(t, filepath.Join(t.TempDir(), "delete.txt"))
 		f.Delete = true
 
-		_, err := os.Create(f.Path)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.WriteFile(f.Path, nil, 0o644))
 
-		err = f.Run(testCtx, testLogger)
+		err := f.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		assert.Equal(t, false, viaduct.FileExists(f.Path))
@@ -237,4 +224,50 @@ func TestFileOperationName(t *testing.T) {
 	assert.Equal(t, "Create", (&File{Path: "/tmp/test"}).OperationName())
 	assert.Equal(t, "Delete", DeleteFile("/tmp/test").OperationName())
 	assert.Equal(t, "Update", SetPermissions("/tmp/test", 0o600).OperationName())
+}
+
+func TestFilePermissionsOnlyDryRun(t *testing.T) {
+	env := viaducttest.NewEnv(t)
+
+	log, err := env.Apply(env.DryRunContext(), SetPermissions("/opt/missing", 0o600))
+	require.NoError(t, err, "a file an earlier resource would create is not an error in a dry run")
+	assert.True(t, log.Changed())
+
+	_, err = env.Apply(env.Context(), SetPermissions("/opt/missing", 0o600))
+	assert.ErrorContains(t, err, "file does not exist")
+}
+
+func TestFileAtomicWrite(t *testing.T) {
+	env := viaducttest.NewEnv(t)
+	env.WriteFile("/etc/app.conf", "old\n")
+
+	before, err := os.Stat(env.Path("/etc/app.conf"))
+	require.NoError(t, err)
+
+	f := &File{Path: "/etc/app.conf", Content: "new\n", Permissions: Permissions{Mode: 0o640, UID: os.Getuid(), GID: os.Getgid()}}
+	_, err = env.Apply(env.Context(), f)
+	require.NoError(t, err)
+
+	after, err := os.Stat(env.Path("/etc/app.conf"))
+	require.NoError(t, err)
+
+	assert.Equal(t, "new\n", env.ReadFile("/etc/app.conf"))
+	assert.False(t, os.SameFile(before, after), "the file is replaced rather than truncated")
+	assert.Equal(t, os.FileMode(0o640), after.Mode().Perm())
+}
+
+func TestFileAbsoluteSymlinkUnderRoot(t *testing.T) {
+	env := viaducttest.NewEnv(t)
+
+	// The link names a path on the host, which under Root is Root's
+	host := filepath.Join(t.TempDir(), "app.conf")
+	env.WriteFile(host, "old\n")
+	require.NoError(t, os.MkdirAll(env.Path("/etc"), 0o755))
+	require.NoError(t, os.Symlink(host, env.Path("/etc/app.conf")))
+
+	_, err := env.Apply(env.Context(), &File{Path: "/etc/app.conf", Content: "new\n"})
+	require.NoError(t, err)
+
+	assert.Equal(t, "new\n", env.ReadFile(host))
+	assert.NoFileExists(t, host)
 }
