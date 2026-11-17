@@ -124,7 +124,7 @@ resources needs no change. Beyond that:
 - **Mode and ownership are never set through a symlink.** `File`,
   `Template`, `Download`, `Directory` and `Git` change a file through a
   descriptor opened without following links, and a symlink at a path whose
-  permissions are managed is an error. `File` and `Template`
+  permissions are managed is an error. `File`, `Template` and `Download`
   follow a symlink to write the file, under the same rule as
   `WriteFileAtomic`, and set the permissions on the file it points to.
   Applying ownership recursively changes a symlink itself rather than what it
@@ -184,6 +184,8 @@ resources needs no change. Beyond that:
 - **This stops `Package` upgrading packages that are already installed.**
   Installing an installed package used to upgrade it, when the package
   manager had a newer version. That package is now left as it is
+- A `Download` whose file already exists with a matching `Checksum` is a noop,
+  rather than being downloaded again
 - **`File`, `Template` and `Line` write files atomically.** A
   crash part way through a write leaves the old file or the new one, never a
   truncated mixture. The file is replaced rather than rewritten, so its inode
@@ -191,6 +193,13 @@ resources needs no change. Beyond that:
   effective user owns the link. A file that
   cannot be replaced, such as one bind mounted on its own or one in a
   directory that cannot be written to, is still written in place
+- **`Download` keeps the existing file until the new one is verified.** It
+  downloads to a temporary file next to the destination, checks the
+  `Checksum`, and renames it into place. A failed, interrupted or mismatched
+  download used to leave nothing behind, removing the file that was there. A
+  symlink at `Path` is followed and kept, as with `WriteFileAtomic`
+- `Download` compares `Checksum` without regard to case, and refuses a
+  redirect from https to anything else
 
 - **Importing viaduct no longer does anything.** Flags are parsed, system
   attributes are read and the temporary directory is created when they are
