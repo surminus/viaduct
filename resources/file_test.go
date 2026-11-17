@@ -36,7 +36,7 @@ func TestFile(t *testing.T) {
 
 		assert.Equal(t, true, viaduct.FileExists(f.Path))
 		assertMode(t, f.Path, DefaultFilePermissions)
-		assert.Equal(t, f.Content, viaduct.FileContents(f.Path))
+		assert.Equal(t, f.Content, fileContents(t, f.Path))
 
 		err = os.Remove(f.Path)
 		if err != nil {
@@ -66,7 +66,7 @@ func TestFile(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.FileExists(f.Path))
-		assert.Equal(t, f.Content, viaduct.FileContents(f.Path))
+		assert.Equal(t, f.Content, fileContents(t, f.Path))
 
 		err = os.RemoveAll(dir)
 		if err != nil {
@@ -90,7 +90,7 @@ func TestFile(t *testing.T) {
 		err := f.Run(testLogger)
 		assert.NoError(t, err)
 
-		assert.Equal(t, "not ours to write\n", viaduct.FileContents(path))
+		assert.Equal(t, "not ours to write\n", fileContents(t, path))
 		assertMode(t, path, 0o600)
 	})
 

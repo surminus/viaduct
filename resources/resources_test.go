@@ -24,3 +24,13 @@ func assertMode(t *testing.T, path string, mode os.FileMode) {
 	require.NoError(t, err)
 	assert.True(t, match, "mode of %s", path)
 }
+
+// fileContents reads a file the test expects to exist
+func fileContents(t *testing.T, path string) string {
+	t.Helper()
+
+	c, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	return string(c)
+}

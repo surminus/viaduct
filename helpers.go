@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,16 +19,6 @@ func ExpandPath(path string) string {
 	}
 
 	return path
-}
-
-// ExpandPathRoot is like ExpandPath, but ignores the user attribute
-func ExpandPathRoot(path string) string {
-	p, err := filepath.Abs(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return p
 }
 
 // Must returns v, panicking if err is not nil. It is for values known at
@@ -77,16 +66,6 @@ func FileExists(path string) bool {
 	return false
 }
 
-// FileContents simply returns the file contents as a string
-func FileContents(path string) string {
-	c, err := os.ReadFile(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return string(c)
-}
-
 // LinkExists returns true if the symlink exists
 func LinkExists(path string) bool {
 	if _, err := os.Lstat(path); err == nil {
@@ -94,11 +73,6 @@ func LinkExists(path string) bool {
 	}
 
 	return false
-}
-
-// IsDirectory is an alias for DirExists
-func IsDirectory(path string) bool {
-	return DirExists(path)
 }
 
 // DirExists returns true if the file exists, and is a directory

@@ -288,7 +288,7 @@ func (p *Permissions) setDirectoryPermissions(
 		return err
 	}
 
-	if viaduct.IsDirectory(path) && recursiveChown {
+	if viaduct.DirExists(path) && recursiveChown {
 		var wasUpdated bool
 
 		files, err := viaduct.ListFiles(path)

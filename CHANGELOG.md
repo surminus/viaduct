@@ -59,6 +59,12 @@ resources needs no change. Beyond that:
   under `~/.viaduct/tmp` and was left behind by every failed run.
   `SystemAttributes.TmpDir` is gone
 
+### Removed
+
+- `ExpandPathRoot`. Use `filepath.Abs`
+- `FileContents`. Use `os.ReadFile`
+- `IsDirectory`. Use `DirExists`
+
 ## v0.8.0
 
 ### Added
