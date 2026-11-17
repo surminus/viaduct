@@ -56,6 +56,9 @@ resources needs no change. Beyond that:
 - A new `Hostname` resource, with a `SetHostname` shortcut, which sets the
   host name with `hostnamectl`, or only until the next boot with `Transient`.
   It does not edit `/etc/hosts`
+- A new `TimeSync` resource, which makes sure chrony has synchronised the
+  clock, waiting up to `MaxWait` if not. The clock is stepped first only when
+  chrony is not synchronised or it is more than a second out
 - `FstabLock` and `NetworkLock`, alongside `PackageLock` and `PasswdLock`
 
 - `Apply(ctx, Options)` runs a manifest and returns a `Report` with a `Result`

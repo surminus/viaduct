@@ -1,9 +1,11 @@
 package resources
 
 import (
+	"fmt"
 	"os"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -764,5 +766,138 @@ func TestHostname(t *testing.T) {
 		log, err = env.Apply(env.DryRunContext(), &Hostname{Name: "web-1", Transient: true})
 		require.NoError(t, err)
 		assert.False(t, log.Changed(), "a missing /etc/hostname does not matter when transient")
+	})
+}
+
+func TestTimeSync(t *testing.T) {
+	const synced = `Reference ID    : C0000201 (192.0.2.1)
+Stratum         : 4
+System time     : 0.000012345 seconds slow of NTP time
+Leap status     : Normal
+`
+	const unsynced = `Reference ID    : 00000000 ()
+Stratum         : 0
+System time     : 0.000000000 seconds fast of NTP time
+Leap status     : Not synchronised
+`
+
+	// offsetBy is a synchronised clock that many seconds fast
+	offsetBy := func(seconds float64) string {
+		return fmt.Sprintf("Reference ID    : C0000201 (192.0.2.1)\nSystem time     : %g seconds fast of NTP time\nLeap status     : Normal\n", seconds)
+	}
+
+	t.Run("parse", func(t *testing.T) {
+		got := parseTracking(synced)
+		assert.True(t, got.synchronised)
+		assert.InDelta(t, -0.000012345, got.offset, 1e-12)
+
+		assert.False(t, parseTracking(unsynced).synchronised)
+		assert.False(t, parseTracking("").synchronised)
+
+		far := parseTracking("Reference ID    : C0000201 (x)\nSystem time     : 3.5 seconds fast of NTP time\nLeap status     : Normal\n")
+		assert.True(t, far.synchronised)
+		assert.InDelta(t, 3.5, far.offset, 1e-9)
+	})
+
+	t.Run("defaults and timeout", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+
+		ts := &TimeSync{}
+		assert.Equal(t, 6*time.Minute, ts.Params().Timeout, "longer than the default resource timeout")
+
+		require.NoError(t, ts.PreflightChecks(env.Context(), env.Log))
+		assert.Equal(t, 5*time.Minute, ts.MaxWait)
+		assert.InDelta(t, 0.1, ts.Threshold, 1e-9)
+
+		assert.Equal(t, 11*time.Minute, (&TimeSync{MaxWait: 10 * time.Minute}).Params().Timeout)
+		assert.Error(t, (&TimeSync{MaxWait: -1}).PreflightChecks(env.Context(), env.Log))
+		assert.Error(t, (&TimeSync{Threshold: -0.1}).PreflightChecks(env.Context(), env.Log))
+	})
+
+	t.Run("synchronised is a noop", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("chronyc", "-n", "tracking").Stdout(synced)
+
+		log, err := env.Apply(env.Context(), &TimeSync{})
+		require.NoError(t, err)
+
+		assert.False(t, log.Changed())
+		assert.Equal(t, []string{"chronyc -n tracking"}, env.Runner.Commands())
+	})
+
+	t.Run("steps and waits", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("chronyc", "-n", "tracking").Stdout(unsynced)
+		env.Runner.On("chronyc", "makestep")
+		env.Runner.On("chronyc", "waitsync", "12", "0.5", "0", "10")
+
+		log, err := env.Apply(env.Context(), &TimeSync{MaxWait: 2 * time.Minute, Threshold: 0.5})
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, []string{"chronyc -n tracking", "chronyc makestep", "chronyc waitsync 12 0.5 0 10"}, env.Runner.Commands())
+	})
+
+	t.Run("a small offset waits without stepping", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("chronyc", "-n", "tracking").Stdout(offsetBy(0.5))
+		env.Runner.On("chronyc", "waitsync", "30", "0.1", "0", "10")
+
+		log, err := env.Apply(env.Context(), &TimeSync{})
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, []string{"chronyc -n tracking", "chronyc waitsync 30 0.1 0 10"}, env.Runner.Commands())
+	})
+
+	t.Run("an offset over a second steps", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("chronyc", "-n", "tracking").Stdout(offsetBy(3.5))
+		env.Runner.On("chronyc", "makestep")
+		env.Runner.On("chronyc", "waitsync", "30", "0.1", "0", "10")
+
+		_, err := env.Apply(env.Context(), &TimeSync{})
+		require.NoError(t, err)
+
+		assert.Equal(t, []string{"chronyc -n tracking", "chronyc makestep", "chronyc waitsync 30 0.1 0 10"}, env.Runner.Commands())
+	})
+
+	t.Run("a failed makestep is a warning", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.Runner.OnAny("chronyc")
+		env.Runner.On("chronyc", "makestep").Exit(1)
+		env.Runner.On("chronyc", "-n", "tracking").Stdout(unsynced)
+
+		_, err := env.Apply(env.Context(), &TimeSync{})
+		require.NoError(t, err)
+		assert.Contains(t, env.Recorder.Messages(viaduct.LevelWarn), "makestep-failed")
+	})
+
+	t.Run("not synchronising in time is an error", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.Runner.OnAny("chronyc").Exit(1)
+		env.Runner.On("chronyc", "-n", "tracking").Stdout(unsynced)
+
+		_, err := env.Apply(env.Context(), &TimeSync{})
+		assert.ErrorContains(t, err, "did not synchronise within 5m0s")
+	})
+
+	t.Run("dry run only checks", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("chronyc", "-n", "tracking").Stdout(unsynced)
+
+		log, err := env.Apply(env.DryRunContext(), &TimeSync{})
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, []string{"chronyc -n tracking"}, env.Runner.Commands())
+	})
+
+	t.Run("chronyd not running", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("chronyc", "-n", "tracking").Exit(1)
+
+		_, err := env.Apply(env.Context(), &TimeSync{})
+		assert.Error(t, err)
 	})
 }
