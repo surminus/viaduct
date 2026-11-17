@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -29,26 +28,6 @@ func Must[T any](v T, err error) T {
 	}
 
 	return v
-}
-
-// PrependSudo takes a slice of args and simply prepends sudo to the front.
-func PrependSudo(args []string) []string {
-	return append([]string{"sudo"}, args...)
-}
-
-// RunCommand is essentially a wrapper around exec.Command. Generally the
-// Execute resource should be used, but sometimes it can be useful to run
-// things directly.
-func RunCommand(command ...string) error {
-	cmd := exec.Command("bash", "-c", strings.Join(command, " "))
-	cmd.Stderr = os.Stderr
-
-	return cmd.Run()
-}
-
-// SudoCommand is the same as RunCommand but runs with sudo.
-func SudoCommand(command ...string) error {
-	return RunCommand(PrependSudo(command)...)
 }
 
 // IsUbuntu returns true if the distribution is Ubuntu
@@ -143,45 +122,4 @@ func FileSize(path string) (int64, error) {
 	}
 
 	return f.Size(), nil
-}
-
-// CommandTrue is similar to the "Unless" parameter found in some resources, but instead
-// can be used freeform within configuration. If it exits cleanly, then it
-// returns true.
-func CommandTrue(command string) bool {
-	c := strings.Split(command, " ")
-
-	// nolint:gosec
-	cmd := exec.Command("bash", "-c", strings.Join(c, " "))
-	if Cli.Quiet {
-		cmd.Stderr = os.Stderr
-	} else if !Cli.Silent {
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-	}
-
-	if err := cmd.Run(); err == nil {
-		return true
-	} else {
-		return false
-	}
-}
-
-// CommandFalse is the same as True, but returns the opposite.
-func CommandFalse(command string) bool {
-	return !CommandTrue(command)
-}
-
-// CommandOutput will run a command and provide the output. Can be useful in if
-// statements for checking arbitary values. Will not error, but will return an
-// empty string.
-func CommandOutput(command string) string {
-	c := strings.Split(command, " ")
-	cmd := exec.Command("bash", "-c", strings.Join(c, " "))
-
-	if out, err := cmd.Output(); err == nil {
-		return strings.TrimSpace(string(out))
-	} else {
-		return ""
-	}
 }

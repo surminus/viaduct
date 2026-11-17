@@ -15,6 +15,8 @@ resources needs no change. Beyond that:
 - `Pending`, `Success`, `Failed` and `DependencyFailed` become
   `StatusPending`, `StatusSuccess`, `StatusFailed` and
   `StatusDependencyFailed`, and a lock key is a `viaduct.LockKey`
+- The helpers that exited on error now return it, and the ones listed under
+  Removed have standard library or `Command` replacements
 - A program with flags of its own uses `Apply` rather than `Run`
 
 ### Added
@@ -127,6 +129,10 @@ resources needs no change. Beyond that:
 
 ### Removed
 
+- `RunCommand`, `SudoCommand`, `PrependSudo`, `CommandTrue`, `CommandFalse`
+  and `CommandOutput`, which ran commands through bash on the host. Use
+  `viaduct.Command`, which goes through the `Runner`, so it is logged, faked
+  in tests and stopped on cancellation
 - `ExpandPathRoot`. Use `filepath.Abs`
 - `FileContents`. Use `os.ReadFile`
 - `IsDirectory`. Use `DirExists`
