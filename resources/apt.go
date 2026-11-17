@@ -3,11 +3,14 @@ package resources
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/surminus/viaduct"
@@ -51,7 +54,9 @@ type Apt struct {
 
 	// Delete will remove the apt repository if set to true.
 	Delete bool
-	// Update will perform an apt update after adding the repository.
+	// Update will perform an apt update after adding the repository. If the
+	// update fails, the repository file is put back as it was, so the next
+	// run tries again. A resource that updates has no timeout by default.
 	Update bool
 	// UpdateOnly will only perform an apt update.
 	UpdateOnly bool
@@ -76,7 +81,10 @@ func (a *Apt) Params() *viaduct.ResourceParams {
 	// Only the update takes the package lock; writing a sources file
 	// contends with nothing
 	if a.Update || a.UpdateOnly {
-		return viaduct.NewResourceParamsWithLockKey(viaduct.PackageLock)
+		params := viaduct.NewResourceParamsWithLockKey(viaduct.PackageLock)
+		params.Timeout = noTimeout
+
+		return params
 	}
 
 	return viaduct.NewResourceParams()
@@ -98,8 +106,8 @@ func (a *Apt) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 		return fmt.Errorf("required parameter: URI")
 	}
 
-	if !viaduct.IsRoot() {
-		return fmt.Errorf("apt resource must be run as root")
+	if err := requireRoot(ctx, "apt"); err != nil {
+		return err
 	}
 
 	// Set optional defaults here
@@ -192,48 +200,29 @@ func (a *Apt) Run(ctx context.Context, log *viaduct.Logger) error {
 
 	if a.Delete {
 		return a.deleteApt(ctx, log)
-	} else {
-		return a.createApt(ctx, log)
 	}
+
+	return a.createApt(ctx, log)
 }
 
-// AptUpdate is a helper function to perform "apt-get update"
-// Should be converted to a proper resource
+// updateApt runs "apt-get update". It requires root in a dry run too.
 func (a *Apt) updateApt(ctx context.Context, log *viaduct.Logger) error {
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("updating")
-		return nil
-	}
+	env := viaduct.EnvFrom(ctx)
 
-	if !viaduct.IsRoot() {
+	if !env.IsRoot() {
 		return fmt.Errorf("must be run as root")
 	}
 
-	log.Info("updating")
-
-	cmd := exec.Command("apt-get", "update", "-y")
-	cmd.Stderr = aptStderr()
-
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func aptStderr() *os.File {
-	if viaduct.Cli.JSON {
+	if !change(ctx, log, "updating") {
 		return nil
 	}
-	return os.Stderr
+
+	return viaduct.Command{Name: "apt-get", Args: []string{"update", "-y"}, Stdout: io.Discard}.Run(ctx, log)
 }
 
-// Create adds a new apt repository
+// createApt adds a new apt repository
 func (a *Apt) createApt(ctx context.Context, log *viaduct.Logger) error {
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("created", "name", a.Name)
-		return nil
-	}
+	env := viaduct.EnvFrom(ctx)
 
 	var content string
 	var err error
@@ -247,29 +236,29 @@ func (a *Apt) createApt(ctx context.Context, log *viaduct.Logger) error {
 		return err
 	}
 
-	if viaduct.FileExists(a.path) {
-		if con, err := os.ReadFile(a.path); err == nil {
-			if string(con) == content {
-				log.Noop("up-to-date", "name", a.Name)
-				return nil
-			}
-		} else {
-			return err
-		}
-	}
+	path := env.Path(a.path)
+	altpath := env.Path(a.altpath)
 
-	// Remove the other type so we don't have repeats
-	if viaduct.FileExists(a.altpath) {
-		if err := os.Remove(a.altpath); err != nil {
-			return err
-		}
-	}
-
-	if err := os.WriteFile(a.path, []byte(content), 0o644); err != nil {
+	existing, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 
-	log.Info("created", "name", a.Name)
+	if err == nil && string(existing) == content {
+		log.Noop("up-to-date", "name", a.Name)
+		return nil
+	}
+
+	if change(ctx, log, "created", "name", a.Name) {
+		// Remove the other format, so the repository is not listed twice
+		if err := os.Remove(altpath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+
+		if err := viaduct.WriteFileAtomic(path, []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
 
 	if a.Update {
 		return a.updateApt(ctx, log)
@@ -284,22 +273,23 @@ func (a *Apt) listContent(ctx context.Context, log *viaduct.Logger) (string, err
 	}
 
 	if a.SigningKey != "" || a.SigningKeyURL != "" {
-		if err := a.receiveSigningKey(ctx, log); err == nil {
-			if a.Parameters == nil {
-				a.Parameters = make(map[string]string)
-			}
-
-			a.Parameters["signed-by"] = a.signingKeyPath()
-		} else {
+		if err := a.receiveSigningKey(ctx, log); err != nil {
 			return "", err
 		}
+
+		if a.Parameters == nil {
+			a.Parameters = make(map[string]string)
+		}
+
+		a.Parameters["signed-by"] = a.signingKeyPath()
 	}
 
 	if len(a.Parameters) > 0 {
 		var params []string
 
-		for k, v := range a.Parameters {
-			params = append(params, fmt.Sprintf("%s=%s", k, v))
+		// Sorted for a stable file
+		for _, k := range slices.Sorted(maps.Keys(a.Parameters)) {
+			params = append(params, fmt.Sprintf("%s=%s", k, a.Parameters[k]))
 		}
 
 		content = append(content, fmt.Sprintf("[%s]", strings.Join(params, " ")))
@@ -321,15 +311,15 @@ func (a *Apt) sourceContent(ctx context.Context, log *viaduct.Logger) (string, e
 	}
 
 	if a.SigningKey != "" || a.SigningKeyURL != "" {
-		if err := a.receiveSigningKey(ctx, log); err == nil {
-			if a.Parameters == nil {
-				a.Parameters = make(map[string]string)
-			}
-
-			content = append(content, fmt.Sprintf("Signed-By: %s", a.signingKeyPath()))
-		} else {
+		if err := a.receiveSigningKey(ctx, log); err != nil {
 			return "", err
 		}
+
+		if a.Parameters == nil {
+			a.Parameters = make(map[string]string)
+		}
+
+		content = append(content, fmt.Sprintf("Signed-By: %s", a.signingKeyPath()))
 	}
 
 	if a.PublicPgpKey != "" {
@@ -337,7 +327,8 @@ func (a *Apt) sourceContent(ctx context.Context, log *viaduct.Logger) (string, e
 	}
 
 	if len(a.Parameters) > 0 {
-		for k, v := range a.Parameters {
+		for _, k := range slices.Sorted(maps.Keys(a.Parameters)) {
+			v := a.Parameters[k]
 			if k == "arch" {
 				content = append(content, fmt.Sprintf("Architectures: %s", v))
 				continue
@@ -359,10 +350,18 @@ func (a *Apt) sourceContent(ctx context.Context, log *viaduct.Logger) (string, e
 
 // receiveSigningKey will fetch a signing key. The commands run without a
 // shell, so a URL or key ID containing shell metacharacters is passed through
-// as a literal argument rather than being interpreted.
+// as a literal argument. A dry run only reports the fetch.
 func (a *Apt) receiveSigningKey(ctx context.Context, log *viaduct.Logger) error {
-	if viaduct.FileExists(a.signingKeyPath()) {
-		log.Noop("signing-key-exists", "path", a.signingKeyPath())
+	env := viaduct.EnvFrom(ctx)
+	keyPath := env.Path(a.signingKeyPath())
+
+	if viaduct.FileExists(keyPath) {
+		log.Noop("signing-key-exists", "path", keyPath)
+		return nil
+	}
+
+	if env.DryRun {
+		log.Info("signing-key-fetched", "path", keyPath)
 		return nil
 	}
 
@@ -371,16 +370,24 @@ func (a *Apt) receiveSigningKey(ctx context.Context, log *viaduct.Logger) error 
 		// body goes through gpg --dearmor, which passes non-armoured input
 		// straight through, and the error page is installed as the keyring. The
 		// existence check above then treats it as valid on every later run
-		// nolint:gosec
-		cmd := exec.Command("curl", "-sSfL", a.SigningKeyURL)
-		cmd.Stderr = aptStderr()
+		args := []string{"-sSfL"}
 
-		key, err := cmd.Output()
+		// A key fetched over https is not let down to http by a redirect
+		if strings.HasPrefix(strings.ToLower(a.SigningKeyURL), "https://") {
+			args = append(args, "--proto", "=https", "--proto-redir", "=https")
+		}
+
+		key, err := viaduct.Command{Name: "curl", Args: append(args, a.SigningKeyURL)}.Output(ctx, log)
 		if err != nil {
 			return fmt.Errorf("could not fetch signing key from %s: %w", a.SigningKeyURL, err)
 		}
 
-		if err := writeCommandOutput(a.signingKeyPath(), bytes.NewReader(key), "gpg", "--dearmor"); err != nil {
+		dearmoured, err := viaduct.Command{Name: "gpg", Args: []string{"--dearmor"}, Stdin: bytes.NewReader(key)}.Output(ctx, log)
+		if err != nil {
+			return err
+		}
+
+		if err := viaduct.WriteFileAtomic(keyPath, dearmoured, 0o644); err != nil {
 			return err
 		}
 	}
@@ -398,70 +405,40 @@ func (a *Apt) receiveSigningKey(ctx context.Context, log *viaduct.Logger) error 
 		}()
 
 		// Then we export the key to disk
-		if err := writeCommandOutput(a.signingKeyPath(), nil, "gpg", "--export", a.SigningKey); err != nil {
+		exported, err := viaduct.Command{Name: "gpg", Args: []string{"--export", a.SigningKey}}.Output(ctx, log)
+		if err != nil {
+			return err
+		}
+
+		if err := viaduct.WriteFileAtomic(keyPath, exported, 0o644); err != nil {
 			return err
 		}
 	}
 
-	log.Info("signing-key-fetched", "path", a.signingKeyPath())
+	log.Info("signing-key-fetched", "path", keyPath)
 	return nil
 }
 
-// writeCommandOutput runs a command and writes its standard output to path.
-// The content goes to a temporary file that is moved into place, so a command
-// that fails part way through does not leave a truncated file behind for the
-// next run to treat as valid.
-func writeCommandOutput(path string, stdin io.Reader, args ...string) error {
-	tmp := path + ".viaduct-tmp"
-
-	f, err := os.Create(tmp)
-	if err != nil {
-		return err
-	}
-
-	// nolint:gosec
-	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Stdin = stdin
-	cmd.Stdout = f
-	cmd.Stderr = aptStderr()
-
-	if runErr := cmd.Run(); runErr != nil {
-		f.Close()
-		os.Remove(tmp)
-
-		return runErr
-	}
-
-	if err := f.Close(); err != nil {
-		os.Remove(tmp)
-
-		return err
-	}
-
-	return os.Rename(tmp, path)
-}
-
+// signingKeyPath is the keyring path, without the root applied
 func (a *Apt) signingKeyPath() string {
 	return filepath.Join("/usr/share/keyrings", fmt.Sprintf("%s.gpg", a.Name))
 }
 
-// Delete removes an apt repository
+// deleteApt removes an apt repository
 func (a *Apt) deleteApt(ctx context.Context, log *viaduct.Logger) error {
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("deleted", "name", a.Name)
-		return nil
-	}
+	env := viaduct.EnvFrom(ctx)
+	path := env.Path(a.path)
 
-	if !viaduct.FileExists(a.path) {
+	if !viaduct.FileExists(path) {
 		log.Noop("up-to-date", "name", a.Name)
 		return nil
 	}
 
-	if err := os.Remove(a.path); err != nil {
-		return err
+	if change(ctx, log, "deleted", "name", a.Name) {
+		if err := os.Remove(path); err != nil {
+			return err
+		}
 	}
-
-	log.Info("deleted", "name", a.Name)
 
 	if a.Update {
 		return a.updateApt(ctx, log)

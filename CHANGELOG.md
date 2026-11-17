@@ -168,7 +168,7 @@ resources needs no change. Beyond that:
   SIGTERM cancels running resources too, and a second signal exits straight
   away
 - **Package work has no timeout by default.** Stopping dpkg part way through
-  leaves it interrupted, so `Package`,
+  leaves it interrupted, so `Package`, `Apt` when it runs `apt-get update`,
   and `Execute` or `Shell` with `LockKey` set to `PackageLock` (including
   `DistUpgrade`, `AptAutoremove`, `AptHold` and `InstallDeb`) run until they
   finish. `WithTimeout` and `--resource-timeout` still apply to them
@@ -186,7 +186,7 @@ resources needs no change. Beyond that:
   manager had a newer version. That package is now left as it is
 - A `Download` whose file already exists with a matching `Checksum` is a noop,
   rather than being downloaded again
-- **`File`, `Template` and `Line` write files atomically.** A
+- **`File`, `Template`, `Line` and `Apt` write files atomically.** A
   crash part way through a write leaves the old file or the new one, never a
   truncated mixture. The file is replaced rather than rewritten, so its inode
   changes, and a symlink is followed to the file it points to only when the
@@ -248,6 +248,14 @@ resources needs no change. Beyond that:
 - `IsDirectory`. Use `DirExists`
 - `Resource.Status`, `Resource.Error`, `Resource.Failed` and the `Error`
   type. The `Report` from `Apply` holds the outcome of a run
+
+### Fixed
+
+- `Apt` writes its `Parameters` in a stable order. With more than one, the
+  order changed between runs, so the file was rewritten and `apt-get update`
+  ran again on an otherwise unchanged host
+- `Apt` fetches an https `SigningKeyURL` with curl restricted to https, so a
+  redirect cannot fetch the key over http
 
 ## v0.8.0
 
