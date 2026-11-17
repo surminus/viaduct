@@ -53,6 +53,9 @@ resources needs no change. Beyond that:
   device is an error
 - A new `SysfsValue` resource for values under `/sys`, comparing the bracketed
   choice in files such as `/sys/kernel/mm/transparent_hugepage/enabled`
+- A new `Hostname` resource, with a `SetHostname` shortcut, which sets the
+  host name with `hostnamectl`, or only until the next boot with `Transient`.
+  It does not edit `/etc/hosts`
 - `FstabLock` and `NetworkLock`, alongside `PackageLock` and `PasswdLock`
 
 - `Apply(ctx, Options)` runs a manifest and returns a `Report` with a `Result`

@@ -670,3 +670,99 @@ func TestSysfsValue(t *testing.T) {
 		assert.ErrorContains(t, err, "is madvise after writing never")
 	})
 }
+
+func TestHostname(t *testing.T) {
+	setup := func(t *testing.T, kernel, static string) *viaducttest.Env {
+		env := viaducttest.NewEnv(t)
+		env.WriteFile("/proc/sys/kernel/hostname", kernel+"\n")
+
+		if static != "" {
+			env.WriteFile("/etc/hostname", static+"\n")
+		}
+
+		return env
+	}
+
+	t.Run("preflight", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+
+		for _, name := range []string{"", "-bad", "bad-", "has space", "under_score", "a..b", string(make([]byte, 65))} {
+			assert.Error(t, SetHostname(name).PreflightChecks(env.Context(), env.Log), name)
+		}
+
+		for _, name := range []string{"web-1", "web-1.example.com", "a"} {
+			assert.NoError(t, SetHostname(name).PreflightChecks(env.Context(), env.Log), name)
+		}
+
+		assert.Equal(t, viaduct.NetworkLock, SetHostname("a").Params().LockKey)
+	})
+
+	t.Run("sets the name", func(t *testing.T) {
+		env := setup(t, "localhost", "localhost")
+		env.Runner.On("hostnamectl", "set-hostname", "web-1")
+
+		log, err := env.Apply(env.Context(), SetHostname("web-1"))
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.True(t, env.Runner.Ran("hostnamectl", "set-hostname", "web-1"))
+	})
+
+	t.Run("a stale /etc/hostname is set even when the kernel is right", func(t *testing.T) {
+		env := setup(t, "web-1", "localhost")
+		env.Runner.On("hostnamectl", "set-hostname", "web-1")
+
+		_, err := env.Apply(env.Context(), SetHostname("web-1"))
+		require.NoError(t, err)
+		assert.True(t, env.Runner.Ran("hostnamectl", "set-hostname", "web-1"))
+	})
+
+	t.Run("already set is a noop", func(t *testing.T) {
+		env := setup(t, "web-1", "web-1")
+
+		log, err := env.Apply(env.Context(), SetHostname("web-1"))
+		require.NoError(t, err)
+
+		assert.False(t, log.Changed())
+		assert.Empty(t, env.Runner.Calls())
+	})
+
+	t.Run("transient only uses the kernel name", func(t *testing.T) {
+		env := setup(t, "localhost", "localhost")
+		env.Runner.On("hostname", "web-1")
+
+		_, err := env.Apply(env.Context(), &Hostname{Name: "web-1", Transient: true})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"hostname web-1"}, env.Runner.Commands())
+
+		env = setup(t, "web-1", "localhost")
+		log, err := env.Apply(env.Context(), &Hostname{Name: "web-1", Transient: true})
+		require.NoError(t, err)
+		assert.False(t, log.Changed())
+	})
+
+	t.Run("dry run", func(t *testing.T) {
+		env := setup(t, "localhost", "localhost")
+
+		log, err := env.Apply(env.DryRunContext(), SetHostname("web-1"))
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Empty(t, env.Runner.Calls())
+	})
+
+	t.Run("transient dry run", func(t *testing.T) {
+		env := setup(t, "localhost", "localhost")
+
+		log, err := env.Apply(env.DryRunContext(), &Hostname{Name: "web-1", Transient: true})
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Empty(t, env.Runner.Calls())
+
+		env = setup(t, "web-1", "")
+		log, err = env.Apply(env.DryRunContext(), &Hostname{Name: "web-1", Transient: true})
+		require.NoError(t, err)
+		assert.False(t, log.Changed(), "a missing /etc/hostname does not matter when transient")
+	})
+}
