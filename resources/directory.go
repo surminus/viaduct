@@ -65,28 +65,29 @@ func (d *Directory) OperationName() string {
 func (d *Directory) Run(ctx context.Context, log *viaduct.Logger) error {
 	if d.Delete {
 		return d.deleteDirectory(ctx, log)
-	} else {
-		return d.createDirectory(ctx, log)
 	}
+
+	return d.createDirectory(ctx, log)
 }
 
-// Create creates a directory
+// createDirectory creates a directory
 func (d *Directory) createDirectory(ctx context.Context, log *viaduct.Logger) error {
-	path := viaduct.ExpandPath(d.Path)
+	env := viaduct.EnvFrom(ctx)
+	path := env.Path(viaduct.ExpandPath(d.Path))
 
-	if viaduct.EnvFrom(ctx).DryRun {
+	if viaduct.DirExists(path) {
+		log.Noop("up-to-date", "path", path)
+	} else {
 		log.Info("created", "path", path)
-		return nil
-	}
 
-	if !viaduct.DirExists(path) {
-		if err := os.MkdirAll(viaduct.ExpandPath(path), d.Mode); err != nil {
-			return err
+		if env.DryRun {
+			// Nothing to set permissions on yet
+			return nil
 		}
 
-		log.Info("created", "path", path)
-	} else {
-		log.Noop("up-to-date", "path", path)
+		if err := os.MkdirAll(path, d.Mode); err != nil {
+			return err
+		}
 	}
 
 	return d.setDirectoryPermissions(
@@ -97,23 +98,19 @@ func (d *Directory) createDirectory(ctx context.Context, log *viaduct.Logger) er
 	)
 }
 
-// Delete deletes a directory.
+// deleteDirectory deletes a directory
 func (d *Directory) deleteDirectory(ctx context.Context, log *viaduct.Logger) error {
-	path := viaduct.ExpandPath(d.Path)
+	env := viaduct.EnvFrom(ctx)
+	path := env.Path(viaduct.ExpandPath(d.Path))
 
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("deleted", "path", path)
+	if !viaduct.DirExists(path) {
+		log.Noop("up-to-date", "path", path)
 		return nil
 	}
 
-	if viaduct.DirExists(path) {
-		if err := os.RemoveAll(viaduct.ExpandPath(d.Path)); err != nil {
-			return err
-		}
-		log.Info("deleted", "path", path)
-	} else {
-		log.Noop("up-to-date", "path", path)
+	if !change(ctx, log, "deleted", "path", path) {
+		return nil
 	}
 
-	return nil
+	return os.RemoveAll(path)
 }

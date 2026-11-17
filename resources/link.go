@@ -66,26 +66,28 @@ func (l *Link) OperationName() string {
 func (l *Link) Run(ctx context.Context, log *viaduct.Logger) error {
 	if l.Delete {
 		return l.deleteLink(ctx, log)
-	} else {
-		return l.createLink(ctx, log)
 	}
+
+	return l.createLink(ctx, log)
 }
 
-// Create can be used in scripting mode to create a symlink from Source to Path
+// createLink creates a symlink from Source to Path
 func (l *Link) createLink(ctx context.Context, log *viaduct.Logger) error {
 	// If creating a link, a source is required, but not if we're deleting.
 	if l.Source == "" {
 		return fmt.Errorf("required parameter: Source")
 	}
 
-	// The source should always be the full path, so we will
-	// attempt to expand it
+	env := viaduct.EnvFrom(ctx)
+
+	// The source should always be the full path. It is the link's target, so
+	// the root is not applied to it.
 	source, err := filepath.Abs(viaduct.ExpandPath(l.Source))
 	if err != nil {
 		return err
 	}
 
-	path := viaduct.ExpandPath(l.Path)
+	path := env.Path(viaduct.ExpandPath(l.Path))
 
 	if l.CreateDirIfMissing {
 		if err := ensureParentDir(ctx, log, path); err != nil {
@@ -93,62 +95,42 @@ func (l *Link) createLink(ctx context.Context, log *viaduct.Logger) error {
 		}
 	}
 
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("created", "source", source, "path", path)
-		return nil
-	}
-
-	// If the file exists and is a symlink, let's check the source is correct
-	if viaduct.LinkExists(path) {
-		src, err := os.Readlink(path)
-		if err == nil {
-			// If the source is not correct, let's delete the symlink
-			if src != source {
-				if err := os.Remove(path); err != nil {
-					return err
-				}
-			} else {
-				// Otherwise everything is as we want it, so return
-				log.Noop("up-to-date", "source", source, "path", path)
-				return nil
-			}
-		} else {
-			// If there is an error, then it isn't a symlink. In this case,
-			// let's delete the file and replace it with a link.
-			if err := os.Remove(path); err != nil {
-				return err
-			}
+	// Anything at the path that is not a link to the source is replaced,
+	// including a non-link, which makes Readlink fail
+	exists := viaduct.LinkExists(path)
+	if exists {
+		if src, err := os.Readlink(path); err == nil && src == source {
+			log.Noop("up-to-date", "source", source, "path", path)
+			return nil
 		}
 	}
 
-	if err := os.Symlink(source, path); err != nil {
-		return err
-	}
-
-	log.Info("created", "source", source, "path", path)
-
-	return nil
-}
-
-// Delete deletes the symlink from the Path
-func (l *Link) deleteLink(ctx context.Context, log *viaduct.Logger) error {
-	path := viaduct.ExpandPath(l.Path)
-
-	if viaduct.EnvFrom(ctx).DryRun {
-		log.Info("deleted", "path", path)
+	if !change(ctx, log, "created", "source", source, "path", path) {
 		return nil
 	}
+
+	if exists {
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+	}
+
+	return os.Symlink(source, path)
+}
+
+// deleteLink deletes the symlink from the Path
+func (l *Link) deleteLink(ctx context.Context, log *viaduct.Logger) error {
+	env := viaduct.EnvFrom(ctx)
+	path := env.Path(viaduct.ExpandPath(l.Path))
 
 	if !viaduct.LinkExists(path) {
 		log.Noop("up-to-date", "path", path)
 		return nil
 	}
 
-	if err := os.Remove(path); err != nil {
-		return err
+	if !change(ctx, log, "deleted", "path", path) {
+		return nil
 	}
 
-	log.Info("deleted", "path", path)
-
-	return nil
+	return os.Remove(path)
 }

@@ -58,6 +58,15 @@ func TestPermissionsDoNotFollowSymlinks(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 	})
+
+	t.Run("a directory that is a symlink is an error", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		outside := t.TempDir()
+		require.NoError(t, os.Symlink(outside, env.Path("/srv")))
+
+		_, err := env.Apply(env.Context(), &Directory{Path: "/srv", Permissions: Permissions{UID: os.Getuid(), GID: os.Getgid()}})
+		assert.ErrorContains(t, err, "is a symlink")
+	})
 }
 
 // Not parallel: these replace the package's lstat and lchown.
