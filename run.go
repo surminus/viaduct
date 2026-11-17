@@ -33,7 +33,7 @@ func (m *Manifest) run() int {
 		return code
 	}
 
-	return m.runWith(flags)
+	return m.runWith(context.Background(), flags, os.Stdout, os.Stderr)
 }
 
 // flagsExit returns the exit code for an error from reading the flags, and
@@ -50,17 +50,17 @@ func flagsExit(err error, stderr io.Writer) (int, bool) {
 	}
 }
 
-// runWith applies the manifest as Run does, with the flags already read. It
-// returns the exit code.
-func (m *Manifest) runWith(flags CliFlags) int {
+// runWith applies the manifest as Run does, with the flags already read,
+// writing to stdout and stderr. It returns the exit code.
+func (m *Manifest) runWith(ctx context.Context, flags CliFlags, stdout, stderr io.Writer) int {
 	if flags.Attributes {
 		out, err := Attributes().JSON()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintln(stderr, err)
 			return 1
 		}
 
-		fmt.Println(out)
+		fmt.Fprintln(stdout, out)
 
 		return 0
 	}
@@ -77,25 +77,20 @@ func (m *Manifest) runWith(flags CliFlags) int {
 	case flags.Silent:
 		handler = DiscardHandler
 	default:
-		handler = NewTextHandler(TextOptions{Stdout: flags.Stdout, Quiet: flags.Quiet})
+		handler = NewTextHandler(TextOptions{Stdout: flags.Stdout, Quiet: flags.Quiet, Out: stdout, Err: stderr})
 	}
 
 	// Shared by Apply and the run's own logger, so they never write at once
 	handler = serialise(handler)
 
-	report, err := m.Apply(context.Background(), Options{
+	report, err := m.Apply(ctx, Options{
 		Env:             Env{DryRun: flags.DryRun},
 		Handler:         handler,
 		ResourceTimeout: flags.ResourceTimeout,
 	})
 
-	// Apply has already logged anything that stopped the run before it
-	// started.
-	if err != nil && !errors.Is(err, ErrRunFailed) {
-		return 1
-	}
-
 	l := NewLogger(handler, "Viaduct", "Run")
+	l.ctx = ctx
 
 	duration := report.Duration.Round(time.Second).String()
 	failures := collectFailures(report.Final())
@@ -109,7 +104,7 @@ func (m *Manifest) runWith(flags CliFlags) int {
 
 		switch {
 		case dumpErr != nil && flags.JSON:
-			fmt.Fprintln(os.Stderr, "manifest not written:", dumpErr)
+			fmt.Fprintln(stderr, "manifest not written:", dumpErr)
 		case dumpErr != nil:
 			l.Warn("manifest-not-written", "error", dumpErr.Error())
 		case !flags.JSON:
@@ -130,24 +125,34 @@ func (m *Manifest) runWith(flags CliFlags) int {
 
 		if err != nil {
 			output.Status = "failed"
+			output.Error = err.Error()
 		}
 
 		out, jsonErr := json.MarshalIndent(output, "", "  ")
 		if jsonErr != nil {
-			fmt.Fprintln(os.Stderr, jsonErr)
+			fmt.Fprintln(stderr, jsonErr)
 			return 1
 		}
 
-		fmt.Println(string(out))
-	} else if err != nil {
-		l.Warn("completed-with-errors", "duration", duration)
-		printFailuresTree(failures, l)
-
-		if !flags.DumpManifest {
-			l.progress("run with --dump-manifest to see every resource, or --json for the full report")
-		}
+		fmt.Fprintln(stdout, string(out))
 	} else {
-		l.progress("completed", "duration", duration)
+		switch {
+		case err == nil:
+			l.progress("completed", "duration", duration)
+		case errors.Is(err, ErrRunFailed):
+			l.Warn("completed-with-errors", "duration", duration)
+			printFailuresTree(failures, l)
+
+			if !flags.DumpManifest {
+				l.progress("run with --dump-manifest to see every resource, or --json for the full report")
+			}
+		}
+
+		// Apply has already logged anything that stopped the run before it
+		// started.
+		if flags.Silent && err != nil {
+			fmt.Fprintln(stderr, err)
+		}
 	}
 
 	if err != nil {
@@ -410,6 +415,10 @@ type ResourceResult struct {
 type RunOutput struct {
 	// Status is "success" or "failed".
 	Status string `json:"status"`
+
+	// Error is why the run failed, including when it failed before any
+	// resource ran.
+	Error string `json:"error,omitempty"`
 
 	Duration  string           `json:"duration"`
 	Resources []ResourceResult `json:"resources"`

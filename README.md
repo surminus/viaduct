@@ -143,10 +143,17 @@ set.
 
 ## CLI
 
-The compiled binary comes with runtime flags:
+`Run` is the entry point for a program whose only job is to apply the
+manifest. It reads the command-line flags, applies the manifest, prints what
+happened and exits with a non-zero status if anything failed:
 ```bash
 ./viaduct --help
 ```
+
+`--json` prints a single JSON document on stdout, whatever the outcome, with a
+`status` of `success` or `failed`. `--dump-manifest` writes
+every resource and its outcome to a file readable only by you, and prints
+where.
 
 ## Using viaduct as a library
 

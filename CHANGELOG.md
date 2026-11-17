@@ -156,6 +156,10 @@ resources needs no change. Beyond that:
   unknown flag, or a `VIADUCT_RESOURCE_TIMEOUT` that is not a duration, is
   reported and exits with status 2. `--help` lists `VIADUCT_RESOURCE_TIMEOUT`
   and `VIADUCT_STDOUT`
+- **`--json` always prints a JSON document**, including when the run fails
+  before any resource runs. It has `status` (`success` or `failed`), `error`
+  when the run failed, and the preflight failures in `failures`
+- `--silent` still prints the error when the run fails
 - `--dump-manifest` writes to a new file in `$TMPDIR` readable only by the
   user, with each resource's `Status` and `Error` from the run, and prints
   its path, or with `--json` puts it in `manifest`. It used to write a
