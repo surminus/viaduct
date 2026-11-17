@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
@@ -41,7 +42,7 @@ func (g *Group) Params() *viaduct.ResourceParams {
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (g *Group) PreflightChecks(log *viaduct.Logger) error {
+func (g *Group) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if g.Name == "" {
 		return fmt.Errorf("required parameter: Name")
@@ -63,15 +64,15 @@ func (g *Group) OperationName() string {
 	return "Create"
 }
 
-func (g *Group) Run(log *viaduct.Logger) error {
+func (g *Group) Run(ctx context.Context, log *viaduct.Logger) error {
 	if g.Delete {
-		return g.delete(log)
+		return g.delete(ctx, log)
 	}
 
-	return g.create(log)
+	return g.create(ctx, log)
 }
 
-func (g *Group) create(log *viaduct.Logger) error {
+func (g *Group) create(ctx context.Context, log *viaduct.Logger) error {
 	// A group that already exists with a different GID is a conflict we
 	// cannot resolve without renumbering everything that belongs to it, so
 	// say so rather than silently leaving it alone
@@ -84,7 +85,7 @@ func (g *Group) create(log *viaduct.Logger) error {
 		return nil
 	}
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("created", "group", g.Name)
 		return nil
 	}
@@ -110,13 +111,13 @@ func (g *Group) create(log *viaduct.Logger) error {
 	return nil
 }
 
-func (g *Group) delete(log *viaduct.Logger) error {
+func (g *Group) delete(ctx context.Context, log *viaduct.Logger) error {
 	if _, ok := lookupGroup(g.Name); !ok {
 		log.Noop("up-to-date", "group", g.Name)
 		return nil
 	}
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("deleted", "group", g.Name)
 		return nil
 	}

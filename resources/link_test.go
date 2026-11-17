@@ -11,7 +11,7 @@ import (
 func newTestLink(t *testing.T, source, dest string) *Link {
 	d := &Link{Source: source, Path: dest}
 
-	err := d.PreflightChecks(testLogger)
+	err := d.PreflightChecks(testCtx, testLogger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestLink(t *testing.T) {
 
 		l := newTestLink(t, "test/acceptance/link/source.txt", "test/acceptance/link/create.txt")
 
-		err := l.Run(testLogger)
+		err := l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.LinkExists(l.Path))
@@ -51,13 +51,13 @@ func TestLink(t *testing.T) {
 			Path:               dir + "/nested/create.txt",
 			CreateDirIfMissing: true,
 		}
-		if err := l.PreflightChecks(testLogger); err != nil {
+		if err := l.PreflightChecks(testCtx, testLogger); err != nil {
 			t.Fatal(err)
 		}
 
 		assert.Equal(t, false, viaduct.DirExists(dir))
 
-		err := l.Run(testLogger)
+		err := l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.LinkExists(l.Path))
@@ -78,7 +78,7 @@ func TestLink(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = l.Run(testLogger)
+		err = l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		assert.Equal(t, false, viaduct.LinkExists(l.Path))

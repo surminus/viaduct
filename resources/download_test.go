@@ -16,7 +16,7 @@ func newTestDownload(t *testing.T, url, path string) *Download {
 		URL:  url,
 	}
 
-	err := d.PreflightChecks(testLogger)
+	err := d.PreflightChecks(testCtx, testLogger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestDown(t *testing.T) {
 
 		d := newTestDownload(t, testurl, "test/acceptance/download/basic.txt")
 
-		err := d.Run(testLogger)
+		err := d.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.FileExists(d.Path))
@@ -67,7 +67,7 @@ func TestDown(t *testing.T) {
 		d := newTestDownload(t, testurl, "test/acceptance/download/checksum-ok.txt")
 		d.Checksum = "565339bc4d33d72817b583024112eb7f5cdf3e5eef0252d6ec1b9c9a94e12bb3"
 
-		err := d.Run(testLogger)
+		err := d.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.FileExists(d.Path))
@@ -91,7 +91,7 @@ func TestDown(t *testing.T) {
 		d := newTestDownload(t, testurl, "test/acceptance/download/checksum-bad.txt")
 		d.Checksum = "0000000000000000000000000000000000000000000000000000000000000000"
 
-		err := d.Run(testLogger)
+		err := d.Run(testCtx, testLogger)
 		assert.Error(t, err)
 
 		// The mismatched file should be removed.
@@ -120,13 +120,13 @@ func TestDown(t *testing.T) {
 			Path:               dir + "/nested/basic.txt",
 			CreateDirIfMissing: true,
 		}
-		if err := d.PreflightChecks(testLogger); err != nil {
+		if err := d.PreflightChecks(testCtx, testLogger); err != nil {
 			t.Fatal(err)
 		}
 
 		assert.Equal(t, false, viaduct.DirExists(dir))
 
-		err := d.Run(testLogger)
+		err := d.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.FileExists(d.Path))

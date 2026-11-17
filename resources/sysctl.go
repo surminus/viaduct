@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,7 +35,7 @@ func (s *Sysctl) Params() *viaduct.ResourceParams {
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (s *Sysctl) PreflightChecks(log *viaduct.Logger) error {
+func (s *Sysctl) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if s.Name == "" {
 		return fmt.Errorf("required parameter: Name")
@@ -68,8 +69,8 @@ func (s *Sysctl) OperationName() string {
 	return "Apply"
 }
 
-func (s *Sysctl) Run(log *viaduct.Logger) error {
-	if viaduct.Cli.DryRun {
+func (s *Sysctl) Run(ctx context.Context, log *viaduct.Logger) error {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("applied", "path", s.path)
 		return nil
 	}

@@ -1,6 +1,7 @@
 package viaduct
 
 import (
+	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -14,10 +15,14 @@ import (
 // manifest.
 var errInvalidDependency = errors.New("dependency is not a valid resource")
 
-// errAbandoned is returned when a resource is still running once its timeout
-// has passed. The operation carries on, so the run treats it as a reason to
-// stop rather than as an ordinary failure.
-var errAbandoned = errors.New("timed out")
+// errAbandoned is returned when a resource is still running once its context
+// has been cancelled for a while. The operation carries on, so the run treats
+// it as a reason to stop rather than as an ordinary failure.
+var errAbandoned = errors.New("abandoned")
+
+// errResourceTimeout is the cause of a resource's context being cancelled by
+// its own timeout, rather than by the caller.
+var errResourceTimeout = errors.New("resource timeout")
 
 // ResourceKind is the kind of resource, such as "File" or "Package".
 type ResourceKind string
@@ -39,13 +44,14 @@ type Resource struct {
 	// waits for other resources using the same key. Empty means the
 	// resource is serialised against every other lock holder.
 	LockKey LockKey `json:"LockKey,omitempty"`
-	// Timeout overrides how long this resource is given to run. Zero uses
-	// the manifest setting, and a negative duration means no timeout.
+	// Timeout overrides how long this resource is given to run. It starts as
+	// the Timeout in the resource's params. Zero uses the manifest setting,
+	// and a negative duration means no timeout.
 	Timeout time.Duration `json:"Timeout,omitempty"`
 
 	// deps and depNames are the dependencies given to Add and SetDep. They are
-	// resolved into resolved and DependsOn on apply, so renames
-	// do not break them.
+	// resolved into resolved and DependsOn on apply, so renames do not break
+	// them.
 	deps     []*Resource
 	depNames []ResourceID
 	resolved []*Resource
@@ -66,6 +72,11 @@ type ResourceParams struct {
 	// same key, rather than for every lock holder in the run. Setting a key
 	// implies a lock.
 	LockKey LockKey
+
+	// Timeout is how long the resource is given to run. WithTimeout and the
+	// ResourceTimeout option override it. Zero uses the manifest setting, and
+	// a negative duration means no timeout.
+	Timeout time.Duration
 }
 
 // NewResourceParams creates a new ResourceParams.
@@ -104,11 +115,14 @@ type ResourceAttributes interface {
 	Params() *ResourceParams
 
 	// PreflightChecks are used to check that the resource parameters have been
-	// correctly set, and to ensure that default parameters are assigned.
-	PreflightChecks(log *Logger) error
+	// correctly set, and to ensure that default parameters are assigned. They
+	// run for every resource before any resource runs.
+	PreflightChecks(ctx context.Context, log *Logger) error
 
-	// Run performs the resource operation.
-	Run(log *Logger) error
+	// Run performs the resource operation. The context carries the Env and is
+	// cancelled on timeout or when the run stops. In a dry run, Run skips the
+	// changes and logs each one it would have made with Info.
+	Run(ctx context.Context, log *Logger) error
 }
 
 // ResourceID is an id of a resource.
@@ -165,31 +179,72 @@ func (r *Resource) name() string {
 	return fmt.Sprintf("%s %s (%s)", r.ResourceKind, r.Attributes.Description(), r.ResourceID)
 }
 
-// run performs the resource operation, giving up on it if it takes longer than
-// the timeout. A timeout of zero or less lets it run for as long as it takes.
+// abandonGrace is how long a resource has to stop after its context is
+// cancelled. It is longer than commandCancelGrace and commandWaitDelay
+// together, so a resource whose command stops within its grace is not
+// abandoned.
+var abandonGrace = 40 * time.Second
+
+// run performs the resource operation, cancelling its context on timeout. A
+// timeout of zero or less means no timeout.
 //
-// A resource operation cannot be cancelled, since Run takes no context, so an
-// abandoned resource carries on in the background: giving up means the run
-// stops waiting for it and reports it as failed, not that whatever it was
-// doing has stopped.
-func (r *Resource) run(log *Logger, timeout time.Duration) error {
-	if timeout <= 0 {
-		return r.Attributes.Run(log)
+// A resource that does not return shortly after cancellation is abandoned:
+// reported as failed while the operation carries on in the background.
+func (r *Resource) run(ctx context.Context, log *Logger, timeout time.Duration) error {
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeoutCause(ctx, timeout, errResourceTimeout)
+		defer cancel()
 	}
 
 	done := make(chan error, 1)
 	go func() {
-		done <- r.Attributes.Run(log)
+		done <- r.Attributes.Run(ctx, log)
 	}()
 
 	select {
 	case err := <-done:
-		return err
-	case <-time.After(timeout):
+		return stoppedError(ctx, timeout, err)
+	case <-ctx.Done():
+	}
+
+	select {
+	case err := <-done:
+		return stoppedError(ctx, timeout, err)
+	case <-time.After(abandonGrace):
+	}
+
+	if timedOut(ctx) {
 		return fmt.Errorf(
-			"%w after %s: the operation was abandoned and may still be running. Raise the limit with WithTimeout, SetResourceTimeout or --resource-timeout",
-			errAbandoned,
+			"timed out after %s, and the operation was %w: it may still be running. Raise the limit with WithTimeout, SetResourceTimeout or --resource-timeout",
 			timeout,
+			errAbandoned,
 		)
 	}
+
+	return fmt.Errorf("stopped, and the operation was %w: it may still be running: %w", errAbandoned, ctx.Err())
+}
+
+// stoppedError is the error for a resource that has returned. Once its
+// context is cancelled, returning nil does not count as success, since the
+// operation may have been cut short.
+func stoppedError(ctx context.Context, timeout time.Duration, err error) error {
+	if ctx.Err() == nil {
+		return err
+	}
+
+	if err == nil {
+		err = ctx.Err()
+	}
+
+	if timedOut(ctx) {
+		return fmt.Errorf("timed out after %s: %w", timeout, err)
+	}
+
+	return err
+}
+
+// timedOut reports whether the resource's own timeout cancelled its context.
+func timedOut(ctx context.Context) bool {
+	return errors.Is(context.Cause(ctx), errResourceTimeout)
 }

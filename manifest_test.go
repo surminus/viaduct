@@ -484,9 +484,11 @@ func TestGeneratedIDs(t *testing.T) {
 	m := New()
 	a := m.Add(newTestResource("a"))
 	b := m.Add(newTestResourceWithLockKey("b", PackageLock), a)
+	c := m.Add(&paramsTimeoutResource{testResourceType: testResourceType{Value: "c"}, timeout: time.Minute})
 
 	assert.Equal(t, ResourceID("testResourceType_id-81d59653"), a.ResourceID)
 	assert.Equal(t, ResourceID("testResourceType_id-3f0c4ec3"), b.ResourceID)
+	assert.Equal(t, time.Minute, c.Timeout)
 }
 
 func newCompiledRun(t *testing.T, m *Manifest) *run {

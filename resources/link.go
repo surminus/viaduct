@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -44,7 +45,7 @@ func (l *Link) Params() *viaduct.ResourceParams {
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (l *Link) PreflightChecks(log *viaduct.Logger) error {
+func (l *Link) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if l.Path == "" {
 		return fmt.Errorf("required parameter: Path")
@@ -62,16 +63,16 @@ func (l *Link) OperationName() string {
 	return "Create"
 }
 
-func (l *Link) Run(log *viaduct.Logger) error {
+func (l *Link) Run(ctx context.Context, log *viaduct.Logger) error {
 	if l.Delete {
-		return l.deleteLink(log)
+		return l.deleteLink(ctx, log)
 	} else {
-		return l.createLink(log)
+		return l.createLink(ctx, log)
 	}
 }
 
 // Create can be used in scripting mode to create a symlink from Source to Path
-func (l *Link) createLink(log *viaduct.Logger) error {
+func (l *Link) createLink(ctx context.Context, log *viaduct.Logger) error {
 	// If creating a link, a source is required, but not if we're deleting.
 	if l.Source == "" {
 		return fmt.Errorf("required parameter: Source")
@@ -87,12 +88,12 @@ func (l *Link) createLink(log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(l.Path)
 
 	if l.CreateDirIfMissing {
-		if err := ensureParentDir(log, path); err != nil {
+		if err := ensureParentDir(ctx, log, path); err != nil {
 			return err
 		}
 	}
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("created", "source", source, "path", path)
 		return nil
 	}
@@ -130,10 +131,10 @@ func (l *Link) createLink(log *viaduct.Logger) error {
 }
 
 // Delete deletes the symlink from the Path
-func (l *Link) deleteLink(log *viaduct.Logger) error {
+func (l *Link) deleteLink(ctx context.Context, log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(l.Path)
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("deleted", "path", path)
 		return nil
 	}

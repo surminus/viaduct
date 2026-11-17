@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -47,7 +48,7 @@ func (p *Package) Params() *viaduct.ResourceParams {
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (p *Package) PreflightChecks(log *viaduct.Logger) error {
+func (p *Package) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if len(p.Names) < 1 {
 		return fmt.Errorf("required parameter: Names")
@@ -178,34 +179,34 @@ func (p *Package) OperationName() string {
 	}
 }
 
-func (p *Package) Run(log *viaduct.Logger) error {
+func (p *Package) Run(ctx context.Context, log *viaduct.Logger) error {
 	switch {
 	case p.Hold, p.Unhold:
-		return p.hold(log)
+		return p.hold(ctx, log)
 	case p.Uninstall, p.Purge:
-		return p.uninstall(log)
+		return p.uninstall(ctx, log)
 	default:
-		return p.install(log)
+		return p.install(ctx, log)
 	}
 }
 
-func (p *Package) install(log *viaduct.Logger) error {
+func (p *Package) install(ctx context.Context, log *viaduct.Logger) error {
 	log.Info("installing", "packages", strings.Join(p.Names, ", "))
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		return nil
 	}
 
 	return installPkg(viaduct.Attributes().Platform.ID, p.Names, p.Verbose)
 }
 
-func (p *Package) uninstall(log *viaduct.Logger) error {
+func (p *Package) uninstall(ctx context.Context, log *viaduct.Logger) error {
 	if p.Purge {
 		log.Info("purging", "packages", strings.Join(p.Names, ", "))
 	} else {
 		log.Info("uninstalling", "packages", strings.Join(p.Names, ", "))
 	}
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		return nil
 	}
 
@@ -214,7 +215,7 @@ func (p *Package) uninstall(log *viaduct.Logger) error {
 
 // hold marks packages as held back, or releases them, leaving alone any that
 // are already in the state we want
-func (p *Package) hold(log *viaduct.Logger) error {
+func (p *Package) hold(ctx context.Context, log *viaduct.Logger) error {
 	held, err := heldPackages()
 	if err != nil {
 		return err
@@ -233,7 +234,7 @@ func (p *Package) hold(log *viaduct.Logger) error {
 
 	log.Info(action, "packages", strings.Join(change, ", "))
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		return nil
 	}
 

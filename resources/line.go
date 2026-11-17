@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -60,7 +61,7 @@ func (l *Line) Params() *viaduct.ResourceParams {
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (l *Line) PreflightChecks(log *viaduct.Logger) error {
+func (l *Line) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if l.Path == "" {
 		return fmt.Errorf("required parameter: Path")
@@ -96,18 +97,18 @@ func (l *Line) OperationName() string {
 	return "Update"
 }
 
-func (l *Line) Run(log *viaduct.Logger) error {
+func (l *Line) Run(ctx context.Context, log *viaduct.Logger) error {
 	if l.Delete {
-		return l.deleteLine(log)
+		return l.deleteLine(ctx, log)
 	}
 
-	return l.updateLine(log)
+	return l.updateLine(ctx, log)
 }
 
-func (l *Line) updateLine(log *viaduct.Logger) error {
+func (l *Line) updateLine(ctx context.Context, log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(l.Path)
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("updated", "path", path, "line", l.Line)
 		return nil
 	}
@@ -176,10 +177,10 @@ func (l *Line) updateLine(log *viaduct.Logger) error {
 	return nil
 }
 
-func (l *Line) deleteLine(log *viaduct.Logger) error {
+func (l *Line) deleteLine(ctx context.Context, log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(l.Path)
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("deleted", "path", path)
 		return nil
 	}

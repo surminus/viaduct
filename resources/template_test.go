@@ -12,14 +12,14 @@ func TestTemplatePreflightChecks(t *testing.T) {
 	t.Run("requires source", func(t *testing.T) {
 		tmpl := &Template{Dest: "/tmp/out"}
 
-		err := tmpl.PreflightChecks(testLogger)
+		err := tmpl.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "required parameter: Source")
 	})
 
 	t.Run("requires dest", func(t *testing.T) {
 		tmpl := &Template{Source: "/tmp/in"}
 
-		err := tmpl.PreflightChecks(testLogger)
+		err := tmpl.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "required parameter: Dest")
 	})
 }
@@ -39,7 +39,7 @@ func TestTemplate(t *testing.T) {
 			Dest:   filepath.Join(dir, "out"),
 		}
 
-		if err := tmpl.PreflightChecks(testLogger); err != nil {
+		if err := tmpl.PreflightChecks(testCtx, testLogger); err != nil {
 			t.Fatal(err)
 		}
 
@@ -50,7 +50,7 @@ func TestTemplate(t *testing.T) {
 		tmpl := newTestTemplate(t, "url: {{.slack_notifier_url}}\n")
 		tmpl.Variables = map[string]string{"slack_notifier_url": "https://example.com"}
 
-		err := tmpl.Run(testLogger)
+		err := tmpl.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		content, err := os.ReadFile(tmpl.Dest)
@@ -62,7 +62,7 @@ func TestTemplate(t *testing.T) {
 		tmpl := newTestTemplate(t, "{{.missing}}")
 		tmpl.Variables = map[string]string{}
 
-		err := tmpl.Run(testLogger)
+		err := tmpl.Run(testCtx, testLogger)
 		assert.Error(t, err)
 	})
 
@@ -72,7 +72,7 @@ func TestTemplate(t *testing.T) {
 		tmpl.Dest = filepath.Join(filepath.Dir(tmpl.Dest), "nested", "out")
 		tmpl.CreateDirIfMissing = true
 
-		err := tmpl.Run(testLogger)
+		err := tmpl.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		content, err := os.ReadFile(tmpl.Dest)
@@ -84,7 +84,7 @@ func TestTemplate(t *testing.T) {
 		tmpl := newTestTemplate(t, "")
 		tmpl.Source = filepath.Join(t.TempDir(), "nonexistent")
 
-		err := tmpl.Run(testLogger)
+		err := tmpl.Run(testCtx, testLogger)
 		assert.Error(t, err)
 	})
 }

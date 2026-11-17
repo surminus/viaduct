@@ -10,6 +10,13 @@ A manifest that only uses `New`, `Add`, `Chain` and `Run` with the standard
 resources needs no change. Beyond that:
 
 - `viaduct.Attribute.X` becomes `viaduct.Attributes().X`
+- `PreflightChecks(log *Logger)` and `Run(log *Logger)` on a custom resource
+  take a context first:
+
+  ```go
+  func (r *MyResource) PreflightChecks(ctx context.Context, log *viaduct.Logger) error
+  func (r *MyResource) Run(ctx context.Context, log *viaduct.Logger) error
+  ```
 - `NewLogger(kind, operation)` in tests becomes
   `viaduct.NewLogger(nil, kind, operation)`
 - `Pending`, `Success`, `Failed` and `DependencyFailed` become
@@ -54,6 +61,9 @@ resources needs no change. Beyond that:
   each command in its own process group, which is sent SIGTERM when the
   context is cancelled, and SIGKILL if it has not stopped 30 seconds later. `ExitCode` reads the exit
   status from an error, and `ExitError` is the one a fake runner returns
+- `ResourceParams.Timeout`, for a resource that needs longer than the manifest
+  allows, or a negative duration for none. `WithTimeout` and the
+  `ResourceTimeout` option override it
 - `Result.Cause` names the resource whose failure stopped a
   `StatusDependencyFailed` resource from running, and `--json` reports it as
   `cause`
@@ -97,6 +107,14 @@ resources needs no change. Beyond that:
   numbered suffix on their ID. An exact duplicate is still an error
 - Every method that takes a resource records an error when the resource is not
   in the manifest, rather than doing nothing
+- **`ResourceAttributes` takes a context.** `PreflightChecks` and `Run` are
+  `PreflightChecks(ctx context.Context, log *Logger)` and
+  `Run(ctx context.Context, log *Logger)`. A custom resource needs the new
+  signatures, and reads dry run from `EnvFrom(ctx).DryRun` rather than
+  `Cli.DryRun`
+- **A timeout cancels the resource's context.** Commands are stopped, rather
+  than left running while the run moves on. A resource that has not returned
+  40 seconds after its context is cancelled is abandoned
 
 - **Importing viaduct no longer does anything.** Flags are parsed, system
   attributes are read and the temporary directory is created when they are
@@ -121,6 +139,8 @@ resources needs no change. Beyond that:
   dependency failed. Adding the same resource twice is the error
   `<Kind> <Description> is already in the manifest; use AddNamed to add it
   under another name`
+- The dry run warning is an event from `Apply` rather than a timestamped line
+  printed by `Run`
 - **The temporary directory is under `$TMPDIR` and is always removed.** It is
   created on first use by `TmpDir` or `TmpFile`, which now returns an error,
   and removed when `Run` finishes, whether or not the run failed. It used to be

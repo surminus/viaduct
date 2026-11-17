@@ -2,6 +2,7 @@ package resources
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"fmt"
 	"os"
@@ -73,7 +74,7 @@ func (f *File) Params() *viaduct.ResourceParams {
 	return viaduct.NewResourceParams()
 }
 
-func (f *File) PreflightChecks(log *viaduct.Logger) error {
+func (f *File) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if f.Path == "" {
 		return fmt.Errorf("required parameter: Path")
@@ -152,28 +153,28 @@ func (f *File) OperationName() string {
 	}
 }
 
-func (f *File) Run(log *viaduct.Logger) error {
+func (f *File) Run(ctx context.Context, log *viaduct.Logger) error {
 	switch {
 	case f.Delete:
-		return f.deleteFile(log)
+		return f.deleteFile(ctx, log)
 	case f.PermissionsOnly:
-		return f.setPermissions(log)
+		return f.setPermissions(ctx, log)
 	default:
-		return f.createFile(log)
+		return f.createFile(ctx, log)
 	}
 }
 
 // Create creates or updates a file
-func (f *File) createFile(log *viaduct.Logger) error {
-	return writeManagedFile(log, f.Path, f.Content, &f.Permissions, f.CreateDirIfMissing)
+func (f *File) createFile(ctx context.Context, log *viaduct.Logger) error {
+	return writeManagedFile(ctx, log, f.Path, f.Content, &f.Permissions, f.CreateDirIfMissing)
 }
 
 // setPermissions applies the mode and ownership to a file that already exists,
 // leaving its content alone
-func (f *File) setPermissions(log *viaduct.Logger) error {
+func (f *File) setPermissions(ctx context.Context, log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(f.Path)
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("permissions-managed", "path", path)
 		return nil
 	}
@@ -205,23 +206,23 @@ func (f *File) setPermissions(log *viaduct.Logger) error {
 			gid = current.gid
 		}
 
-		if err := applyChown(log, path, uid, gid); err != nil {
+		if err := applyChown(ctx, log, path, uid, gid); err != nil {
 			return err
 		}
 	}
 
 	if f.Mode != 0 {
-		return applyChmod(log, path, f.Mode)
+		return applyChmod(ctx, log, path, f.Mode)
 	}
 
 	return nil
 }
 
 // Delete deletes a file
-func (f *File) deleteFile(log *viaduct.Logger) error {
+func (f *File) deleteFile(ctx context.Context, log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(f.Path)
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("deleted", "path", path)
 		return nil
 	}

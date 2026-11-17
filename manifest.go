@@ -90,28 +90,26 @@ func (m *Manifest) lookup(method string, r *Resource) (*Resource, bool) {
 	return r, true
 }
 
-// SetResourceTimeout sets how long each resource in this manifest is given to
-// run before the run gives up on it. The default is five minutes.
+// SetResourceTimeout sets how long each resource in this manifest may run. The
+// default is five minutes.
 //
-// The timeout applies to a single resource rather than to the run, so a manifest
-// can take as long as it likes so long as no individual resource overruns. Raise
-// it for a resource that is legitimately slow, such as a large download or a
-// clone of a big repository, with WithTimeout.
+// The timeout applies to each resource, not the whole run. Use WithTimeout to
+// raise it for a slow resource.
 //
-// Be aware that a resource cannot be cancelled, so a timeout stops the run
-// waiting for it and reports it as failed while the operation itself carries on:
-// whatever it was part way through, such as a download or a package install, is
-// left as it is.
+// When it passes, the resource's context is cancelled. A resource that does
+// not stop shortly afterwards is abandoned: it is reported as failed, nothing
+// else starts, and its operation carries on.
 //
 // The ResourceTimeout option and the --resource-timeout flag override this,
-// and WithTimeout overrides it for a single resource. A negative duration
-// means no timeout.
+// and WithTimeout or the resource's ResourceParams override it for a single
+// resource. A negative duration means no timeout.
 func (m *Manifest) SetResourceTimeout(d time.Duration) {
 	m.resourceTimeout = d
 }
 
 // WithTimeout sets how long a single resource is given to run, overriding the
-// manifest setting. A negative duration means no timeout.
+// manifest setting and the resource's own. A negative duration means no
+// timeout.
 func (m *Manifest) WithTimeout(r *Resource, d time.Duration) {
 	if r, ok := m.lookup("WithTimeout", r); ok {
 		r.Timeout = d
@@ -252,6 +250,8 @@ func (m *Manifest) newResource(a ResourceAttributes, deps []*Resource) (*Resourc
 			r.GlobalLock = true
 			r.LockKey = params.LockKey
 		}
+
+		r.Timeout = params.Timeout
 	}
 
 	return r, nil

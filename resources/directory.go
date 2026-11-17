@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -44,7 +45,7 @@ func (d *Directory) Params() *viaduct.ResourceParams {
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (d *Directory) PreflightChecks(log *viaduct.Logger) error {
+func (d *Directory) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if d.Path == "" {
 		return fmt.Errorf("required parameter: Path")
@@ -61,19 +62,19 @@ func (d *Directory) OperationName() string {
 	return "Create"
 }
 
-func (d *Directory) Run(log *viaduct.Logger) error {
+func (d *Directory) Run(ctx context.Context, log *viaduct.Logger) error {
 	if d.Delete {
-		return d.deleteDirectory(log)
+		return d.deleteDirectory(ctx, log)
 	} else {
-		return d.createDirectory(log)
+		return d.createDirectory(ctx, log)
 	}
 }
 
 // Create creates a directory
-func (d *Directory) createDirectory(log *viaduct.Logger) error {
+func (d *Directory) createDirectory(ctx context.Context, log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(d.Path)
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("created", "path", path)
 		return nil
 	}
@@ -89,6 +90,7 @@ func (d *Directory) createDirectory(log *viaduct.Logger) error {
 	}
 
 	return d.setDirectoryPermissions(
+		ctx,
 		log,
 		path,
 		!d.NoRecursive,
@@ -96,10 +98,10 @@ func (d *Directory) createDirectory(log *viaduct.Logger) error {
 }
 
 // Delete deletes a directory.
-func (d *Directory) deleteDirectory(log *viaduct.Logger) error {
+func (d *Directory) deleteDirectory(ctx context.Context, log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(d.Path)
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("deleted", "path", path)
 		return nil
 	}

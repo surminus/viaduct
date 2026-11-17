@@ -19,11 +19,11 @@ type failingResource struct {
 	runErr       error
 }
 
-func (f *failingResource) PreflightChecks(log *Logger) error {
+func (f *failingResource) PreflightChecks(_ context.Context, log *Logger) error {
 	return f.preflightErr
 }
 
-func (f *failingResource) Run(log *Logger) error {
+func (f *failingResource) Run(_ context.Context, log *Logger) error {
 	f.ran.Store(true)
 	return f.runErr
 }
@@ -191,7 +191,7 @@ type tmpUser struct {
 	dir *string
 }
 
-func (u *tmpUser) Run(log *Logger) error {
+func (u *tmpUser) Run(_ context.Context, log *Logger) error {
 	dir, err := TmpDir()
 	*u.dir = dir
 	return err
@@ -202,7 +202,7 @@ type changingResource struct {
 	testResourceType
 }
 
-func (c *changingResource) Run(log *Logger) error {
+func (c *changingResource) Run(_ context.Context, log *Logger) error {
 	log.Info("changed", "value", c.Value)
 	return nil
 }

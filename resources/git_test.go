@@ -14,7 +14,7 @@ func newTestGit(t *testing.T, path string) *Git {
 		URL:  "https://github.com/surminus/viaduct",
 	}
 
-	err := g.PreflightChecks(testLogger)
+	err := g.PreflightChecks(testCtx, testLogger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestGit(t *testing.T) {
 	t.Run("basic", func(t *testing.T) {
 		g := newTestGit(t, "test/acceptance/git/create")
 
-		err := g.Run(testLogger)
+		err := g.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.DirExists(filepath.Join(g.Path, ".git")))
@@ -35,7 +35,7 @@ func TestGit(t *testing.T) {
 		// Use the same test for cloning and deleting so we don't waste time
 		// cloning twice
 		g.Delete = true
-		err = g.Run(testLogger)
+		err = g.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		assert.Equal(t, false, viaduct.DirExists(g.Path))

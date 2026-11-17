@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -9,7 +10,12 @@ import (
 	"github.com/surminus/viaduct"
 )
 
-var testLogger *viaduct.Logger
+var (
+	testLogger *viaduct.Logger
+
+	// testCtx runs resources on the host, as a manifest would by default
+	testCtx = context.Background()
+)
 
 func init() {
 	viaduct.Cli.SetSilent()

@@ -2,6 +2,7 @@ package resources
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -83,7 +84,7 @@ func (a *Apt) Params() *viaduct.ResourceParams {
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (a *Apt) PreflightChecks(log *viaduct.Logger) error {
+func (a *Apt) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if a.UpdateOnly {
 		return nil
@@ -184,22 +185,22 @@ func (a *Apt) OperationName() string {
 	return "Create"
 }
 
-func (a *Apt) Run(log *viaduct.Logger) error {
+func (a *Apt) Run(ctx context.Context, log *viaduct.Logger) error {
 	if a.UpdateOnly {
-		return a.updateApt(log)
+		return a.updateApt(ctx, log)
 	}
 
 	if a.Delete {
-		return a.deleteApt(log)
+		return a.deleteApt(ctx, log)
 	} else {
-		return a.createApt(log)
+		return a.createApt(ctx, log)
 	}
 }
 
 // AptUpdate is a helper function to perform "apt-get update"
 // Should be converted to a proper resource
-func (a *Apt) updateApt(log *viaduct.Logger) error {
-	if viaduct.Cli.DryRun {
+func (a *Apt) updateApt(ctx context.Context, log *viaduct.Logger) error {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("updating")
 		return nil
 	}
@@ -228,8 +229,8 @@ func aptStderr() *os.File {
 }
 
 // Create adds a new apt repository
-func (a *Apt) createApt(log *viaduct.Logger) error {
-	if viaduct.Cli.DryRun {
+func (a *Apt) createApt(ctx context.Context, log *viaduct.Logger) error {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("created", "name", a.Name)
 		return nil
 	}
@@ -238,9 +239,9 @@ func (a *Apt) createApt(log *viaduct.Logger) error {
 	var err error
 
 	if a.Format == List {
-		content, err = a.listContent(log)
+		content, err = a.listContent(ctx, log)
 	} else {
-		content, err = a.sourceContent(log)
+		content, err = a.sourceContent(ctx, log)
 	}
 	if err != nil {
 		return err
@@ -271,19 +272,19 @@ func (a *Apt) createApt(log *viaduct.Logger) error {
 	log.Info("created", "name", a.Name)
 
 	if a.Update {
-		return a.updateApt(log)
+		return a.updateApt(ctx, log)
 	}
 
 	return nil
 }
 
-func (a *Apt) listContent(log *viaduct.Logger) (string, error) {
+func (a *Apt) listContent(ctx context.Context, log *viaduct.Logger) (string, error) {
 	content := []string{
 		"deb",
 	}
 
 	if a.SigningKey != "" || a.SigningKeyURL != "" {
-		if err := a.receiveSigningKey(log); err == nil {
+		if err := a.receiveSigningKey(ctx, log); err == nil {
 			if a.Parameters == nil {
 				a.Parameters = make(map[string]string)
 			}
@@ -314,13 +315,13 @@ func (a *Apt) listContent(log *viaduct.Logger) (string, error) {
 	return strings.Join(content, " "), nil
 }
 
-func (a *Apt) sourceContent(log *viaduct.Logger) (string, error) {
+func (a *Apt) sourceContent(ctx context.Context, log *viaduct.Logger) (string, error) {
 	content := []string{
 		"Types: deb",
 	}
 
 	if a.SigningKey != "" || a.SigningKeyURL != "" {
-		if err := a.receiveSigningKey(log); err == nil {
+		if err := a.receiveSigningKey(ctx, log); err == nil {
 			if a.Parameters == nil {
 				a.Parameters = make(map[string]string)
 			}
@@ -359,7 +360,7 @@ func (a *Apt) sourceContent(log *viaduct.Logger) (string, error) {
 // receiveSigningKey will fetch a signing key. The commands run without a
 // shell, so a URL or key ID containing shell metacharacters is passed through
 // as a literal argument rather than being interpreted.
-func (a *Apt) receiveSigningKey(log *viaduct.Logger) error {
+func (a *Apt) receiveSigningKey(ctx context.Context, log *viaduct.Logger) error {
 	if viaduct.FileExists(a.signingKeyPath()) {
 		log.Noop("signing-key-exists", "path", a.signingKeyPath())
 		return nil
@@ -445,8 +446,8 @@ func (a *Apt) signingKeyPath() string {
 }
 
 // Delete removes an apt repository
-func (a *Apt) deleteApt(log *viaduct.Logger) error {
-	if viaduct.Cli.DryRun {
+func (a *Apt) deleteApt(ctx context.Context, log *viaduct.Logger) error {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("deleted", "name", a.Name)
 		return nil
 	}
@@ -463,7 +464,7 @@ func (a *Apt) deleteApt(log *viaduct.Logger) error {
 	log.Info("deleted", "name", a.Name)
 
 	if a.Update {
-		return a.updateApt(log)
+		return a.updateApt(ctx, log)
 	}
 
 	return nil

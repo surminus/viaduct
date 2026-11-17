@@ -1,6 +1,10 @@
 package example
 
-import "github.com/surminus/viaduct"
+import (
+	"context"
+
+	"github.com/surminus/viaduct"
+)
 
 // This is an example custom resource with everything required to create your
 // first custom resource in Viaduct.
@@ -24,7 +28,7 @@ func (a *Example) Params() *viaduct.ResourceParams {
 // 1. Required resource parameters have been assigned
 // 2. Any optional parameters have default values if needed
 // 3. Any other checks that may cause an error during a run
-func (a *Example) PreflightChecks(log *viaduct.Logger) error {
+func (a *Example) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Test for required parameters here.
 	return nil
 }
@@ -37,7 +41,7 @@ func (a *Example) OperationName() string {
 }
 
 // Run actually performs the work for the resource.
-func (a *Example) Run(log *viaduct.Logger) error {
+func (a *Example) Run(ctx context.Context, log *viaduct.Logger) error {
 	log.Info("hello")
 
 	return nil

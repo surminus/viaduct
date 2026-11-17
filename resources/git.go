@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -44,7 +45,7 @@ func (g *Git) Params() *viaduct.ResourceParams {
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (g *Git) PreflightChecks(log *viaduct.Logger) error {
+func (g *Git) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if g.Path == "" {
 		return fmt.Errorf("required parameter: Path")
@@ -74,18 +75,18 @@ func (g *Git) OperationName() string {
 	return "Create"
 }
 
-func (g *Git) Run(log *viaduct.Logger) error {
+func (g *Git) Run(ctx context.Context, log *viaduct.Logger) error {
 	if g.Delete {
-		return g.deleteGit(log)
+		return g.deleteGit(ctx, log)
 	} else {
-		return g.createGit(log)
+		return g.createGit(ctx, log)
 	}
 }
 
-func (g *Git) createGit(log *viaduct.Logger) error {
+func (g *Git) createGit(ctx context.Context, log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(g.Path)
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("cloned", "url", g.URL, "path", path)
 		return nil
 	}
@@ -145,6 +146,7 @@ func (g *Git) createGit(log *viaduct.Logger) error {
 	}
 
 	return g.setDirectoryPermissions(
+		ctx,
 		log,
 		path,
 		true,
@@ -162,10 +164,10 @@ func gitProgress() *os.File {
 	return os.Stdout
 }
 
-func (g *Git) deleteGit(log *viaduct.Logger) error {
+func (g *Git) deleteGit(ctx context.Context, log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(g.Path)
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("deleted", "path", path)
 		return nil
 	}

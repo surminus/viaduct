@@ -7,6 +7,10 @@ import (
 // Env is the environment resources run in. Apply puts it in each resource's
 // context, and EnvFrom reads it back.
 type Env struct {
+	// DryRun makes resources check everything they would change, and log
+	// what they would do, without changing anything.
+	DryRun bool
+
 	// Runner runs the commands resources need. The default is ExecRunner.
 	Runner Runner
 }

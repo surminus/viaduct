@@ -1,9 +1,12 @@
 package viaduct
 
 import (
+	"context"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,11 +46,11 @@ func (t *testResourceType) Params() *ResourceParams {
 	return NewResourceParams()
 }
 
-func (t *testResourceType) PreflightChecks(log *Logger) error {
+func (t *testResourceType) PreflightChecks(_ context.Context, log *Logger) error {
 	return nil
 }
 
-func (t *testResourceType) Run(log *Logger) error {
+func (t *testResourceType) Run(_ context.Context, log *Logger) error {
 	t.ran.Store(true)
 
 	if t.block != nil {
@@ -99,4 +102,12 @@ func TestHashID(t *testing.T) {
 	require.NoError(t, r.setKind(testResource))
 
 	assert.Contains(t, string(r.hashID()), "testResourceType_id-")
+}
+
+func TestMain(m *testing.M) {
+	// Resources that ignore their context would otherwise hold tests up for
+	// the full grace period
+	abandonGrace = 50 * time.Millisecond
+
+	os.Exit(m.Run())
 }

@@ -23,7 +23,7 @@ func newTestLine(t *testing.T, content string, line *Line) *Line {
 	}
 
 	line.Path = path
-	if err := line.PreflightChecks(testLogger); err != nil {
+	if err := line.PreflightChecks(testCtx, testLogger); err != nil {
 		t.Fatal(err)
 	}
 
@@ -43,28 +43,28 @@ func TestLinePreflightChecks(t *testing.T) {
 	t.Run("requires path", func(t *testing.T) {
 		l := &Line{Line: "foo"}
 
-		err := l.PreflightChecks(testLogger)
+		err := l.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "required parameter: Path")
 	})
 
 	t.Run("requires line", func(t *testing.T) {
 		l := &Line{Path: "/tmp/test"}
 
-		err := l.PreflightChecks(testLogger)
+		err := l.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "required parameter: Line")
 	})
 
 	t.Run("delete requires line or match", func(t *testing.T) {
 		l := &Line{Path: "/tmp/test", Delete: true}
 
-		err := l.PreflightChecks(testLogger)
+		err := l.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "delete requires one of Line or Match")
 	})
 
 	t.Run("invalid match expression", func(t *testing.T) {
 		l := &Line{Path: "/tmp/test", Line: "foo", Match: "(["}
 
-		err := l.PreflightChecks(testLogger)
+		err := l.PreflightChecks(testCtx, testLogger)
 		assert.Error(t, err)
 	})
 }
@@ -73,7 +73,7 @@ func TestLine(t *testing.T) {
 	t.Run("appends to existing file", func(t *testing.T) {
 		l := newTestLine(t, "first\n", &Line{Line: "second"})
 
-		err := l.Run(testLogger)
+		err := l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 		assert.Equal(t, "first\nsecond\n", readTestFile(t, l.Path))
 	})
@@ -81,7 +81,7 @@ func TestLine(t *testing.T) {
 	t.Run("noop when line present", func(t *testing.T) {
 		l := newTestLine(t, "first\nsecond\n", &Line{Line: "second"})
 
-		err := l.Run(testLogger)
+		err := l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 		assert.Equal(t, "first\nsecond\n", readTestFile(t, l.Path))
 	})
@@ -89,7 +89,7 @@ func TestLine(t *testing.T) {
 	t.Run("creates missing file", func(t *testing.T) {
 		l := newTestLine(t, "", &Line{Line: "first"})
 
-		err := l.Run(testLogger)
+		err := l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 		assert.Equal(t, "first\n", readTestFile(t, l.Path))
 	})
@@ -97,7 +97,7 @@ func TestLine(t *testing.T) {
 	t.Run("replaces matching line", func(t *testing.T) {
 		l := newTestLine(t, "setting=old\nother\n", &Line{Line: "setting=new", Match: "^setting="})
 
-		err := l.Run(testLogger)
+		err := l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 		assert.Equal(t, "setting=new\nother\n", readTestFile(t, l.Path))
 	})
@@ -105,7 +105,7 @@ func TestLine(t *testing.T) {
 	t.Run("removes duplicate matches", func(t *testing.T) {
 		l := newTestLine(t, "setting=old\nsetting=older\n", &Line{Line: "setting=new", Match: "^setting="})
 
-		err := l.Run(testLogger)
+		err := l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 		assert.Equal(t, "setting=new\n", readTestFile(t, l.Path))
 	})
@@ -113,7 +113,7 @@ func TestLine(t *testing.T) {
 	t.Run("noop when match already correct", func(t *testing.T) {
 		l := newTestLine(t, "setting=new\n", &Line{Line: "setting=new", Match: "^setting="})
 
-		err := l.Run(testLogger)
+		err := l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 		assert.Equal(t, "setting=new\n", readTestFile(t, l.Path))
 	})
@@ -121,7 +121,7 @@ func TestLine(t *testing.T) {
 	t.Run("appends when no match", func(t *testing.T) {
 		l := newTestLine(t, "other\n", &Line{Line: "setting=new", Match: "^setting="})
 
-		err := l.Run(testLogger)
+		err := l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 		assert.Equal(t, "other\nsetting=new\n", readTestFile(t, l.Path))
 	})
@@ -134,7 +134,7 @@ func TestLine(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = l.Run(testLogger)
+		err = l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		info, err := os.Stat(l.Path)
@@ -145,7 +145,7 @@ func TestLine(t *testing.T) {
 	t.Run("deletes matching lines", func(t *testing.T) {
 		l := newTestLine(t, "keep\nremove=1\nremove=2\n", &Line{Match: "^remove=", Delete: true})
 
-		err := l.Run(testLogger)
+		err := l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 		assert.Equal(t, "keep\n", readTestFile(t, l.Path))
 	})
@@ -153,7 +153,7 @@ func TestLine(t *testing.T) {
 	t.Run("deletes exact line", func(t *testing.T) {
 		l := newTestLine(t, "keep\nremove\n", &Line{Line: "remove", Delete: true})
 
-		err := l.Run(testLogger)
+		err := l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 		assert.Equal(t, "keep\n", readTestFile(t, l.Path))
 	})
@@ -161,7 +161,7 @@ func TestLine(t *testing.T) {
 	t.Run("delete noop when nothing matches", func(t *testing.T) {
 		l := newTestLine(t, "keep\n", &Line{Match: "^remove=", Delete: true})
 
-		err := l.Run(testLogger)
+		err := l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 		assert.Equal(t, "keep\n", readTestFile(t, l.Path))
 	})
@@ -169,7 +169,7 @@ func TestLine(t *testing.T) {
 	t.Run("delete noop when file missing", func(t *testing.T) {
 		l := newTestLine(t, "", &Line{Match: "^remove=", Delete: true})
 
-		err := l.Run(testLogger)
+		err := l.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 		assert.NoFileExists(t, l.Path)
 	})
@@ -190,12 +190,12 @@ func TestLineConcurrentSameFile(t *testing.T) {
 			defer wg.Done()
 
 			l := &Line{Path: path, Line: fmt.Sprintf("line-%02d", i)}
-			if err := l.PreflightChecks(testLogger); err != nil {
+			if err := l.PreflightChecks(testCtx, testLogger); err != nil {
 				t.Error(err)
 				return
 			}
 
-			if err := l.Run(testLogger); err != nil {
+			if err := l.Run(testCtx, testLogger); err != nil {
 				t.Error(err)
 			}
 		}(i)

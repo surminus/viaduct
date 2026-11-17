@@ -110,28 +110,28 @@ func TestArchivePreflightChecks(t *testing.T) {
 	t.Run("requires path", func(t *testing.T) {
 		a := &Archive{Dest: "/tmp"}
 
-		err := a.PreflightChecks(testLogger)
+		err := a.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "required parameter: Path")
 	})
 
 	t.Run("requires dest", func(t *testing.T) {
 		a := &Archive{Path: "/tmp/test.tar.gz"}
 
-		err := a.PreflightChecks(testLogger)
+		err := a.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "required parameter: Dest")
 	})
 
 	t.Run("unrecognised format", func(t *testing.T) {
 		a := &Archive{Path: "/tmp/test.rar", Dest: "/tmp"}
 
-		err := a.PreflightChecks(testLogger)
+		err := a.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "unrecognised archive format: /tmp/test.rar")
 	})
 
 	t.Run("negative strip", func(t *testing.T) {
 		a := &Archive{Path: "/tmp/test.tar.gz", Dest: "/tmp", Strip: -1}
 
-		err := a.PreflightChecks(testLogger)
+		err := a.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "strip must not be negative")
 	})
 }
@@ -151,7 +151,7 @@ func TestArchive(t *testing.T) {
 			Pick:  []string{"node_exporter"},
 		}
 
-		err := a.Run(testLogger)
+		err := a.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		content, err := os.ReadFile(filepath.Join(dest, "node_exporter"))
@@ -173,7 +173,7 @@ func TestArchive(t *testing.T) {
 
 		a := &Archive{Path: path, Dest: dest}
 
-		err := a.Run(testLogger)
+		err := a.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		content, err := os.ReadFile(filepath.Join(dest, "dir", "file"))
@@ -190,7 +190,7 @@ func TestArchive(t *testing.T) {
 
 		a := &Archive{Path: path, Dest: dest}
 
-		err := a.Run(testLogger)
+		err := a.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		assert.NoFileExists(t, filepath.Join(filepath.Dir(dest), "evil"))
@@ -215,7 +215,7 @@ func TestArchive(t *testing.T) {
 			NotIfExists: true,
 		}
 
-		err = a.Run(testLogger)
+		err = a.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		content, err := os.ReadFile(filepath.Join(dest, "file"))
@@ -237,7 +237,7 @@ func TestArchive(t *testing.T) {
 
 		a := &Archive{Path: path, Dest: dest}
 
-		err := a.Run(testLogger)
+		err := a.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		// Nothing should have escaped to base/outside
@@ -256,7 +256,7 @@ func TestArchive(t *testing.T) {
 
 		a := &Archive{Path: path, Dest: dest}
 
-		err := a.Run(testLogger)
+		err := a.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 		assert.NoFileExists(t, filepath.Join(dest, "abs"))
 	})
@@ -271,7 +271,7 @@ func TestArchive(t *testing.T) {
 
 		a := &Archive{Path: path, Dest: dest}
 
-		err := a.Run(testLogger)
+		err := a.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		linkTarget, err := os.Readlink(filepath.Join(dest, "alias"))
@@ -289,7 +289,7 @@ func TestArchive(t *testing.T) {
 
 		a := &Archive{Path: path, Dest: dest}
 
-		err := a.Run(testLogger)
+		err := a.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		content, err := os.ReadFile(filepath.Join(dest, "duplicate"))

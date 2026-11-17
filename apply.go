@@ -28,6 +28,9 @@ var (
 
 // Options configures Apply.
 type Options struct {
+	// Env is the environment resources run in. See Env.
+	Env Env
+
 	// Handler receives every event from the run. The default drops them.
 	// NewTextHandler gives the same output as Run.
 	Handler Handler
@@ -189,13 +192,15 @@ func newRun(m *Manifest, o Options) *run {
 // wrapping ErrRunFailed if any resource failed. The report holds a result for
 // every resource that was checked or run, whatever the error.
 //
-// Cancelling ctx stops the resources that have not started from starting.
+// Cancelling ctx stops resources that are running and stops the rest from
+// starting.
 //
 // A manifest can be applied more than once, and each call returns its own
 // report, but not concurrently.
 func (m *Manifest) Apply(ctx context.Context, o Options) (Report, error) {
 	start := time.Now()
 
+	ctx = WithEnv(ctx, o.Env)
 	rn := newRun(m, o)
 
 	if len(m.errs) > 0 {
@@ -216,6 +221,10 @@ func (m *Manifest) Apply(ctx context.Context, o Options) (Report, error) {
 
 	l := rn.logger(ctx, "Run")
 	l.progress("started")
+
+	if o.Env.DryRun {
+		l.Warn("dry-run", "msg", "resources report what they would change without changing it")
+	}
 	l.progress("preflight-checks")
 
 	// A cycle can never progress, so fail before any resource does work.
@@ -282,7 +291,7 @@ func (rn *run) preflight(ctx context.Context, l *Logger) error {
 		start := time.Now()
 		log := newResourceLogger(ctx, rn.handler, r, "Preflight")
 
-		err := r.Attributes.PreflightChecks(log)
+		err := r.Attributes.PreflightChecks(ctx, log)
 		if err == nil {
 			continue
 		}
@@ -365,7 +374,7 @@ func (rn *run) attempt(ctx context.Context, r *Resource, n int) (Result, bool) {
 
 	start := time.Now()
 	log := newResourceLogger(ctx, rn.handler, r, r.Attributes.OperationName())
-	runErr := r.run(log, rn.timeoutFor(r))
+	runErr := r.run(ctx, log, rn.timeoutFor(r))
 
 	result := rn.newResult(r, r.Attributes.OperationName())
 	result.Status = StatusSuccess

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"slices"
 	"sort"
@@ -84,11 +83,8 @@ func (m *Manifest) runWith(flags CliFlags) int {
 	// Shared by Apply and the run's own logger, so they never write at once
 	handler = serialise(handler)
 
-	if flags.DryRun {
-		log.Println("WARNING: dry run mode enabled")
-	}
-
 	report, err := m.Apply(context.Background(), Options{
+		Env:             Env{DryRun: flags.DryRun},
 		Handler:         handler,
 		ResourceTimeout: flags.ResourceTimeout,
 	})

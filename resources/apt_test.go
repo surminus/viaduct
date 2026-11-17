@@ -23,7 +23,7 @@ func TestAptExecuteHelpers(t *testing.T) {
 		assert.Equal(t, viaduct.PackageLock, e.Params().LockKey)
 
 		// The helpers are valid resources in their own right
-		assert.NoError(t, e.PreflightChecks(testLogger))
+		assert.NoError(t, e.PreflightChecks(testCtx, testLogger))
 	}
 }
 

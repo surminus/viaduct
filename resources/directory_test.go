@@ -12,7 +12,7 @@ import (
 func newTestDirectory(t *testing.T, path string) *Directory {
 	d := &Directory{Path: path}
 
-	err := d.PreflightChecks(testLogger)
+	err := d.PreflightChecks(testCtx, testLogger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestDirectory(t *testing.T) {
 
 		d := newTestDirectory(t, "test/acceptance/directory/test_create_directory")
 
-		err := d.Run(testLogger)
+		err := d.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		assert.Equal(t, true, viaduct.DirExists(d.Path))
@@ -68,15 +68,15 @@ func TestDirectory(t *testing.T) {
 		})
 
 		recursive := newTestDirectory(t, path)
-		assert.Error(t, recursive.Run(testLogger))
+		assert.Error(t, recursive.Run(testCtx, testLogger))
 
 		shallow := DirShallow(path)
-		err = shallow.PreflightChecks(testLogger)
+		err = shallow.PreflightChecks(testCtx, testLogger)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		assert.NoError(t, shallow.Run(testLogger))
+		assert.NoError(t, shallow.Run(testCtx, testLogger))
 		assert.Equal(t, true, viaduct.DirExists(path))
 		assertMode(t, path, DefaultDirectoryPermissions)
 	})
@@ -92,7 +92,7 @@ func TestDirectory(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = d.Run(testLogger)
+		err = d.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
 		assert.Equal(t, false, viaduct.DirExists(d.Path))

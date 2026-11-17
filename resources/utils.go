@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -38,14 +39,14 @@ func lockPath(path string) func() {
 // The parent is created with 0755 and default ownership. If you need the
 // parent managed with specific permissions or ownership, declare a Directory
 // resource (or use Chain) instead. path is expected to be already expanded.
-func ensureParentDir(log *viaduct.Logger, path string) error {
+func ensureParentDir(ctx context.Context, log *viaduct.Logger, path string) error {
 	dir := filepath.Dir(path)
 
 	if viaduct.DirExists(dir) {
 		return nil
 	}
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("created-parent", "path", dir)
 		return nil
 	}
@@ -66,6 +67,7 @@ func ensureParentDir(log *viaduct.Logger, path string) error {
 // The caller is responsible for having run preflight checks, since the mode
 // and ownership in perms are resolved there.
 func writeManagedFile(
+	ctx context.Context,
 	log *viaduct.Logger,
 	path, content string,
 	perms *Permissions,
@@ -74,12 +76,12 @@ func writeManagedFile(
 	path = viaduct.ExpandPath(path)
 
 	if createDirIfMissing {
-		if err := ensureParentDir(log, path); err != nil {
+		if err := ensureParentDir(ctx, log, path); err != nil {
 			return err
 		}
 	}
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("created", "path", path)
 		return nil
 	}
@@ -104,7 +106,7 @@ func writeManagedFile(
 		log.Noop("up-to-date", "path", path)
 	}
 
-	return perms.setFilePermissions(log, path)
+	return perms.setFilePermissions(ctx, log, path)
 }
 
 // ownership is the user and group that own a path
@@ -235,7 +237,7 @@ func (p *Permissions) resolveOwnership() (uid, gid int, err error) {
 	return uid, gid, nil
 }
 
-func applyChmod(log *viaduct.Logger, path string, mode os.FileMode) error {
+func applyChmod(ctx context.Context, log *viaduct.Logger, path string, mode os.FileMode) error {
 	match, err := viaduct.MatchChmod(path, mode)
 	if err != nil {
 		return err
@@ -254,7 +256,7 @@ func applyChmod(log *viaduct.Logger, path string, mode os.FileMode) error {
 	return nil
 }
 
-func applyChown(log *viaduct.Logger, path string, uid, gid int) error {
+func applyChown(ctx context.Context, log *viaduct.Logger, path string, uid, gid int) error {
 	match, err := viaduct.MatchChown(path, uid, gid)
 	if err != nil {
 		return err
@@ -275,6 +277,7 @@ func applyChown(log *viaduct.Logger, path string, uid, gid int) error {
 
 // Set permissions for a directory
 func (p *Permissions) setDirectoryPermissions(
+	ctx context.Context,
 	log *viaduct.Logger,
 	path string,
 	recursiveChown bool,
@@ -284,7 +287,7 @@ func (p *Permissions) setDirectoryPermissions(
 		return err
 	}
 
-	if err := applyChmod(log, path, p.Mode); err != nil {
+	if err := applyChmod(ctx, log, path, p.Mode); err != nil {
 		return err
 	}
 
@@ -321,7 +324,7 @@ func (p *Permissions) setDirectoryPermissions(
 			log.Noop("chown-recursive-unchanged", "path", path, "uid", strconv.Itoa(uid), "gid", strconv.Itoa(gid))
 		}
 	} else {
-		if err := applyChown(log, path, uid, gid); err != nil {
+		if err := applyChown(ctx, log, path, uid, gid); err != nil {
 			return err
 		}
 	}
@@ -331,6 +334,7 @@ func (p *Permissions) setDirectoryPermissions(
 
 // Set permissions for a file
 func (p *Permissions) setFilePermissions(
+	ctx context.Context,
 	log *viaduct.Logger,
 	path string,
 ) error {
@@ -339,9 +343,9 @@ func (p *Permissions) setFilePermissions(
 		return err
 	}
 
-	if err := applyChown(log, path, uid, gid); err != nil {
+	if err := applyChown(ctx, log, path, uid, gid); err != nil {
 		return err
 	}
 
-	return applyChmod(log, path, p.Mode)
+	return applyChmod(ctx, log, path, p.Mode)
 }

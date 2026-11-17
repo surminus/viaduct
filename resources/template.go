@@ -2,6 +2,7 @@ package resources
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,7 +43,7 @@ func (t *Template) Params() *viaduct.ResourceParams {
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (t *Template) PreflightChecks(log *viaduct.Logger) error {
+func (t *Template) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if t.Source == "" {
 		return fmt.Errorf("required parameter: Source")
@@ -63,10 +64,10 @@ func (t *Template) OperationName() string {
 	return "Create"
 }
 
-func (t *Template) Run(log *viaduct.Logger) error {
-	if viaduct.Cli.DryRun {
+func (t *Template) Run(ctx context.Context, log *viaduct.Logger) error {
+	if viaduct.EnvFrom(ctx).DryRun {
 		if t.CreateDirIfMissing {
-			if err := ensureParentDir(log, viaduct.ExpandPath(t.Dest)); err != nil {
+			if err := ensureParentDir(ctx, log, viaduct.ExpandPath(t.Dest)); err != nil {
 				return err
 			}
 		}
@@ -88,7 +89,7 @@ func (t *Template) Run(log *viaduct.Logger) error {
 	// Writing goes through the same helper as the File resource, so a
 	// rendered template gets the same content comparison and permission
 	// handling
-	return writeManagedFile(log, t.Dest, content, &t.Permissions, t.CreateDirIfMissing)
+	return writeManagedFile(ctx, log, t.Dest, content, &t.Permissions, t.CreateDirIfMissing)
 }
 
 func (t *Template) render(source string) (string, error) {

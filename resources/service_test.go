@@ -13,28 +13,28 @@ func TestServicePreflightChecks(t *testing.T) {
 	t.Run("requires name", func(t *testing.T) {
 		s := &Service{}
 
-		err := s.PreflightChecks(testLogger)
+		err := s.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "required parameter: Name")
 	})
 
 	t.Run("invalid action", func(t *testing.T) {
 		s := &Service{Name: "docker", Action: "reload"}
 
-		err := s.PreflightChecks(testLogger)
+		err := s.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "action must be one of start, stop or restart: reload")
 	})
 
 	t.Run("enable and disable conflict", func(t *testing.T) {
 		s := &Service{Name: "docker", Enable: true, Disable: true}
 
-		err := s.PreflightChecks(testLogger)
+		err := s.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "cannot set both Enable and Disable")
 	})
 
 	t.Run("requires something to do", func(t *testing.T) {
 		s := &Service{Name: "docker"}
 
-		err := s.PreflightChecks(testLogger)
+		err := s.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "requires one of Action, Enable or Disable")
 	})
 }

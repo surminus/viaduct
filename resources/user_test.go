@@ -13,7 +13,7 @@ func TestUserPreflightChecks(t *testing.T) {
 	t.Run("requires name", func(t *testing.T) {
 		u := &User{}
 
-		err := u.PreflightChecks(testLogger)
+		err := u.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "required parameter: Name")
 	})
 }

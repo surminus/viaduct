@@ -14,7 +14,7 @@ func TestGroupPreflightChecks(t *testing.T) {
 	t.Run("requires name", func(t *testing.T) {
 		g := &Group{}
 
-		err := g.PreflightChecks(testLogger)
+		err := g.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "required parameter: Name")
 	})
 }
@@ -43,6 +43,6 @@ func TestGroupExistingGIDConflict(t *testing.T) {
 	// gid has to be an error rather than a silent noop
 	g := &Group{Name: "root", GID: 12345}
 
-	err := g.create(testLogger)
+	err := g.create(testCtx, testLogger)
 	assert.EqualError(t, err, "group root exists with gid 0, not 12345")
 }

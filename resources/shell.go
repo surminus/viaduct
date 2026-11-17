@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -76,7 +77,7 @@ func (s *Shell) Params() *viaduct.ResourceParams {
 	return &viaduct.ResourceParams{GlobalLock: s.Lock || s.LockKey != "", LockKey: s.LockKey}
 }
 
-func (s *Shell) PreflightChecks(log *viaduct.Logger) error {
+func (s *Shell) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if strings.TrimSpace(s.Script) == "" {
 		return fmt.Errorf("required parameter: Script")
@@ -100,14 +101,14 @@ func (s *Shell) OperationName() string {
 	return "Run"
 }
 
-func (s *Shell) Run(log *viaduct.Logger) error {
+func (s *Shell) Run(ctx context.Context, log *viaduct.Logger) error {
 	if unlessSucceeds(s.Unless, s.WorkingDirectory) {
 		log.Noop("skipped", "script", s.Description())
 		return nil
 	}
 
 	log.Info("started", "script", s.Description())
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		return nil
 	}
 

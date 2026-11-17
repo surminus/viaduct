@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -60,7 +61,7 @@ func (s *Service) Params() *viaduct.ResourceParams {
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (s *Service) PreflightChecks(log *viaduct.Logger) error {
+func (s *Service) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if s.Name == "" {
 		return fmt.Errorf("required parameter: Name")
@@ -105,33 +106,33 @@ func (s *Service) OperationName() string {
 	return strings.Join(ops, "+")
 }
 
-func (s *Service) Run(log *viaduct.Logger) error {
+func (s *Service) Run(ctx context.Context, log *viaduct.Logger) error {
 	if s.Enable {
-		if err := s.setEnabled(log, true); err != nil {
+		if err := s.setEnabled(ctx, log, true); err != nil {
 			return err
 		}
 	}
 
 	if s.Disable {
-		if err := s.setEnabled(log, false); err != nil {
+		if err := s.setEnabled(ctx, log, false); err != nil {
 			return err
 		}
 	}
 
 	if s.Action != "" {
-		return s.runAction(log)
+		return s.runAction(ctx, log)
 	}
 
 	return nil
 }
 
-func (s *Service) setEnabled(log *viaduct.Logger, enable bool) error {
+func (s *Service) setEnabled(ctx context.Context, log *viaduct.Logger, enable bool) error {
 	verb := "disable"
 	if enable {
 		verb = "enable"
 	}
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info(verb+"d", "service", s.Name)
 		return nil
 	}
@@ -167,14 +168,14 @@ func (s *Service) setEnabled(log *viaduct.Logger, enable bool) error {
 	return nil
 }
 
-func (s *Service) runAction(log *viaduct.Logger) error {
+func (s *Service) runAction(ctx context.Context, log *viaduct.Logger) error {
 	msg := map[string]string{
 		"start":   "started",
 		"stop":    "stopped",
 		"restart": "restarted",
 	}[s.Action]
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info(msg, "service", s.Name)
 		return nil
 	}

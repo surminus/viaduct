@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 	"os/user"
 	"strconv"
@@ -50,7 +51,7 @@ func (u *User) Params() *viaduct.ResourceParams {
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (u *User) PreflightChecks(log *viaduct.Logger) error {
+func (u *User) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if u.Name == "" {
 		return fmt.Errorf("required parameter: Name")
@@ -72,20 +73,20 @@ func (u *User) OperationName() string {
 	return "Create"
 }
 
-func (u *User) Run(log *viaduct.Logger) error {
+func (u *User) Run(ctx context.Context, log *viaduct.Logger) error {
 	// The looked up user is passed on rather than looked up again, so a run
 	// works from a single view of the passwd database
 	if usr, ok := lookupUser(u.Name); ok {
-		return u.update(log, usr)
+		return u.update(ctx, log, usr)
 	}
 
-	return u.create(log)
+	return u.create(ctx, log)
 }
 
 // create creates the group (if a GID is given), the user, and assigns
 // any supplementary groups
-func (u *User) create(log *viaduct.Logger) error {
-	if viaduct.Cli.DryRun {
+func (u *User) create(ctx context.Context, log *viaduct.Logger) error {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("created", "user", u.Name)
 		return nil
 	}
@@ -128,7 +129,7 @@ func (u *User) create(log *viaduct.Logger) error {
 }
 
 // update assigns supplementary groups to an existing user
-func (u *User) update(log *viaduct.Logger, usr *user.User) error {
+func (u *User) update(ctx context.Context, log *viaduct.Logger, usr *user.User) error {
 	if len(u.Groups) == 0 {
 		log.Noop("exists", "user", u.Name)
 		return nil
@@ -144,7 +145,7 @@ func (u *User) update(log *viaduct.Logger, usr *user.User) error {
 		return nil
 	}
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("groups-added", "user", u.Name, "groups", strings.Join(missing, ","))
 		return nil
 	}

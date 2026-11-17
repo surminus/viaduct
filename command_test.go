@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -169,4 +170,167 @@ func TestExitCode(t *testing.T) {
 	assert.False(t, ok)
 
 	assert.EqualError(t, &ExitError{Code: 2}, "exit status 2")
+}
+
+// envResource records the environment it ran in
+type envResource struct {
+	testResourceType
+	env Env
+}
+
+func (e *envResource) Run(ctx context.Context, log *Logger) error {
+	e.env = EnvFrom(ctx)
+	return nil
+}
+
+// countingRunner counts the commands it is asked to run, and runs none
+type countingRunner struct {
+	calls atomic.Int32
+}
+
+func (c *countingRunner) Run(context.Context, Command) error {
+	c.calls.Add(1)
+	return nil
+}
+
+// ctxResource waits for its context to be cancelled
+type ctxResource struct {
+	testResourceType
+}
+
+func (c *ctxResource) Run(ctx context.Context, log *Logger) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+// quietStopResource waits for its context to be cancelled, then returns nil
+type quietStopResource struct {
+	testResourceType
+}
+
+func (q *quietStopResource) Run(ctx context.Context, log *Logger) error {
+	<-ctx.Done()
+	return nil
+}
+
+// paramsTimeoutResource asks for its own timeout
+type paramsTimeoutResource struct {
+	testResourceType
+	timeout time.Duration
+}
+
+func (p *paramsTimeoutResource) Params() *ResourceParams {
+	return &ResourceParams{Timeout: p.timeout}
+}
+
+func TestApplyEnv(t *testing.T) {
+	t.Run("options reach the resource", func(t *testing.T) {
+		runner := &countingRunner{}
+		r := &envResource{}
+
+		m := New()
+		m.Add(r)
+
+		_, err := m.Apply(context.Background(), Options{Env: Env{DryRun: true, Runner: runner}})
+		require.NoError(t, err)
+
+		assert.True(t, r.env.DryRun)
+		assert.Same(t, runner, r.env.Runner)
+	})
+
+	t.Run("a timeout cancels the resource's context", func(t *testing.T) {
+		later := newTestResource("later")
+
+		m := New()
+		a := m.Add(&ctxResource{})
+		m.Add(later, a)
+		m.SetResourceTimeout(20 * time.Millisecond)
+
+		report, err := m.Apply(context.Background(), Options{})
+		require.ErrorIs(t, err, ErrRunFailed)
+
+		byID := map[ResourceID]Result{}
+		for _, r := range report.Results {
+			byID[r.ID] = r
+		}
+
+		assert.ErrorIs(t, byID[a.ResourceID].Err, context.DeadlineExceeded)
+		assert.ErrorContains(t, byID[a.ResourceID].Err, "timed out after 20ms")
+		assert.NotErrorIs(t, byID[a.ResourceID].Err, errAbandoned, "a resource that stops is not abandoned")
+	})
+
+	t.Run("returning nil once cancelled is not success", func(t *testing.T) {
+		m := New()
+		a := m.Add(&quietStopResource{})
+		m.SetResourceTimeout(20 * time.Millisecond)
+
+		report, err := m.Apply(context.Background(), Options{})
+		require.ErrorIs(t, err, ErrRunFailed)
+
+		res := byID(report)[a.ResourceID]
+		assert.Equal(t, StatusFailed, res.Status)
+		assert.ErrorIs(t, res.Err, context.DeadlineExceeded)
+		assert.ErrorContains(t, res.Err, "timed out after 20ms")
+	})
+
+	t.Run("the caller's deadline is not the resource's timeout", func(t *testing.T) {
+		m := New()
+		a := m.Add(&ctxResource{})
+		m.SetResourceTimeout(-1)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		defer cancel()
+
+		report, err := m.Apply(ctx, Options{})
+		require.Error(t, err)
+
+		res := byID(report)[a.ResourceID]
+		assert.ErrorIs(t, res.Err, context.DeadlineExceeded)
+		assert.NotContains(t, res.Err.Error(), "timed out")
+	})
+
+	t.Run("a resource that stops on time does not stop the rest of the run", func(t *testing.T) {
+		other := newTestResource("other")
+
+		m := New()
+		m.Add(&ctxResource{})
+		m.SetResourceTimeout(20 * time.Millisecond)
+
+		// other has no dependency on the failure, and is not held up by it
+		m.Add(other)
+
+		_, err := m.Apply(context.Background(), Options{})
+		require.ErrorIs(t, err, ErrRunFailed)
+		assert.True(t, other.ran.Load())
+	})
+
+	t.Run("params timeout", func(t *testing.T) {
+		m := New()
+		r := m.Add(&paramsTimeoutResource{timeout: 7 * time.Minute})
+		assert.Equal(t, 7*time.Minute, newRun(m, Options{}).timeoutFor(r))
+
+		m.SetResourceTimeout(time.Minute)
+		assert.Equal(t, 7*time.Minute, newRun(m, Options{}).timeoutFor(r), "the resource's own timeout beats the manifest's")
+
+		m.WithTimeout(r, 2*time.Minute)
+		assert.Equal(t, 2*time.Minute, newRun(m, Options{}).timeoutFor(r), "WithTimeout beats the resource")
+	})
+
+	t.Run("a negative params timeout means none", func(t *testing.T) {
+		slow := &paramsTimeoutResource{timeout: -1}
+		slow.block = make(chan struct{})
+
+		m := New()
+		m.Add(slow)
+		m.SetResourceTimeout(10 * time.Millisecond)
+
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			slow.release()
+		}()
+
+		report, err := m.Apply(context.Background(), Options{})
+		require.NoError(t, err)
+		assert.Equal(t, StatusSuccess, report.Results[0].Status)
+	})
 }

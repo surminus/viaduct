@@ -12,11 +12,11 @@ import (
 func runShell(t *testing.T, s *Shell) error {
 	t.Helper()
 
-	if err := s.PreflightChecks(testLogger); err != nil {
+	if err := s.PreflightChecks(testCtx, testLogger); err != nil {
 		t.Fatal(err)
 	}
 
-	return s.Run(testLogger)
+	return s.Run(testCtx, testLogger)
 }
 
 func TestShell(t *testing.T) {
@@ -139,18 +139,18 @@ func TestShellLock(t *testing.T) {
 
 func TestShellPreflightChecks(t *testing.T) {
 	t.Run("requires a script", func(t *testing.T) {
-		err := (&Shell{Script: "  \n"}).PreflightChecks(testLogger)
+		err := (&Shell{Script: "  \n"}).PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "required parameter: Script")
 	})
 
 	t.Run("defaults to bash", func(t *testing.T) {
 		s := &Shell{Script: "true"}
-		assert.NoError(t, s.PreflightChecks(testLogger))
+		assert.NoError(t, s.PreflightChecks(testCtx, testLogger))
 		assert.Equal(t, "bash", s.Interpreter)
 	})
 
 	t.Run("rejects other interpreters", func(t *testing.T) {
-		err := (&Shell{Script: "true", Interpreter: "zsh"}).PreflightChecks(testLogger)
+		err := (&Shell{Script: "true", Interpreter: "zsh"}).PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, `unsupported interpreter "zsh": use bash or sh`)
 	})
 }

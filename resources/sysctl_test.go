@@ -13,21 +13,21 @@ func TestSysctlPreflightChecks(t *testing.T) {
 	t.Run("requires name", func(t *testing.T) {
 		s := &Sysctl{Values: map[string]string{"vm.swappiness": "10"}}
 
-		err := s.PreflightChecks(testLogger)
+		err := s.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "required parameter: Name")
 	})
 
 	t.Run("requires values", func(t *testing.T) {
 		s := &Sysctl{Name: "99-test"}
 
-		err := s.PreflightChecks(testLogger)
+		err := s.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "required parameter: Values")
 	})
 
 	t.Run("rejects path separators in name", func(t *testing.T) {
 		s := &Sysctl{Name: "../sudoers", Values: map[string]string{"vm.swappiness": "10"}}
 
-		err := s.PreflightChecks(testLogger)
+		err := s.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "name must be a plain filename, not a path: ../sudoers")
 	})
 }

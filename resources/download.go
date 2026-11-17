@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -48,7 +49,7 @@ func (a *Download) Params() *viaduct.ResourceParams {
 	return viaduct.NewResourceParams()
 }
 
-func (a *Download) PreflightChecks(log *viaduct.Logger) error {
+func (a *Download) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	if a.URL == "" {
 		return fmt.Errorf("required parameter: URL")
 	}
@@ -64,20 +65,20 @@ func (a *Download) OperationName() string {
 	return "Get"
 }
 
-func (a *Download) Run(log *viaduct.Logger) error {
-	return a.get(log)
+func (a *Download) Run(ctx context.Context, log *viaduct.Logger) error {
+	return a.get(ctx, log)
 }
 
-func (a *Download) get(log *viaduct.Logger) error {
+func (a *Download) get(ctx context.Context, log *viaduct.Logger) error {
 	path := viaduct.ExpandPath(a.Path)
 
 	if a.CreateDirIfMissing {
-		if err := ensureParentDir(log, path); err != nil {
+		if err := ensureParentDir(ctx, log, path); err != nil {
 			return err
 		}
 	}
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("downloaded", "url", a.URL, "path", path)
 		return nil
 	}
@@ -138,6 +139,7 @@ func (a *Download) get(log *viaduct.Logger) error {
 	}
 
 	return a.setFilePermissions(
+		ctx,
 		log,
 		path,
 	)

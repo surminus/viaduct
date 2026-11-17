@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"compress/bzip2"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -55,7 +56,7 @@ func (a *Archive) Params() *viaduct.ResourceParams {
 
 // PreflightChecks sets default values for the parameters for a particular
 // resource
-func (a *Archive) PreflightChecks(log *viaduct.Logger) error {
+func (a *Archive) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if a.Path == "" {
 		return fmt.Errorf("required parameter: Path")
@@ -80,11 +81,11 @@ func (a *Archive) OperationName() string {
 	return "Extract"
 }
 
-func (a *Archive) Run(log *viaduct.Logger) error {
+func (a *Archive) Run(ctx context.Context, log *viaduct.Logger) error {
 	apath := viaduct.ExpandPath(a.Path)
 	dest := viaduct.ExpandPath(a.Dest)
 
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		log.Info("extracted", "path", apath, "dest", dest)
 		return nil
 	}
@@ -98,7 +99,7 @@ func (a *Archive) Run(log *viaduct.Logger) error {
 		return err
 	}
 
-	count, err := a.extract(log, apath, dest)
+	count, err := a.extract(ctx, log, apath, dest)
 	if err != nil {
 		return err
 	}
@@ -138,7 +139,7 @@ func archiveFormat(p string) (string, error) {
 	}
 }
 
-func (a *Archive) extract(log *viaduct.Logger, apath, dest string) (int, error) {
+func (a *Archive) extract(ctx context.Context, log *viaduct.Logger, apath, dest string) (int, error) {
 	format, err := archiveFormat(apath)
 	if err != nil {
 		return 0, err
@@ -167,10 +168,10 @@ func (a *Archive) extract(log *viaduct.Logger, apath, dest string) (int, error) 
 		reader = bzip2.NewReader(file)
 	}
 
-	return a.extractTar(log, reader, dest)
+	return a.extractTar(ctx, log, reader, dest)
 }
 
-func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string) (int, error) {
+func (a *Archive) extractTar(ctx context.Context, log *viaduct.Logger, reader io.Reader, dest string) (int, error) {
 	tr := tar.NewReader(reader)
 
 	var count int

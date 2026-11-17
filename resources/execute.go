@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -82,7 +83,7 @@ func (e *Execute) Params() *viaduct.ResourceParams {
 	return &viaduct.ResourceParams{GlobalLock: e.Lock || e.LockKey != "", LockKey: e.LockKey}
 }
 
-func (e *Execute) PreflightChecks(log *viaduct.Logger) error {
+func (e *Execute) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if e.Command == "" && len(e.Args) == 0 {
 		return fmt.Errorf("required parameter: Command")
@@ -100,19 +101,19 @@ func (e *Execute) OperationName() string {
 	return "Run"
 }
 
-func (e *Execute) Run(log *viaduct.Logger) error {
-	return e.runExecute(log)
+func (e *Execute) Run(ctx context.Context, log *viaduct.Logger) error {
+	return e.runExecute(ctx, log)
 }
 
 // Run runs the given command
-func (e *Execute) runExecute(log *viaduct.Logger) error {
+func (e *Execute) runExecute(ctx context.Context, log *viaduct.Logger) error {
 	if unlessSucceeds(e.Unless, e.WorkingDirectory) {
 		log.Noop("skipped", "command", e.Description())
 		return nil
 	}
 
 	log.Info("started", "command", e.Description())
-	if viaduct.Cli.DryRun {
+	if viaduct.EnvFrom(ctx).DryRun {
 		return nil
 	}
 
