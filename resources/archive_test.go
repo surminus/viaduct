@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -757,5 +758,70 @@ func TestArchiveAllowAbsoluteLinks(t *testing.T) {
 		content, err = os.ReadFile(filepath.Join(dest, "file"))
 		require.NoError(t, err)
 		assert.Equal(t, "replaced", string(content))
+	})
+}
+
+func TestArchivePreserveOwners(t *testing.T) {
+	t.Parallel()
+
+	t.Run("preflight needs a tar archive", func(t *testing.T) {
+		t.Parallel()
+
+		a := &Archive{Path: "/tmp/test.zip", Dest: "/tmp", PreserveOwners: true}
+		assert.EqualError(t, a.PreflightChecks(testCtx, testLogger), "PreserveOwners needs a tar archive, since a zip archive records no owners")
+	})
+
+	t.Run("preflight needs root", func(t *testing.T) {
+		t.Parallel()
+
+		a := &Archive{Path: "/tmp/test.tar.gz", Dest: "/tmp", PreserveOwners: true}
+		err := a.PreflightChecks(viaduct.WithEnv(context.Background(), viaduct.Env{}), testLogger)
+		assert.EqualError(t, err, "archive resource must be run as root to preserve owners; unset PreserveOwners to leave every entry owned by the running user")
+	})
+
+	t.Run("gives each entry the recorded owner", func(t *testing.T) {
+		t.Parallel()
+
+		uid, gid := os.Getuid(), os.Getgid()
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "dir", Typeflag: tar.TypeDir, Mode: 0o755, Uid: uid, Gid: gid},
+			{Name: "dir/file", Typeflag: tar.TypeReg, Mode: 0o644, Uid: uid, Gid: gid},
+			{Name: "dir/link", Typeflag: tar.TypeSymlink, Linkname: "file", Mode: 0o777, Uid: uid, Gid: gid},
+		}, map[string]string{"dir/file": "content"})
+		dest := t.TempDir()
+
+		a := &Archive{Path: path, Dest: dest, PreserveOwners: true}
+		require.NoError(t, a.Run(testCtx, testLogger))
+
+		assert.FileExists(t, filepath.Join(dest, "dir", "file"))
+	})
+
+	t.Run("an owner that cannot be set fails", func(t *testing.T) {
+		t.Parallel()
+
+		if os.Getuid() == 0 {
+			t.Skip("root can set any owner")
+		}
+
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "file", Typeflag: tar.TypeReg, Mode: 0o644, Uid: 0, Gid: 0},
+		}, map[string]string{"file": "content"})
+
+		a := &Archive{Path: path, Dest: t.TempDir(), PreserveOwners: true}
+		assert.ErrorIs(t, a.Run(testCtx, testLogger), os.ErrPermission)
+	})
+
+	t.Run("is part of the marker", func(t *testing.T) {
+		t.Parallel()
+
+		path := newTestTarGz(t, map[string]string{"file": "content"})
+
+		plain, err := (&Archive{}).stamp(path)
+		require.NoError(t, err)
+
+		owners, err := (&Archive{PreserveOwners: true}).stamp(path)
+		require.NoError(t, err)
+
+		assert.NotEqual(t, plain, owners)
 	})
 }

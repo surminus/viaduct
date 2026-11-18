@@ -28,9 +28,9 @@ import (
 // by file extension.
 //
 // After extracting, it writes a marker holding the archive's SHA-256 along
-// with Strip, Pick and Rename, in /var/lib/viaduct/archive when running as root, or
-// $XDG_STATE_HOME/viaduct/archive otherwise, which defaults to
-// ~/.local/state/viaduct/archive. The archive is not extracted again while
+// with Strip, Pick, Rename and PreserveOwners, in /var/lib/viaduct/archive
+// when running as root, or $XDG_STATE_HOME/viaduct/archive otherwise, which
+// defaults to ~/.local/state/viaduct/archive. The archive is not extracted again while
 // the marker matches, Dest exists and every Pick entry exists. Removing the
 // marker forces the next run to extract.
 type Archive struct {
@@ -57,6 +57,11 @@ type Archive struct {
 	// which otherwise fail the extraction. An entry that would be written
 	// through a symlink to outside Dest still fails. Optional.
 	AllowAbsoluteLinks bool
+
+	// PreserveOwners gives each extracted entry the owner and group recorded
+	// in the archive, by numeric ID. The default is to leave them owned by the
+	// user running viaduct. Requires root, and a tar archive. Optional.
+	PreserveOwners bool
 
 	// NotIfExists will skip extraction if all Pick entries already exist
 	// within Dest, or if Dest exists when Pick is not set, without reading
@@ -95,6 +100,16 @@ func (a *Archive) PreflightChecks(ctx context.Context, log *viaduct.Logger) erro
 
 	if _, err := archiveFormat(a.Path); err != nil {
 		return err
+	}
+
+	if a.PreserveOwners {
+		if format, _ := archiveFormat(a.Path); format == "zip" {
+			return fmt.Errorf("PreserveOwners needs a tar archive, since a zip archive records no owners")
+		}
+
+		if err := requireRoot(ctx, "archive"); err != nil {
+			return fmt.Errorf("%w to preserve owners; unset PreserveOwners to leave every entry owned by the running user", err)
+		}
 	}
 
 	for from, to := range a.Rename {
@@ -234,6 +249,10 @@ func (a *Archive) stamp(apath string) (string, error) {
 		fmt.Fprintf(&b, "rename %s %s\n", from, a.Rename[from])
 	}
 
+	if a.PreserveOwners {
+		b.WriteString("preserve-owners\n")
+	}
+
 	return b.String(), nil
 }
 
@@ -357,12 +376,18 @@ func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string)
 			if err := os.MkdirAll(target, hdr.FileInfo().Mode().Perm()); err != nil {
 				return count, err
 			}
+			if err := a.chown(target, hdr); err != nil {
+				return count, err
+			}
 		case tar.TypeReg:
 			// Replace a symlink at the path rather than writing through it
 			if err := removeSymlink(target); err != nil {
 				return count, err
 			}
 			if err := writeFromReader(target, tr, hdr.FileInfo().Mode().Perm()); err != nil {
+				return count, err
+			}
+			if err := a.chown(target, hdr); err != nil {
 				return count, err
 			}
 			count++
@@ -379,6 +404,9 @@ func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string)
 				return count, err
 			}
 			if err := os.Symlink(hdr.Linkname, target); err != nil {
+				return count, err
+			}
+			if err := a.chown(target, hdr); err != nil {
 				return count, err
 			}
 			count++
@@ -407,6 +435,18 @@ func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string)
 	}
 
 	return count, nil
+}
+
+// chown gives an extracted entry the owner recorded in the archive, when
+// PreserveOwners is set. A symlink is changed itself, not what it points to.
+// A hardlink shares its owner with the entry it links to, so it is not
+// passed here.
+func (a *Archive) chown(target string, hdr *tar.Header) error {
+	if !a.PreserveOwners {
+		return nil
+	}
+
+	return os.Lchown(target, hdr.Uid, hdr.Gid)
 }
 
 // escapes reports whether an archive entry name climbs out of the directory

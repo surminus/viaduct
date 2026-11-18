@@ -186,6 +186,8 @@ resources needs no change. Beyond that:
   as they otherwise would
 - `AllowAbsoluteLinks` on `Archive`, which extracts symlinks with an absolute
   target
+- `PreserveOwners` on `Archive`, which gives each entry the owner and group
+  the tar archive records
 
 ### Changed
 
@@ -270,10 +272,10 @@ resources needs no change. Beyond that:
 - `InstallDeb` is a noop when the deb's package is installed at the deb's
   version, rather than running `dpkg -i` on every run
 - **`Archive` extracts an archive once.** After extracting it writes a
-  marker holding the archive's SHA-256, `Strip`, `Pick` and `Rename` under
-  `/var/lib/viaduct/archive`, or `~/.local/state/viaduct/archive` when not
-  running as root, and is a noop while the marker matches and `Dest` and the
-  picked entries exist. A changed archive or changed options extract again
+  marker holding the archive's SHA-256, `Strip`, `Pick`, `Rename` and
+  `PreserveOwners` under `/var/lib/viaduct/archive`, or
+  `~/.local/state/viaduct/archive` when not running as root, and is a noop
+  while the marker matches and `Dest` and the picked entries exist. A changed archive or changed options extract again
 - **`Archive` fails on an entry it will not extract.** An entry or link that
   points outside `Dest`, or a hardlink to an entry that was not extracted, used
   to be skipped with a warning, leaving a partial extraction that succeeded.
