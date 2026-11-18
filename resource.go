@@ -66,6 +66,9 @@ type Resource struct {
 
 	// onChange runs the resource only when a dependency changed.
 	onChange bool
+
+	// group is the name given to Group.
+	group string
 }
 
 // ResourceParams are a set of options that each resource can set

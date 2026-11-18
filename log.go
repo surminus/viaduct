@@ -86,6 +86,9 @@ type Event struct {
 	// Description identifies the resource, such as a file path.
 	Description string
 
+	// Group is the name of the group the resource is in, or empty.
+	Group string
+
 	Message string
 	Fields  []Field
 
@@ -160,6 +163,7 @@ type Logger struct {
 	kind        ResourceKind
 	operation   string
 	description string
+	group       string
 
 	changed *atomic.Bool
 }
@@ -187,6 +191,7 @@ func newResourceLogger(ctx context.Context, h Handler, r *Resource, operation st
 		kind:        r.ResourceKind,
 		operation:   operation,
 		description: r.Attributes.Description(),
+		group:       r.group,
 		changed:     &atomic.Bool{},
 	}
 }
@@ -239,6 +244,7 @@ func (l *Logger) emit(level Level, msg string, kv []any) {
 		Kind:        l.kind,
 		Operation:   l.operation,
 		Description: l.description,
+		Group:       l.group,
 		Message:     msg,
 		Fields:      fieldsOf(kv),
 		DryRun:      isDryRun(l.ctx),

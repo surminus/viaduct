@@ -180,6 +180,10 @@ resources needs no change. Beyond that:
 - `OnChange` runs a resource only when one of its dependencies changed
   something in the run, such as a restart after its configuration file is
   written. Otherwise it is `StatusSkipped`, and its dependants still run
+- `Group` labels resources as one named step. Each of their results and
+  events carries the name as `Group`, and `--json` reports it as `group`, so
+  a handler or `OnResult` can report the step as a whole. The resources run
+  as they otherwise would
 
 ### Changed
 

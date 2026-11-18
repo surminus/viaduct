@@ -118,6 +118,9 @@ type Result struct {
 	// AllowFailure is true for a resource whose failure does not fail the run.
 	AllowFailure bool
 
+	// Group is the name of the group the resource is in, or empty.
+	Group string
+
 	// Start is when the resource started, and is zero if it never did.
 	Start time.Time
 
@@ -304,6 +307,7 @@ func (rn *run) newResult(r *Resource, operation string) Result {
 		Operation:    operation,
 		Description:  r.Attributes.Description(),
 		AllowFailure: r.allowFailure,
+		Group:        r.group,
 	}
 }
 

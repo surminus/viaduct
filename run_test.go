@@ -188,6 +188,15 @@ func TestRunJSON(t *testing.T) {
 		assert.True(t, out.Resources[0].Changed)
 	})
 
+	t.Run("group", func(t *testing.T) {
+		m := New()
+		m.Group("step", m.Add(newTestResource("a")))
+
+		_, out := runJSON(t, ctx, m, CliFlags{})
+		require.Len(t, out.Resources, 1)
+		assert.Equal(t, "step", out.Resources[0].Group)
+	})
+
 	t.Run("run failure", func(t *testing.T) {
 		m := New()
 		a := m.Add(failingRun("a"))

@@ -459,6 +459,7 @@ func (c *jsonCollector) resources(report Report) []ResourceResult {
 			Changed:      r.Changed,
 			Attempt:      r.Attempt,
 			AllowFailure: r.AllowFailure,
+			Group:        r.Group,
 			Cause:        string(r.Cause),
 			Duration:     r.Duration.String(),
 			Log:          c.entries[r.ID],
@@ -488,6 +489,7 @@ type ResourceResult struct {
 	Changed      bool       `json:"changed"`
 	Attempt      int        `json:"attempt"`
 	AllowFailure bool       `json:"allow_failure,omitempty"`
+	Group        string     `json:"group,omitempty"`
 	Cause        string     `json:"cause,omitempty"`
 	Duration     string     `json:"duration"`
 	Error        string     `json:"error,omitempty"`

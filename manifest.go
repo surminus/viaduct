@@ -149,6 +149,32 @@ func (m *Manifest) OnChange(r *Resource) {
 	}
 }
 
+// Group labels resources as one named step, such as several resources that
+// configure the same thing. The name is the Group of each resource's results
+// and events, so a handler or OnResult can report the step as a whole. It
+// changes nothing about how the resources run. A resource can be in one
+// group.
+func (m *Manifest) Group(name string, resources ...*Resource) {
+	if name == "" {
+		m.errorf("Group: name is empty")
+		return
+	}
+
+	for _, r := range resources {
+		r, ok := m.lookup("Group", r)
+		if !ok {
+			continue
+		}
+
+		if r.group != "" && r.group != name {
+			m.errorf("Group: %s is already in group %s", r.ResourceID, r.group)
+			continue
+		}
+
+		r.group = name
+	}
+}
+
 // SetName replaces a resource's generated ID with a name, which must be unique
 // within the manifest.
 func (m *Manifest) SetName(r *Resource, name string) {

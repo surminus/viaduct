@@ -463,3 +463,54 @@ func TestOnChange(t *testing.T) {
 		assert.ErrorContains(t, err, "runs on change but has no dependencies")
 	})
 }
+
+func TestGroup(t *testing.T) {
+	t.Run("labels results and events, and runs resources as usual", func(t *testing.T) {
+		m := New()
+		chain := m.Chain(
+			&changingResource{testResourceType{Value: "a"}},
+			&changingResource{testResourceType{Value: "b"}},
+		)
+		m.Group("hosts", chain...)
+		m.Add(newTestResource("other"))
+
+		var events []Event
+		report, err := m.Apply(context.Background(), Options{
+			Handler: HandlerFunc(func(_ context.Context, e Event) { events = append(events, e) }),
+		})
+		require.NoError(t, err)
+
+		groups := map[string]string{}
+		for _, r := range report.Results {
+			groups[r.Description] = r.Group
+		}
+
+		assert.Equal(t, map[string]string{"a": "hosts", "b": "hosts", "other": ""}, groups)
+
+		for _, e := range events {
+			if e.Level == LevelChanged {
+				assert.Equal(t, "hosts", e.Group, e.Description)
+			}
+		}
+	})
+
+	t.Run("a resource can be in one group", func(t *testing.T) {
+		m := New()
+		a := m.Add(newTestResource("a"))
+		m.Group("one", a)
+		m.Group("one", a)
+		m.Group("two", a)
+
+		_, err := m.Apply(context.Background(), Options{})
+		assert.ErrorIs(t, err, ErrInvalidManifest)
+		assert.ErrorContains(t, err, "is already in group one")
+	})
+
+	t.Run("needs a name", func(t *testing.T) {
+		m := New()
+		m.Group("", m.Add(newTestResource("a")))
+
+		_, err := m.Apply(context.Background(), Options{})
+		assert.ErrorContains(t, err, "Group: name is empty")
+	})
+}
