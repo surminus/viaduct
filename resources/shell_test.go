@@ -54,6 +54,13 @@ func TestShell(t *testing.T) {
 		assert.Equal(t, "hello\n", string(content))
 	})
 
+	t.Run("passes the environment to the script and unless", func(t *testing.T) {
+		env := []string{"VIADUCT_TEST=yes"}
+
+		assert.NoError(t, runShell(t, &Shell{Script: `test "$VIADUCT_TEST" = yes`, Env: env}))
+		assert.NoError(t, runShell(t, &Shell{Script: "false", Unless: `test "$VIADUCT_TEST" = yes`, Env: env}))
+	})
+
 	t.Run("stops at the first failing command", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "out")

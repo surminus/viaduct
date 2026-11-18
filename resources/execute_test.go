@@ -66,6 +66,30 @@ func TestExecute(t *testing.T) {
 
 		assert.NoError(t, e.Run(testCtx, testLogger))
 	})
+
+	t.Run("runs the command and unless as the user with the environment", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("runuser", "-u", "app", "--", "bash", "-c", "test -f done").Exit(1)
+		env.Runner.On("runuser", "-u", "app", "--", "bundle", "install")
+
+		e := &Execute{Args: []string{"bundle", "install"}, Unless: "test -f done", User: "app", Env: []string{"RAILS_ENV=production"}}
+
+		log, err := env.Apply(env.Context(), e)
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		require.Len(t, env.Runner.Calls(), 2)
+
+		for _, c := range env.Runner.Calls() {
+			assert.Equal(t, []string{"RAILS_ENV=production"}, c.Env)
+		}
+	})
+
+	t.Run("passes the environment to the command", func(t *testing.T) {
+		e := &Execute{Command: `test "$VIADUCT_TEST" = yes`, Env: []string{"VIADUCT_TEST=yes"}}
+
+		assert.NoError(t, e.Run(testCtx, testLogger))
+	})
 }
 
 func TestExecuteLock(t *testing.T) {
@@ -120,6 +144,17 @@ func TestExecutePreflightChecks(t *testing.T) {
 	t.Run("rejects both command and args", func(t *testing.T) {
 		err := (&Execute{Command: "true", Args: []string{"true"}}).PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "cannot set both Command and Args")
+	})
+
+	t.Run("running as another user requires root", func(t *testing.T) {
+		if viaduct.IsRoot() {
+			t.Skip("running as root")
+		}
+
+		e := &Execute{Command: "true", User: "app"}
+
+		err := e.PreflightChecks(viaduct.WithEnv(context.Background(), viaduct.Env{}), testLogger)
+		assert.EqualError(t, err, "execute resource must be run as root to run as another user")
 	})
 
 	t.Run("accepts args alone", func(t *testing.T) {

@@ -157,6 +157,8 @@ resources needs no change. Beyond that:
   `"dry_run": true`
 - `DaemonReload` on `Service`, which runs `systemctl daemon-reload` first
   when systemd reports that the unit or its drop-ins changed on disk
+- `User` and `Env` on `Execute`, and `Env` on `Shell`. `User` runs the command
+  and its `Unless` guard as another user with `runuser`
 
 ### Changed
 

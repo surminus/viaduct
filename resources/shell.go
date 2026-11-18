@@ -33,9 +33,12 @@ type Shell struct {
 	// WorkingDirectory is where to run the script. Optional.
 	WorkingDirectory string
 
+	// Env is added to the script's environment, as "KEY=value". Optional.
+	Env []string
+
 	// Unless is a command to run first, which if it exits cleanly means the
-	// script does not run. It runs through bash, in WorkingDirectory.
-	// Optional.
+	// script does not run. It runs through bash, in WorkingDirectory and with
+	// Env. Optional.
 	Unless string
 
 	// Lock ensures the script does not run at the same time as other
@@ -104,7 +107,7 @@ func (s *Shell) OperationName() string {
 }
 
 func (s *Shell) Run(ctx context.Context, log *viaduct.Logger) error {
-	if unlessSucceeds(ctx, log, s.Unless, s.WorkingDirectory) {
+	if unlessSucceeds(ctx, log, s.Unless, s.prepare) {
 		log.Noop("skipped", "script", s.Description())
 		return nil
 	}
@@ -133,7 +136,7 @@ func (s *Shell) Run(ctx context.Context, log *viaduct.Logger) error {
 		return fmt.Errorf("writing script file: %w", err)
 	}
 
-	c := viaduct.Command{Name: s.Interpreter, Args: append(s.flags(), f.Name()), Dir: s.WorkingDirectory}
+	c := s.prepare(viaduct.Command{Name: s.Interpreter, Args: append(s.flags(), f.Name())})
 
 	if err := c.Run(ctx, log); err != nil {
 		return fmt.Errorf("script failed: %s: %w", s.Description(), err)
@@ -141,6 +144,14 @@ func (s *Shell) Run(ctx context.Context, log *viaduct.Logger) error {
 	log.Info("finished", "script", s.Description())
 
 	return nil
+}
+
+// prepare sets up a command to run in the working directory with Env
+func (s *Shell) prepare(c viaduct.Command) viaduct.Command {
+	c.Dir = s.WorkingDirectory
+	c.Env = s.Env
+
+	return c
 }
 
 // flags returns the interpreter options for strict mode. They are passed on
