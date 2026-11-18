@@ -159,6 +159,9 @@ resources needs no change. Beyond that:
   when systemd reports that the unit or its drop-ins changed on disk
 - `User` and `Env` on `Execute`, and `Env` on `Shell`. `User` runs the command
   and its `Unless` guard as another user with `runuser`
+- `PermissionsOnly` on `Directory`, as on `File`, which applies only the mode
+  and ownership that are set to an existing directory, leaving what is inside
+  it alone
 
 ### Changed
 

@@ -105,11 +105,6 @@ func (f *File) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	return f.preflightPermissions(pfile)
 }
 
-// managesOwnership reports whether any ownership was asked for
-func (f *File) managesOwnership() bool {
-	return f.User != "" || f.Group != "" || f.UID != 0 || f.GID != 0
-}
-
 // EmbeddedFile returns the contents of an embedded file. Wrap it in
 // viaduct.Must to use it inline.
 func EmbeddedFile(files embed.FS, path string) (string, error) {
@@ -186,37 +181,7 @@ func (f *File) setPermissions(ctx context.Context, log *viaduct.Logger) error {
 		return fmt.Errorf("file does not exist: %s", path)
 	}
 
-	if f.managesOwnership() {
-		uid, gid, err := f.resolveOwnership()
-		if err != nil {
-			return err
-		}
-
-		// Whichever side was not asked for keeps the owner it has, so setting
-		// a User does not hand the group to root
-		current, err := fileOwnership(path)
-		if err != nil {
-			return err
-		}
-
-		if f.User == "" && f.UID == 0 {
-			uid = current.uid
-		}
-
-		if f.Group == "" && f.GID == 0 {
-			gid = current.gid
-		}
-
-		if err := applyChown(ctx, log, path, uid, gid); err != nil {
-			return err
-		}
-	}
-
-	if f.Mode != 0 {
-		return applyChmod(ctx, log, path, f.Mode)
-	}
-
-	return nil
+	return f.applyOnly(ctx, log, path, f.Mode)
 }
 
 // Delete deletes a file

@@ -184,3 +184,66 @@ func TestDirectoryRun(t *testing.T) {
 		assert.Equal(t, "content", env.ReadFile("/srv/app/file"))
 	})
 }
+
+func TestDirectoryPermissionsOnly(t *testing.T) {
+	t.Parallel()
+
+	t.Run("sets the mode and leaves ownership and contents alone", func(t *testing.T) {
+		t.Parallel()
+
+		dir := filepath.Join(t.TempDir(), "data")
+		require.NoError(t, os.Mkdir(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "file"), nil, 0o600))
+
+		before, err := fileOwnership(dir)
+		require.NoError(t, err)
+
+		d := &Directory{Path: dir, PermissionsOnly: true, Permissions: Permissions{Mode: 0o775}}
+		require.NoError(t, d.PreflightChecks(testCtx, testLogger))
+
+		log := viaduct.NewLogger(nil, "Directory", "Update")
+		require.NoError(t, d.Run(testCtx, log))
+		assert.True(t, log.Changed())
+
+		after, err := fileOwnership(dir)
+		require.NoError(t, err)
+		assert.Equal(t, before, after)
+		assertMode(t, dir, os.ModeDir|0o775)
+		assertMode(t, filepath.Join(dir, "file"), 0o600)
+
+		log = viaduct.NewLogger(nil, "Directory", "Update")
+		require.NoError(t, d.Run(testCtx, log))
+		assert.False(t, log.Changed())
+	})
+
+	t.Run("errors when the directory is missing", func(t *testing.T) {
+		t.Parallel()
+
+		dir := filepath.Join(t.TempDir(), "missing")
+
+		d := &Directory{Path: dir, PermissionsOnly: true, Permissions: Permissions{Mode: 0o775}}
+		require.NoError(t, d.PreflightChecks(testCtx, testLogger))
+
+		assert.EqualError(t, d.Run(testCtx, testLogger), "directory does not exist: "+dir)
+	})
+
+	t.Run("a dry run reports a missing directory as a change", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+
+		log, err := env.Apply(env.DryRunContext(), &Directory{Path: "/data", PermissionsOnly: true, Permissions: Permissions{Mode: 0o775}})
+		require.NoError(t, err)
+		assert.True(t, log.Changed())
+	})
+
+	t.Run("preflight", func(t *testing.T) {
+		t.Parallel()
+
+		err := (&Directory{Path: "/data", PermissionsOnly: true}).PreflightChecks(testCtx, testLogger)
+		assert.EqualError(t, err, "PermissionsOnly needs one of Mode, User, Group, UID or GID")
+
+		err = (&Directory{Path: "/data", PermissionsOnly: true, Delete: true}).PreflightChecks(testCtx, testLogger)
+		assert.EqualError(t, err, "cannot set both Delete and PermissionsOnly")
+	})
+}

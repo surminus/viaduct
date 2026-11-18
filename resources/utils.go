@@ -227,6 +227,47 @@ func (p *Permissions) preflightPermissions(t ptype) error {
 	return nil
 }
 
+// managesOwnership reports whether any ownership was asked for
+func (p *Permissions) managesOwnership() bool {
+	return p.User != "" || p.Group != "" || p.UID != 0 || p.GID != 0
+}
+
+// applyOnly applies only the mode and ownership that were set, to a path that
+// exists. Zero mode leaves the mode alone, and whichever of the owner and
+// group was not asked for keeps the one it has, so setting a User does not
+// hand the group to root.
+func (p *Permissions) applyOnly(ctx context.Context, log *viaduct.Logger, path string, mode os.FileMode) error {
+	if p.managesOwnership() {
+		uid, gid, err := p.resolveOwnership()
+		if err != nil {
+			return err
+		}
+
+		current, err := fileOwnership(path)
+		if err != nil {
+			return err
+		}
+
+		if p.User == "" && p.UID == 0 {
+			uid = current.uid
+		}
+
+		if p.Group == "" && p.GID == 0 {
+			gid = current.gid
+		}
+
+		if err := applyChown(ctx, log, path, uid, gid); err != nil {
+			return err
+		}
+	}
+
+	if mode != 0 {
+		return applyChmod(ctx, log, path, mode)
+	}
+
+	return nil
+}
+
 // resolveOwnership resolves User/Group names to UID/GID, falling back
 // to the numeric UID/GID already set on the Permissions struct.
 func (p *Permissions) resolveOwnership() (uid, gid int, err error) {
