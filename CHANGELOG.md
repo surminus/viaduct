@@ -64,6 +64,9 @@ resources needs no change. Beyond that:
 - A new `TimeSync` resource, which makes sure chrony has synchronised the
   clock, waiting up to `MaxWait` if not. The clock is stepped first only when
   chrony is not synchronised or it is more than a second out
+- A new `KernelModule` resource, with a `LoadModule` shortcut, which loads a
+  module with `modprobe` unless it is already loaded or built in, and with
+  `Persist` loads it at boot through `/etc/modules-load.d`
 - `FstabLock` and `NetworkLock`, alongside `PackageLock` and `PasswdLock`
 
 - `Apply(ctx, Options)` runs a manifest and returns a `Report` with a `Result`
