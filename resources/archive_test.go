@@ -184,20 +184,32 @@ func TestArchive(t *testing.T) {
 		assert.Equal(t, "content", string(content))
 	})
 
-	t.Run("path traversal entries are skipped", func(t *testing.T) {
+	t.Run("path traversal entry fails", func(t *testing.T) {
 		path := newTestTarGz(t, map[string]string{
 			"../evil": "evil",
-			"safe":    "safe",
 		})
 		dest := t.TempDir()
 
 		a := &Archive{Path: path, Dest: dest}
 
 		err := a.Run(testCtx, testLogger)
-		assert.NoError(t, err)
+		assert.EqualError(t, err, "archive entry ../evil is outside Dest")
 
 		assert.NoFileExists(t, filepath.Join(filepath.Dir(dest), "evil"))
-		assert.FileExists(t, filepath.Join(dest, "safe"))
+	})
+
+	t.Run("path traversal entry in a zip fails", func(t *testing.T) {
+		path := newTestZip(t, map[string]string{
+			"../evil": "evil",
+		})
+		dest := t.TempDir()
+
+		a := &Archive{Path: path, Dest: dest}
+
+		err := a.Run(testCtx, testLogger)
+		assert.EqualError(t, err, "archive entry ../evil is outside Dest")
+
+		assert.NoFileExists(t, filepath.Join(filepath.Dir(dest), "evil"))
 	})
 
 	t.Run("not if exists", func(t *testing.T) {
@@ -226,10 +238,9 @@ func TestArchive(t *testing.T) {
 		assert.Equal(t, "old", string(content))
 	})
 
-	t.Run("unsafe symlink is skipped and cannot be written through", func(t *testing.T) {
+	t.Run("unsafe symlink fails and cannot be written through", func(t *testing.T) {
 		// A symlink escaping dest, followed by a file written through it,
-		// is the classic tar-slip. The symlink must be rejected so the
-		// file lands inside dest (or not at all), never outside.
+		// is the classic tar-slip
 		path := newTestTarGzHeaders(t, []*tar.Header{
 			{Name: "escape", Typeflag: tar.TypeSymlink, Linkname: "../../outside", Mode: 0o777},
 			{Name: "escape/pwned", Typeflag: tar.TypeReg, Mode: 0o644},
@@ -241,16 +252,14 @@ func TestArchive(t *testing.T) {
 		a := &Archive{Path: path, Dest: dest}
 
 		err := a.Run(testCtx, testLogger)
-		assert.NoError(t, err)
+		assert.EqualError(t, err, "symlink escape points outside Dest: ../../outside")
 
-		// Nothing should have escaped to base/outside
-		assert.NoDirExists(t, filepath.Join(base, "outside"))
+		assert.NoFileExists(t, filepath.Join(dest, "escape"))
 		assert.NoFileExists(t, filepath.Join(base, "outside"))
-		assert.NoFileExists(t, "escape")
 		assert.NoFileExists(t, filepath.Join(filepath.Dir(base), "outside"))
 	})
 
-	t.Run("absolute symlink target is skipped", func(t *testing.T) {
+	t.Run("absolute symlink target fails", func(t *testing.T) {
 		path := newTestTarGzHeaders(t, []*tar.Header{
 			{Name: "abs", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd", Mode: 0o777},
 		}, nil)
@@ -260,7 +269,7 @@ func TestArchive(t *testing.T) {
 		a := &Archive{Path: path, Dest: dest}
 
 		err := a.Run(testCtx, testLogger)
-		assert.NoError(t, err)
+		assert.EqualError(t, err, "symlink abs points outside Dest: /etc/passwd")
 		assert.NoFileExists(t, filepath.Join(dest, "abs"))
 	})
 
@@ -298,6 +307,29 @@ func TestArchive(t *testing.T) {
 		content, err := os.ReadFile(filepath.Join(dest, "duplicate"))
 		assert.NoError(t, err)
 		assert.Equal(t, "shared", string(content))
+	})
+
+	t.Run("hardlink outside dest fails", func(t *testing.T) {
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "duplicate", Typeflag: tar.TypeLink, Linkname: "../original", Mode: 0o644},
+		}, nil)
+
+		a := &Archive{Path: path, Dest: t.TempDir()}
+
+		err := a.Run(testCtx, testLogger)
+		assert.EqualError(t, err, "hardlink duplicate points outside Dest: ../original")
+	})
+
+	t.Run("hardlink to an entry not extracted fails", func(t *testing.T) {
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "original", Typeflag: tar.TypeReg, Mode: 0o644},
+			{Name: "duplicate", Typeflag: tar.TypeLink, Linkname: "original", Mode: 0o644},
+		}, map[string]string{"original": "shared"})
+
+		a := &Archive{Path: path, Dest: t.TempDir(), Pick: []string{"duplicate"}}
+
+		err := a.Run(testCtx, testLogger)
+		assert.EqualError(t, err, "hardlink duplicate points to original, which was not extracted")
 	})
 }
 

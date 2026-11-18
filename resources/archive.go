@@ -334,6 +334,10 @@ func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string)
 			return count, err
 		}
 
+		if escapes(hdr.Name) {
+			return count, fmt.Errorf("archive entry %s is outside Dest", hdr.Name)
+		}
+
 		target, ok := a.target(dest, hdr.Name)
 		if !ok {
 			continue
@@ -352,10 +356,10 @@ func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string)
 		case tar.TypeSymlink:
 			// Reject symlinks whose target escapes dest. Otherwise a
 			// later entry could be written through the symlink to a
-			// path outside the destination (a tar-slip).
+			// path outside the destination (a tar-slip). Skipping it
+			// instead would leave a partial extraction that succeeds.
 			if !symlinkWithinDest(dest, target, hdr.Linkname) {
-				log.Warn("skipped-unsafe-symlink", "name", hdr.Name, "target", hdr.Linkname)
-				continue
+				return count, fmt.Errorf("symlink %s points outside Dest: %s", hdr.Name, hdr.Linkname)
 			}
 			if err := os.RemoveAll(target); err != nil {
 				return count, err
@@ -367,10 +371,12 @@ func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string)
 		case tar.TypeLink:
 			// Hardlinks point at another entry in the archive, which
 			// must already have been extracted to be linkable.
+			if escapes(hdr.Linkname) {
+				return count, fmt.Errorf("hardlink %s points outside Dest: %s", hdr.Name, hdr.Linkname)
+			}
 			source, ok := a.target(dest, hdr.Linkname)
 			if !ok || !viaduct.FileExists(source) {
-				log.Warn("skipped-hardlink", "name", hdr.Name, "target", hdr.Linkname)
-				continue
+				return count, fmt.Errorf("hardlink %s points to %s, which was not extracted", hdr.Name, hdr.Linkname)
 			}
 			if err := os.RemoveAll(target); err != nil {
 				return count, err
@@ -387,6 +393,15 @@ func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string)
 	}
 
 	return count, nil
+}
+
+// escapes reports whether an archive entry name climbs out of the directory
+// it is extracted into. A leading slash does not count, because it is
+// stripped before extracting.
+func escapes(name string) bool {
+	name = path.Clean(strings.TrimPrefix(name, "/"))
+
+	return name == ".." || strings.HasPrefix(name, "../")
 }
 
 // symlinkWithinDest reports whether a symlink at linkPath pointing to
@@ -418,6 +433,10 @@ func (a *Archive) extractZip(apath, dest string) (int, error) {
 
 	var count int
 	for _, f := range zr.File {
+		if escapes(f.Name) {
+			return count, fmt.Errorf("archive entry %s is outside Dest", f.Name)
+		}
+
 		target, ok := a.target(dest, f.Name)
 		if !ok {
 			continue
@@ -450,9 +469,13 @@ func (a *Archive) extractZip(apath, dest string) (int, error) {
 // target maps an archive entry name to a destination path, applying Strip
 // and Pick, and guarding against path traversal
 func (a *Archive) target(dest, name string) (string, bool) {
+	if escapes(name) {
+		return "", false
+	}
+
 	name = path.Clean(strings.TrimPrefix(name, "/"))
 
-	if name == "." || name == ".." || strings.HasPrefix(name, "../") {
+	if name == "." {
 		return "", false
 	}
 

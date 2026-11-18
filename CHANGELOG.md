@@ -272,6 +272,10 @@ resources needs no change. Beyond that:
   `/var/lib/viaduct/archive`, or `~/.local/state/viaduct/archive` when not
   running as root, and is a noop while the marker matches and `Dest` and the
   picked entries exist. A changed archive or changed options extract again
+- **`Archive` fails on an entry it will not extract.** An entry or link that
+  points outside `Dest`, or a hardlink to an entry that was not extracted, used
+  to be skipped with a warning, leaving a partial extraction that succeeded.
+  It now fails the resource
 - A `Download` whose file already exists with a matching `Checksum` is a noop,
   rather than being downloaded again
 - Downloads and Git clones and pulls stop when the context is cancelled
