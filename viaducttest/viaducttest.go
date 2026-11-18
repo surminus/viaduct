@@ -20,13 +20,14 @@ import (
 )
 
 // Runner is a fake viaduct.Runner. Commands are matched against the
-// responses set with On and OnAny, most recent first. A command with no
-// response fails the test.
+// responses set with On and OnAny, most recent first, and then the one set
+// with Otherwise. A command with no response fails the test.
 type Runner struct {
 	t testing.TB
 
 	mu        sync.Mutex
 	responses []*Response
+	otherwise *Response
 	calls     []viaduct.Command
 }
 
@@ -45,6 +46,11 @@ type Response struct {
 	code           int
 	err            error
 	do             func(c viaduct.Command) error
+
+	// times is how many more commands the response matches, when limited is
+	// set.
+	times   int
+	limited bool
 }
 
 // On responds to a command with exactly these arguments. By default it
@@ -56,6 +62,18 @@ func (r *Runner) On(name string, args ...string) *Response {
 // OnAny responds to a command with any arguments.
 func (r *Runner) OnAny(name string) *Response {
 	return r.add(&Response{name: name, any: true})
+}
+
+// Otherwise responds to any command that no response from On or OnAny
+// matches, rather than failing the test. By default it succeeds with no
+// output.
+func (r *Runner) Otherwise() *Response {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.otherwise = &Response{any: true}
+
+	return r.otherwise
 }
 
 func (r *Runner) add(res *Response) *Response {
@@ -91,6 +109,17 @@ func (res *Response) Fail(err error) *Response {
 	return res
 }
 
+// Times makes the response match only the next n commands. After that, a
+// command matches the next most recent response, so an answer that changes,
+// such as before and after another command runs, is set up with the later
+// answer first and the earlier one limited with Times.
+func (res *Response) Times(n int) *Response {
+	res.times = n
+	res.limited = true
+
+	return res
+}
+
 // Do runs fn when the command runs, such as to create the file a real
 // command would. An error from fn is returned as the command's error.
 func (res *Response) Do(fn func(c viaduct.Command) error) *Response {
@@ -99,6 +128,10 @@ func (res *Response) Do(fn func(c viaduct.Command) error) *Response {
 }
 
 func (res *Response) matches(c viaduct.Command) bool {
+	if res.limited && res.times <= 0 {
+		return false
+	}
+
 	if res.name != c.Name {
 		return false
 	}
@@ -111,10 +144,12 @@ func (r *Runner) Run(ctx context.Context, c viaduct.Command) error {
 	r.mu.Lock()
 	r.calls = append(r.calls, c)
 
-	var res *Response
+	res := r.otherwise
 	for i := len(r.responses) - 1; i >= 0; i-- {
 		if r.responses[i].matches(c) {
 			res = r.responses[i]
+			res.times--
+
 			break
 		}
 	}
@@ -152,6 +187,12 @@ func (r *Runner) Run(ctx context.Context, c viaduct.Command) error {
 	}
 
 	return nil
+}
+
+// Exit returns the error a command exiting with code returns, for a Do
+// function that decides the exit status itself.
+func Exit(code int) error {
+	return &viaduct.ExitError{Code: code}
 }
 
 // Calls returns every command run so far, in order.

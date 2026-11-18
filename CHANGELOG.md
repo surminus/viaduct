@@ -109,7 +109,10 @@ resources needs no change. Beyond that:
   status from an error, and `ExitError` is the one a fake runner returns
 - The `viaducttest` package, with a fake `Runner`, a `Recorder` handler and a
   test `Env` rooted in a temporary directory. `Env.BlockDevice` marks a path
-  as a block device, for testing a resource that needs one
+  as a block device, for testing a resource that needs one. `Response.Times`
+  limits a response to a number of commands, for an answer that changes part
+  way through, `Runner.Otherwise` answers any command nothing else matches,
+  and `Exit` is the error for an exit status returned from `Do`
 - `ApplyOne`, which runs a resource's preflight checks and then the resource,
   so a custom resource can use others once it knows a value only available
   part way through a run

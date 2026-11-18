@@ -108,6 +108,61 @@ func TestRunner(t *testing.T) {
 		assert.Equal(t, 3, code)
 	})
 
+	t.Run("Times limits a response, falling back to an earlier one", func(t *testing.T) {
+		r := NewRunner(t)
+		r.On("blkid", "/dev/sdb").Stdout("ext4\n")
+		r.On("blkid", "/dev/sdb").Exit(2).Times(1)
+
+		_, err := run(t, r, "blkid", "/dev/sdb")
+		code, _ := viaduct.ExitCode(err)
+		assert.Equal(t, 2, code)
+
+		out, err := run(t, r, "blkid", "/dev/sdb")
+		require.NoError(t, err)
+		assert.Equal(t, "ext4\n", out)
+
+		out, err = run(t, r, "blkid", "/dev/sdb")
+		require.NoError(t, err)
+		assert.Equal(t, "ext4\n", out)
+	})
+
+	t.Run("a used up response fails the test without an earlier one", func(t *testing.T) {
+		tb := &fakeTB{}
+		r := NewRunner(tb)
+		r.On("true").Times(1)
+
+		_, err := run(t, r, "true")
+		require.NoError(t, err)
+
+		_, err = run(t, r, "true")
+		require.Error(t, err)
+		assert.Len(t, tb.errors, 1)
+	})
+
+	t.Run("Otherwise answers commands nothing else matches", func(t *testing.T) {
+		r := NewRunner(t)
+		r.Otherwise().Stdout("fallback\n")
+		r.On("systemctl", "is-active", "nginx").Exit(3)
+
+		out, err := run(t, r, "dpkg-query", "-W", "curl")
+		require.NoError(t, err)
+		assert.Equal(t, "fallback\n", out)
+
+		_, err = run(t, r, "systemctl", "is-active", "nginx")
+		code, _ := viaduct.ExitCode(err)
+		assert.Equal(t, 3, code)
+	})
+
+	t.Run("Exit is an exit status from Do", func(t *testing.T) {
+		r := NewRunner(t)
+		r.On("false").Do(func(viaduct.Command) error { return Exit(4) })
+
+		_, err := run(t, r, "false")
+		code, ok := viaduct.ExitCode(err)
+		assert.True(t, ok)
+		assert.Equal(t, 4, code)
+	})
+
 	t.Run("Ran", func(t *testing.T) {
 		r := NewRunner(t)
 		r.OnAny("echo")
