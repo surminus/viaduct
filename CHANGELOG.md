@@ -168,6 +168,7 @@ resources needs no change. Beyond that:
 - `Source` on `File`, with a `CopyFile` shortcut, which copies the content
   of another file, read when the resource runs, so it can be one an earlier
   resource creates
+- `Rename` on `Archive`, which extracts an entry to another path in `Dest`
 
 ### Changed
 
@@ -249,7 +250,7 @@ resources needs no change. Beyond that:
   Installing an installed package used to upgrade it, when the package
   manager had a newer version. That package is now left as it is
 - **`Archive` extracts an archive once.** After extracting it writes a
-  marker holding the archive's SHA-256, `Strip` and `Pick` under
+  marker holding the archive's SHA-256, `Strip`, `Pick` and `Rename` under
   `/var/lib/viaduct/archive`, or `~/.local/state/viaduct/archive` when not
   running as root, and is a noop while the marker matches and `Dest` and the
   picked entries exist. A changed archive or changed options extract again

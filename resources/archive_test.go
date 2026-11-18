@@ -575,3 +575,64 @@ func TestArchiveStateDir(t *testing.T) {
 
 	assert.Regexp(t, `^/state/viaduct/archive/[0-9a-f]{32}$`, marker)
 }
+
+func TestArchiveRename(t *testing.T) {
+	t.Parallel()
+
+	t.Run("extracts an entry under another name", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		rootedTarGz(t, env, "/tmp/agent.tar.gz", map[string]string{"agent-linux": "binary", "README": "readme"})
+
+		a := &Archive{
+			Path:   "/tmp/agent.tar.gz",
+			Dest:   "/usr/local/bin",
+			Pick:   []string{"agent-linux"},
+			Rename: map[string]string{"agent-linux": "agent"},
+		}
+
+		log, err := env.Apply(env.Context(), a)
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, "binary", env.ReadFile("/usr/local/bin/agent"))
+		assert.NoFileExists(t, env.Path("/usr/local/bin/agent-linux"))
+		assert.NoFileExists(t, env.Path("/usr/local/bin/README"))
+
+		log, err = env.Apply(env.Context(), a)
+		require.NoError(t, err)
+		assert.False(t, log.Changed())
+
+		require.NoError(t, os.Remove(env.Path("/usr/local/bin/agent")))
+
+		log, err = env.Apply(env.Context(), a)
+		require.NoError(t, err)
+		assert.True(t, log.Changed(), "a removed renamed entry extracts again")
+	})
+
+	t.Run("changing a rename extracts again", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		rootedTarGz(t, env, "/tmp/agent.tar.gz", map[string]string{"agent-linux": "binary"})
+
+		_, err := env.Apply(env.Context(), &Archive{Path: "/tmp/agent.tar.gz", Dest: "/opt", Rename: map[string]string{"agent-linux": "a"}})
+		require.NoError(t, err)
+
+		log, err := env.Apply(env.Context(), &Archive{Path: "/tmp/agent.tar.gz", Dest: "/opt", Rename: map[string]string{"agent-linux": "b"}})
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, "binary", env.ReadFile("/opt/b"))
+	})
+
+	t.Run("a rename must stay within Dest", func(t *testing.T) {
+		t.Parallel()
+
+		for _, to := range []string{"../agent", "/usr/bin/agent", ""} {
+			a := &Archive{Path: "/tmp/agent.tar.gz", Dest: "/opt", Rename: map[string]string{"agent-linux": to}}
+			assert.ErrorContains(t, a.PreflightChecks(testCtx, testLogger), "must be a path within Dest", to)
+		}
+	})
+}

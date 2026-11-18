@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -27,7 +28,7 @@ import (
 // by file extension.
 //
 // After extracting, it writes a marker holding the archive's SHA-256 along
-// with Strip and Pick, in /var/lib/viaduct/archive when running as root, or
+// with Strip, Pick and Rename, in /var/lib/viaduct/archive when running as root, or
 // $XDG_STATE_HOME/viaduct/archive otherwise, which defaults to
 // ~/.local/state/viaduct/archive. The archive is not extracted again while
 // the marker matches, Dest exists and every Pick entry exists. Removing the
@@ -46,6 +47,11 @@ type Archive struct {
 	// Pick only extracts entries with these paths, after stripping.
 	// Optional.
 	Pick []string
+
+	// Rename extracts the entries named by its keys, after stripping, to the
+	// paths in Dest given by its values. Pick still lists the names in the
+	// archive. Optional.
+	Rename map[string]string
 
 	// NotIfExists will skip extraction if all Pick entries already exist
 	// within Dest, or if Dest exists when Pick is not set, without reading
@@ -84,6 +90,12 @@ func (a *Archive) PreflightChecks(ctx context.Context, log *viaduct.Logger) erro
 
 	if _, err := archiveFormat(a.Path); err != nil {
 		return err
+	}
+
+	for from, to := range a.Rename {
+		if !filepath.IsLocal(to) {
+			return fmt.Errorf("rename of %s must be a path within Dest: %s", from, to)
+		}
 	}
 
 	return nil
@@ -213,6 +225,10 @@ func (a *Archive) stamp(apath string) (string, error) {
 		fmt.Fprintf(&b, "pick %s\n", p)
 	}
 
+	for _, from := range slices.Sorted(maps.Keys(a.Rename)) {
+		fmt.Fprintf(&b, "rename %s %s\n", from, a.Rename[from])
+	}
+
 	return b.String(), nil
 }
 
@@ -225,12 +241,22 @@ func (a *Archive) extracted(dest, marker, stamp string) bool {
 	}
 
 	for _, p := range a.Pick {
-		if !viaduct.FileExists(filepath.Join(dest, p)) {
+		if !viaduct.FileExists(filepath.Join(dest, a.renamed(p))) {
 			return false
 		}
 	}
 
 	return true
+}
+
+// renamed returns where an entry, after stripping, is extracted to within
+// Dest
+func (a *Archive) renamed(entry string) string {
+	if to, ok := a.Rename[entry]; ok {
+		return to
+	}
+
+	return entry
 }
 
 // upToDate returns true if everything we would extract already exists
@@ -240,7 +266,7 @@ func (a *Archive) upToDate(dest string) bool {
 	}
 
 	for _, p := range a.Pick {
-		if !viaduct.FileExists(filepath.Join(dest, p)) {
+		if !viaduct.FileExists(filepath.Join(dest, a.renamed(p))) {
 			return false
 		}
 	}
@@ -441,7 +467,7 @@ func (a *Archive) target(dest, name string) (string, bool) {
 		return "", false
 	}
 
-	return filepath.Join(dest, rel), true
+	return filepath.Join(dest, a.renamed(rel)), true
 }
 
 func writeFromReader(target string, reader io.Reader, mode os.FileMode) error {
