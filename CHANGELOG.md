@@ -188,6 +188,8 @@ resources needs no change. Beyond that:
   target
 - `PreserveOwners` on `Archive`, which gives each entry the owner and group
   the tar archive records
+- `Response.Then` in `viaducttest`, which sets the answer a command gives
+  once the previous answer has been used
 
 ### Changed
 

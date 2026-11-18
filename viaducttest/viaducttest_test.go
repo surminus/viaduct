@@ -126,6 +126,52 @@ func TestRunner(t *testing.T) {
 		assert.Equal(t, "ext4\n", out)
 	})
 
+	t.Run("Then answers in the order declared", func(t *testing.T) {
+		r := NewRunner(t)
+		r.On("blkid", "/dev/sdb").Exit(2).Then().Stdout("xfs\n").Times(2).Then().Stdout("ext4\n")
+
+		_, err := run(t, r, "blkid", "/dev/sdb")
+		code, _ := viaduct.ExitCode(err)
+		assert.Equal(t, 2, code)
+
+		for _, want := range []string{"xfs\n", "xfs\n", "ext4\n", "ext4\n"} {
+			out, err := run(t, r, "blkid", "/dev/sdb")
+			require.NoError(t, err)
+			assert.Equal(t, want, out)
+		}
+	})
+
+	t.Run("Then falls back to an earlier response once its chain is used up", func(t *testing.T) {
+		r := NewRunner(t)
+		r.On("blkid", "/dev/sdb").Stdout("ext4\n")
+		r.On("blkid", "/dev/sdb").Exit(2).Then().Stdout("xfs\n").Times(1)
+
+		_, err := run(t, r, "blkid", "/dev/sdb")
+		require.Error(t, err)
+
+		for _, want := range []string{"xfs\n", "ext4\n", "ext4\n"} {
+			out, err := run(t, r, "blkid", "/dev/sdb")
+			require.NoError(t, err)
+			assert.Equal(t, want, out)
+		}
+	})
+
+	t.Run("Then keeps to its own command", func(t *testing.T) {
+		r := NewRunner(t)
+		r.OnAny("blkid").Exit(2).Then().Stdout("xfs\n")
+		r.On("mkfs", "/dev/sdb")
+
+		_, err := run(t, r, "blkid", "/dev/sdb")
+		require.Error(t, err)
+
+		_, err = run(t, r, "mkfs", "/dev/sdb")
+		require.NoError(t, err)
+
+		out, err := run(t, r, "blkid", "/dev/sdc")
+		require.NoError(t, err)
+		assert.Equal(t, "xfs\n", out)
+	})
+
 	t.Run("a used up response fails the test without an earlier one", func(t *testing.T) {
 		tb := &fakeTB{}
 		r := NewRunner(tb)

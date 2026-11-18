@@ -45,8 +45,7 @@ func TestFilesystem(t *testing.T) {
 
 	t.Run("formats an empty device", func(t *testing.T) {
 		env := setup(t)
-		env.Runner.On(blkid, blkidArgs...).Stdout("TYPE=ext4\nUUID=1234\n")
-		env.Runner.On(blkid, blkidArgs...).Exit(2).Times(1)
+		env.Runner.On(blkid, blkidArgs...).Exit(2).Then().Stdout("TYPE=ext4\nUUID=1234\n")
 		env.Runner.On("mkfs", "-t", "ext4", "-L", "data", "/dev/sdb")
 
 		f := &Filesystem{Device: "/dev/sdb", Type: "ext4", Options: []string{"-L", "data"}}

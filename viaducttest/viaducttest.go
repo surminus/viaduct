@@ -51,6 +51,9 @@ type Response struct {
 	// set.
 	times   int
 	limited bool
+
+	// next takes over once this response has matched times commands
+	next *Response
 }
 
 // On responds to a command with exactly these arguments. By default it
@@ -110,12 +113,41 @@ func (res *Response) Fail(err error) *Response {
 }
 
 // Times makes the response match only the next n commands. After that, a
-// command matches the next most recent response, so an answer that changes,
-// such as before and after another command runs, is set up with the later
-// answer first and the earlier one limited with Times.
+// command matches the response from Then, or if there is none, the next most
+// recent response.
 func (res *Response) Times(n int) *Response {
 	res.times = n
 	res.limited = true
+
+	return res
+}
+
+// Then returns a response to the same command that takes over once this one
+// has been used, for an answer that changes, such as before and after another
+// command runs. This response is used once, unless Times says otherwise.
+//
+// The new response succeeds with no output until it is set otherwise, and
+// answers every later command unless Times limits it. Calling Then again on
+// the same response replaces the one it returned before; call it on the
+// returned response to add a third answer.
+//
+//	r.On("blkid", "/dev/sdb").Exit(2).Then().Stdout("TYPE=xfs\n")
+func (res *Response) Then() *Response {
+	if !res.limited {
+		res.Times(1)
+	}
+
+	res.next = &Response{name: res.name, args: res.args, any: res.any}
+
+	return res.next
+}
+
+// current returns the response in a chain made with Then that answers the
+// next command
+func (res *Response) current() *Response {
+	for res.usedUp() && res.next != nil {
+		res = res.next
+	}
 
 	return res
 }
@@ -127,8 +159,14 @@ func (res *Response) Do(fn func(c viaduct.Command) error) *Response {
 	return res
 }
 
+// usedUp reports whether the response has matched as many commands as Times
+// allows
+func (res *Response) usedUp() bool {
+	return res.limited && res.times <= 0
+}
+
 func (res *Response) matches(c viaduct.Command) bool {
-	if res.limited && res.times <= 0 {
+	if res.usedUp() {
 		return false
 	}
 
@@ -146,8 +184,8 @@ func (r *Runner) Run(ctx context.Context, c viaduct.Command) error {
 
 	res := r.otherwise
 	for i := len(r.responses) - 1; i >= 0; i-- {
-		if r.responses[i].matches(c) {
-			res = r.responses[i]
+		if current := r.responses[i].current(); current.matches(c) {
+			res = current
 			res.times--
 
 			break
