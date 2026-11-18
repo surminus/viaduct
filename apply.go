@@ -174,6 +174,10 @@ type resourceState struct {
 	// can read final.
 	done  chan struct{}
 	final Result
+
+	// changed is set when any attempt at the resource changed something,
+	// before done is closed.
+	changed bool
 }
 
 func newRun(m *Manifest, o Options) *run {
@@ -369,6 +373,11 @@ func (rn *run) apply(ctx context.Context, r *Resource) {
 		return
 	}
 
+	if r.onChange && !rn.dependencyChanged(r) {
+		rn.skip(ctx, r, "no dependency changed")
+		return
+	}
+
 	var policy RetryPolicy
 	if r.retry != nil {
 		policy = r.retry.withDefaults()
@@ -380,6 +389,12 @@ func (rn *run) apply(ctx context.Context, r *Resource) {
 		result, ran := rn.attempt(ctx, r, attempt)
 		if !ran {
 			return
+		}
+
+		// An attempt that changed something and then failed still counts,
+		// even if a later attempt finds nothing left to do.
+		if result.Changed {
+			rn.states[r].changed = true
 		}
 
 		final := result.Status != StatusFailed ||
@@ -491,6 +506,30 @@ func (rn *run) fail(r *Resource, err error, cause ResourceID) {
 	result.Final = true
 
 	rn.record(r, result)
+}
+
+// skip records a resource that was skipped without running.
+func (rn *run) skip(ctx context.Context, r *Resource, reason string) {
+	newResourceLogger(ctx, rn.handler, r, r.Attributes.OperationName()).Noop("skipped", "reason", reason)
+
+	result := rn.newResult(r, r.Attributes.OperationName())
+	result.Status = StatusSkipped
+	result.Err = Skip(reason)
+	result.Final = true
+
+	rn.record(r, result)
+}
+
+// dependencyChanged reports whether any of a resource's dependencies changed
+// something. It is called once they have all finished.
+func (rn *run) dependencyChanged(r *Resource) bool {
+	for _, d := range r.resolved {
+		if rn.states[d].changed {
+			return true
+		}
+	}
+
+	return false
 }
 
 // record keeps a resource's final result and releases anything waiting on

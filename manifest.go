@@ -137,6 +137,18 @@ func (m *Manifest) AllowFailure(r *Resource) {
 	}
 }
 
+// OnChange runs a resource only when at least one of its dependencies
+// changed something during this run, or in a dry run, would have. Otherwise
+// the resource is skipped, so anything depending on it still runs. A
+// dependency that changed in an earlier run does not count, so a resource
+// that failed after its dependency changed is not run again by the next
+// run. The resource needs at least one dependency.
+func (m *Manifest) OnChange(r *Resource) {
+	if r, ok := m.lookup("OnChange", r); ok {
+		r.onChange = true
+	}
+}
+
 // SetName replaces a resource's generated ID with a name, which must be unique
 // within the manifest.
 func (m *Manifest) SetName(r *Resource, name string) {
@@ -431,6 +443,10 @@ func (m *Manifest) compile() error {
 			}
 
 			add(d)
+		}
+
+		if r.onChange && len(r.resolved) == 0 {
+			errs = append(errs, fmt.Errorf("%s runs on change but has no dependencies", r.ResourceID))
 		}
 	}
 

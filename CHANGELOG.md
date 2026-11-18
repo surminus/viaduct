@@ -177,6 +177,9 @@ resources needs no change. Beyond that:
 - `Latest` on `Package`, which upgrades installed packages that have a newer
   version available, on Debian derivatives. There, a name pinned to a version,
   such as `curl=8.5.0-1`, is a noop when that version is installed
+- `OnChange` runs a resource only when one of its dependencies changed
+  something in the run, such as a restart after its configuration file is
+  written. Otherwise it is `StatusSkipped`, and its dependants still run
 
 ### Changed
 

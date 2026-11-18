@@ -374,3 +374,92 @@ func TestApplyResults(t *testing.T) {
 		assert.ErrorContains(t, err, "missing")
 	})
 }
+
+// changeOnceResource changes something and fails on its first attempt, then
+// finds nothing to do
+type changeOnceResource struct {
+	testResourceType
+	attempts atomic.Int32
+}
+
+func (c *changeOnceResource) Run(_ context.Context, log *Logger) error {
+	if c.attempts.Add(1) == 1 {
+		log.Info("changed")
+		return errors.New("failed after changing")
+	}
+
+	log.Noop("up-to-date")
+
+	return nil
+}
+
+func TestOnChange(t *testing.T) {
+	t.Run("runs when a dependency changed", func(t *testing.T) {
+		m := New()
+		unchanged := m.Add(newTestResource("unchanged"))
+		changed := m.Add(&changingResource{testResourceType{Value: "changed"}})
+		follow := newTestResource("follow")
+		m.OnChange(m.Add(follow, unchanged, changed))
+
+		_, err := m.Apply(context.Background(), Options{})
+		require.NoError(t, err)
+
+		assert.True(t, follow.ran.Load())
+	})
+
+	t.Run("is skipped when no dependency changed, and its dependants run", func(t *testing.T) {
+		m := New()
+		dep := m.Add(newTestResource("dep"))
+		follow := newTestResource("follow")
+		r := m.Add(follow, dep)
+		m.OnChange(r)
+		after := newTestResource("after")
+		m.Add(after, r)
+
+		report, err := m.Apply(context.Background(), Options{})
+		require.NoError(t, err)
+
+		assert.False(t, follow.ran.Load())
+		assert.True(t, after.ran.Load())
+
+		result := report.Results[1]
+		assert.Equal(t, r.ResourceID, result.ID)
+		assert.Equal(t, StatusSkipped, result.Status)
+		assert.True(t, IsSkip(result.Err))
+		assert.EqualError(t, result.Err, "skipped: no dependency changed")
+	})
+
+	t.Run("a change made by a failed attempt counts", func(t *testing.T) {
+		m := New()
+		dep := m.Add(&changeOnceResource{testResourceType: testResourceType{Value: "dep"}})
+		m.WithRetry(dep, fastRetry(2))
+		follow := newTestResource("follow")
+		m.OnChange(m.Add(follow, dep))
+
+		_, err := m.Apply(context.Background(), Options{})
+		require.NoError(t, err)
+
+		assert.True(t, follow.ran.Load())
+	})
+
+	t.Run("a change in a dry run counts", func(t *testing.T) {
+		m := New()
+		changed := m.Add(&changingResource{testResourceType{Value: "changed"}})
+		follow := newTestResource("follow")
+		m.OnChange(m.Add(follow, changed))
+
+		_, err := m.Apply(context.Background(), Options{Env: Env{DryRun: true}})
+		require.NoError(t, err)
+
+		assert.True(t, follow.ran.Load())
+	})
+
+	t.Run("needs a dependency", func(t *testing.T) {
+		m := New()
+		m.OnChange(m.Add(newTestResource("alone")))
+
+		_, err := m.Apply(context.Background(), Options{})
+		assert.ErrorIs(t, err, ErrInvalidManifest)
+		assert.ErrorContains(t, err, "runs on change but has no dependencies")
+	})
+}

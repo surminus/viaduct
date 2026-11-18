@@ -63,6 +63,9 @@ type Resource struct {
 	// failing the run.
 	retry        *RetryPolicy
 	allowFailure bool
+
+	// onChange runs the resource only when a dependency changed.
+	onChange bool
 }
 
 // ResourceParams are a set of options that each resource can set
