@@ -168,9 +168,27 @@ func AptHold(names ...string) *Execute {
 	return aptExec(append([]string{"apt-mark", "hold"}, names...)...)
 }
 
-// InstallDeb installs a deb package from a file using dpkg
+// InstallDeb installs a deb package from a file using dpkg, unless the same
+// version of the package is already installed
 func InstallDeb(path string) *Execute {
-	return aptExec("dpkg", "-i", viaduct.ExpandPath(path))
+	path = viaduct.ExpandPath(path)
+
+	e := aptExec("dpkg", "-i", path)
+	e.Unless = debInstalled(path)
+
+	return e
+}
+
+// debInstalled is a shell test that succeeds when the package in a deb file
+// is installed at the deb's version. It runs through bash, so the path is
+// quoted.
+func debInstalled(path string) string {
+	deb := "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
+
+	return fmt.Sprintf(
+		`[ "$(dpkg-query -W -f '${db:Status-Status} ${Version}' "$(dpkg-deb -f %s Package)" 2>/dev/null)" = "installed $(dpkg-deb -f %s Version)" ]`,
+		deb, deb,
+	)
 }
 
 // aptExec builds a command that runs without a shell, so package names and

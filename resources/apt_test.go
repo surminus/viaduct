@@ -4,6 +4,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,6 +32,42 @@ func TestAptExecuteHelpers(t *testing.T) {
 		// The helpers are valid resources in their own right
 		assert.NoError(t, e.PreflightChecks(testCtx, testLogger))
 	}
+}
+
+func TestInstallDebGuard(t *testing.T) {
+	// Fake dpkg-deb and dpkg-query on PATH, so the guard runs through bash
+	// as it does on a host
+	bin := t.TempDir()
+	writeScript := func(name, body string) {
+		require.NoError(t, os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755))
+	}
+
+	writeScript("dpkg-deb", `
+[ "$1" = -f ] || exit 2
+[ -f "$2" ] || exit 2
+case "$3" in
+Package) echo agent ;;
+Version) echo 1.2.0 ;;
+esac
+`)
+
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+
+	deb := filepath.Join(t.TempDir(), "it's an agent.deb")
+	require.NoError(t, os.WriteFile(deb, nil, 0o644))
+
+	guard := func() bool {
+		return unlessSucceeds(testCtx, nil, InstallDeb(deb).Unless, func(c viaduct.Command) viaduct.Command { return c })
+	}
+
+	writeScript("dpkg-query", `[ "$4" = agent ] && printf 'installed 1.2.0'`)
+	assert.True(t, guard(), "the same version is installed")
+
+	writeScript("dpkg-query", `[ "$4" = agent ] && printf 'installed 1.1.0'`)
+	assert.False(t, guard(), "another version is installed")
+
+	writeScript("dpkg-query", `echo "dpkg-query: no packages found matching $4" >&2; exit 1`)
+	assert.False(t, guard(), "the package is not installed")
 }
 
 func TestPackageLockHasNoTimeout(t *testing.T) {

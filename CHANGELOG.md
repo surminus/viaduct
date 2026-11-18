@@ -258,6 +258,8 @@ resources needs no change. Beyond that:
   Installing an installed package used to upgrade it, when the package
   manager had a newer version. That package is now left as it is, unless
   `Latest` is set
+- `InstallDeb` is a noop when the deb's package is installed at the deb's
+  version, rather than running `dpkg -i` on every run
 - **`Archive` extracts an archive once.** After extracting it writes a
   marker holding the archive's SHA-256, `Strip`, `Pick` and `Rename` under
   `/var/lib/viaduct/archive`, or `~/.local/state/viaduct/archive` when not
