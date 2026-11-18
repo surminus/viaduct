@@ -237,6 +237,62 @@ func TestFilePermissionsOnlyDryRun(t *testing.T) {
 	assert.ErrorContains(t, err, "file does not exist")
 }
 
+func TestFileSource(t *testing.T) {
+	t.Parallel()
+
+	t.Run("copies the source when it runs, then is a noop", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		f := CopyFile("/src/app.conf", "/etc/app.conf")
+		f.CreateDirIfMissing = true
+
+		env.WriteFile("/src/app.conf", "setting=1\n")
+
+		log, err := env.Apply(env.Context(), f)
+		require.NoError(t, err)
+		assert.True(t, log.Changed())
+		assert.Equal(t, "setting=1\n", env.ReadFile("/etc/app.conf"))
+
+		log, err = env.Apply(env.Context(), f)
+		require.NoError(t, err)
+		assert.False(t, log.Changed())
+
+		env.WriteFile("/src/app.conf", "setting=2\n")
+
+		log, err = env.Apply(env.Context(), f)
+		require.NoError(t, err)
+		assert.True(t, log.Changed())
+		assert.Equal(t, "setting=2\n", env.ReadFile("/etc/app.conf"))
+	})
+
+	t.Run("a missing source is a change in a dry run and an error otherwise", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+
+		log, err := env.Apply(env.DryRunContext(), CopyFile("/src/app.conf", "/etc/app.conf"))
+		require.NoError(t, err)
+		assert.True(t, log.Changed())
+
+		_, err = env.Apply(env.Context(), CopyFile("/src/app.conf", "/etc/app.conf"))
+		assert.ErrorContains(t, err, "reading Source")
+	})
+
+	t.Run("preflight", func(t *testing.T) {
+		t.Parallel()
+
+		err := (&File{Path: "/a", Source: "/b", Content: "x"}).PreflightChecks(testCtx, testLogger)
+		assert.EqualError(t, err, "cannot set both Content and Source")
+
+		err = (&File{Path: "/a", Source: "/b", Delete: true}).PreflightChecks(testCtx, testLogger)
+		assert.EqualError(t, err, "cannot set both Delete and Source")
+
+		err = (&File{Path: "/a", Source: "/b", PermissionsOnly: true, Permissions: Permissions{Mode: 0o600}}).PreflightChecks(testCtx, testLogger)
+		assert.EqualError(t, err, "cannot set both Source and PermissionsOnly")
+	})
+}
+
 func TestFileAtomicWrite(t *testing.T) {
 	env := viaducttest.NewEnv(t)
 	env.WriteFile("/etc/app.conf", "old\n")

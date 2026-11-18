@@ -165,6 +165,9 @@ resources needs no change. Beyond that:
 - `Substitute` on `Line`, with a `Substitute` shortcut, which replaces the
   text `Match` matches within each line rather than the whole line, like
   sed's `s///g`
+- `Source` on `File`, with a `CopyFile` shortcut, which copies the content
+  of another file, read when the resource runs, so it can be one an earlier
+  resource creates
 
 ### Changed
 

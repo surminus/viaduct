@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"text/template"
 
@@ -17,6 +19,10 @@ type File struct {
 	Path string
 	// Content is the content of the file
 	Content string
+	// Source is a file to copy the content from, read when the resource
+	// runs, so it can be one that an earlier resource creates. Set either
+	// Content or Source.
+	Source string
 	// Delete will delete the file rather than create it if set to true.
 	Delete bool
 	// CreateDirIfMissing creates the parent directory if it does not already
@@ -54,6 +60,12 @@ func CreateFileP(path, content string) *File {
 	return &File{Path: path, Content: content, CreateDirIfMissing: true}
 }
 
+// CopyFile writes the content of source to path, reading it when the
+// resource runs
+func CopyFile(source, path string) *File {
+	return &File{Path: path, Source: source}
+}
+
 // DeleteFile will delete the specified file
 func DeleteFile(path string) *File {
 	return &File{Path: path, Delete: true}
@@ -78,6 +90,17 @@ func (f *File) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	// Set required values here, and error if they are not set
 	if f.Path == "" {
 		return fmt.Errorf("required parameter: Path")
+	}
+
+	if f.Source != "" {
+		switch {
+		case f.Content != "":
+			return fmt.Errorf("cannot set both Content and Source")
+		case f.Delete:
+			return fmt.Errorf("cannot set both Delete and Source")
+		case f.PermissionsOnly:
+			return fmt.Errorf("cannot set both Source and PermissionsOnly")
+		}
 	}
 
 	if f.PermissionsOnly {
@@ -161,7 +184,26 @@ func (f *File) Run(ctx context.Context, log *viaduct.Logger) error {
 
 // Create creates or updates a file
 func (f *File) createFile(ctx context.Context, log *viaduct.Logger) error {
-	return writeManagedFile(ctx, log, f.Path, f.Content, &f.Permissions, f.CreateDirIfMissing)
+	content := f.Content
+
+	if f.Source != "" {
+		env := viaduct.EnvFrom(ctx)
+		source := env.Path(viaduct.ExpandPath(f.Source))
+
+		b, err := os.ReadFile(source)
+		switch {
+		case errors.Is(err, fs.ErrNotExist) && env.DryRun:
+			// An earlier resource would have created it
+			log.Info("created", "path", env.Path(viaduct.ExpandPath(f.Path)), "source", source)
+			return nil
+		case err != nil:
+			return fmt.Errorf("reading Source: %w", err)
+		}
+
+		content = string(b)
+	}
+
+	return writeManagedFile(ctx, log, f.Path, content, &f.Permissions, f.CreateDirIfMissing)
 }
 
 // setPermissions applies the mode and ownership to a file that already exists,
