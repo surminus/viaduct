@@ -174,6 +174,9 @@ resources needs no change. Beyond that:
 - `Rename` on `Archive`, which extracts an entry to another path in `Dest`
 - `Filesystem.UUID`, the UUID of the filesystem once the resource has run,
   for mounting it by UUID from a custom resource that runs it with `ApplyOne`
+- `Latest` on `Package`, which upgrades installed packages that have a newer
+  version available, on Debian derivatives. There, a name pinned to a version,
+  such as `curl=8.5.0-1`, is a noop when that version is installed
 
 ### Changed
 
@@ -253,7 +256,8 @@ resources needs no change. Beyond that:
   glob in it, such as `curl=8.5.0`, is always passed to the package manager
 - **This stops `Package` upgrading packages that are already installed.**
   Installing an installed package used to upgrade it, when the package
-  manager had a newer version. That package is now left as it is
+  manager had a newer version. That package is now left as it is, unless
+  `Latest` is set
 - **`Archive` extracts an archive once.** After extracting it writes a
   marker holding the archive's SHA-256, `Strip`, `Pick` and `Rename` under
   `/var/lib/viaduct/archive`, or `~/.local/state/viaduct/archive` when not

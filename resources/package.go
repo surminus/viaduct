@@ -12,10 +12,12 @@ import (
 
 // Package installs one or more packages. Specify the package names. Only the
 // packages that are not installed are passed to the package manager, and
-// uninstalling or purging only touches the ones that are there. A name with
-// a version, release or glob in it, such as "curl=8.5.0", cannot be checked,
-// so it is always passed on. It has no timeout by default; WithTimeout and
-// the ResourceTimeout option still apply.
+// uninstalling or purging only touches the ones that are there. A package
+// that is installed is not upgraded unless Latest is set. On Debian
+// derivatives, a name with a version, such as "curl=8.5.0-1", is passed on
+// unless that version is installed. Any other name with a version, release or
+// glob in it cannot be checked, so it is always passed on. It has no timeout
+// by default; WithTimeout and the ResourceTimeout option still apply.
 type Package struct {
 	// Names are the package names
 	Names []string
@@ -39,6 +41,12 @@ type Package struct {
 
 	// Unhold releases a hold, letting the packages be upgraded again.
 	Unhold bool
+
+	// Latest upgrades installed packages that have a newer version
+	// available, as well as installing missing ones. What is available is
+	// what the package lists held when they were last updated, such as by
+	// AptUpdate. Only supported on Debian derivatives.
+	Latest bool
 }
 
 func (p *Package) Description() string {
@@ -83,6 +91,16 @@ func (p *Package) PreflightChecks(ctx context.Context, log *viaduct.Logger) erro
 		return fmt.Errorf("holding packages is not supported on %s", viaduct.Attributes().Platform.ID)
 	}
 
+	if p.Latest {
+		if p.Hold || p.Unhold || p.Uninstall || p.Purge {
+			return fmt.Errorf("cannot set Latest when not installing packages")
+		}
+
+		if !isDebian(viaduct.Attributes().Platform.ID) {
+			return fmt.Errorf("upgrading to the latest version is not supported on %s", viaduct.Attributes().Platform.ID)
+		}
+	}
+
 	// Set optional defaults here
 	return nil
 }
@@ -102,6 +120,12 @@ func purgeSupported(platform string) bool {
 // knows how to manage. dnf needs the versionlock plugin and pacman holds live
 // in IgnorePkg in pacman.conf, so neither is covered yet.
 func holdSupported(platform string) bool {
+	return isDebian(platform)
+}
+
+// isDebian reports whether the platform is a Debian derivative, using dpkg
+// and apt.
+func isDebian(platform string) bool {
 	switch platform {
 	case "debian", "ubuntu", "linuxmint":
 		return true
@@ -212,6 +236,13 @@ func (p *Package) install(ctx context.Context, log *viaduct.Logger) error {
 	}
 
 	missing := packagesToChange(p.Names, states, needsInstall)
+
+	if isDebian(platform) {
+		if missing, err = p.debianInstalls(ctx, log, missing, states); err != nil {
+			return err
+		}
+	}
+
 	if len(missing) == 0 {
 		log.Noop("up-to-date", "packages", strings.Join(p.Names, ", "))
 		return nil
@@ -262,6 +293,134 @@ func (p *Package) uninstall(ctx context.Context, log *viaduct.Logger) error {
 	}
 
 	return runPkgCmd(ctx, log, args, p.Verbose)
+}
+
+// debianInstalls refines the packages to install on a Debian derivative:
+// a pinned version that is already installed is dropped, and with Latest, an
+// installed package with a newer candidate is added. The result keeps the
+// order of Names.
+func (p *Package) debianInstalls(ctx context.Context, log *viaduct.Logger, missing []string, states map[string]string) ([]string, error) {
+	want := make(map[string]bool, len(missing))
+
+	for _, name := range missing {
+		pkg, version, ok := pinnedVersion(name)
+		if !ok {
+			want[name] = true
+			continue
+		}
+
+		installed, err := installedVersion(ctx, log, pkg)
+		if err != nil {
+			return nil, err
+		}
+
+		want[name] = installed != version
+	}
+
+	if p.Latest {
+		var installed []string
+		for _, name := range p.Names {
+			if queryable(name) && !needsInstall(states[name]) {
+				installed = append(installed, name)
+			}
+		}
+
+		upgrades, err := upgradable(ctx, log, installed)
+		if err != nil {
+			return nil, err
+		}
+
+		for name := range upgrades {
+			want[name] = true
+		}
+	}
+
+	var out []string
+	for _, name := range p.Names {
+		if want[name] {
+			out = append(out, name)
+		}
+	}
+
+	return out, nil
+}
+
+// pinnedVersion splits a Debian "name=version" into the package and its
+// version, reporting whether name is one whose installed version can be
+// looked up.
+func pinnedVersion(name string) (pkg, version string, ok bool) {
+	pkg, version, ok = strings.Cut(name, "=")
+
+	return pkg, version, ok && version != "" && queryable(pkg) && queryable(version)
+}
+
+// installedVersion returns the installed version of a package, or "" if it
+// is not installed. It runs in a dry run too.
+func installedVersion(ctx context.Context, log *viaduct.Logger, pkg string) (string, error) {
+	out, stderr, code, err := pkgQuery(ctx, log, "dpkg-query", "-W", "-f", "${db:Status-Status}\t${Version}\n", pkg)
+	if err != nil {
+		return "", err
+	}
+
+	if code != 0 && code != 1 {
+		return "", queryError("dpkg-query", code, stderr)
+	}
+
+	for line := range strings.Lines(out) {
+		state, version, ok := strings.Cut(strings.TrimRight(line, "\n"), "\t")
+		if ok && state == stateInstalled {
+			return version, nil
+		}
+	}
+
+	return "", nil
+}
+
+// upgradable returns the packages whose candidate version, as apt-cache
+// policy reports it, differs from the installed one. It runs in a dry run
+// too.
+func upgradable(ctx context.Context, log *viaduct.Logger, names []string) (map[string]bool, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+
+	out, stderr, code, err := pkgQuery(ctx, log, "apt-cache", append([]string{"policy"}, names...)...)
+	if err != nil {
+		return nil, err
+	}
+
+	if code != 0 {
+		return nil, queryError("apt-cache policy", code, stderr)
+	}
+
+	upgrades := make(map[string]bool)
+
+	var name, installed string
+	for line := range strings.Lines(out) {
+		line = strings.TrimRight(line, "\n")
+
+		// Each package starts with its name, unindented, followed by a colon
+		if !strings.HasPrefix(line, " ") {
+			name, installed = strings.TrimSuffix(line, ":"), ""
+			continue
+		}
+
+		key, value, ok := strings.Cut(strings.TrimSpace(line), ": ")
+		if !ok {
+			continue
+		}
+
+		switch key {
+		case "Installed":
+			installed = value
+		case "Candidate":
+			if installed != "" && installed != "(none)" && value != "(none)" && value != installed {
+				upgrades[name] = true
+			}
+		}
+	}
+
+	return upgrades, nil
 }
 
 // Package states, named after dpkg's. rpm and pacman only ever report

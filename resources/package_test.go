@@ -431,6 +431,92 @@ func TestPackageDebian(t *testing.T) {
 		_, err := env.Apply(env.Context(), Pkg("curl"))
 		assert.EqualError(t, err, "dpkg-query failed: not found")
 	})
+
+	versionQuery := []string{"-W", "-f", "${db:Status-Status}\t${Version}\n", "curl"}
+
+	t.Run("a pinned version that is installed is a noop", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("dpkg-query", versionQuery...).Stdout("installed\t8.5.0-1\n")
+
+		log, err := env.Apply(env.Context(), Pkg("curl=8.5.0-1"))
+		require.NoError(t, err)
+
+		assert.False(t, log.Changed())
+	})
+
+	t.Run("a pinned version is installed when another version is", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("dpkg-query", versionQuery...).Stdout("installed\t8.4.0-1\n")
+		env.Runner.On("apt-get", "install", "-y", "curl=8.5.0-1")
+
+		log, err := env.Apply(env.Context(), Pkg("curl=8.5.0-1"))
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.True(t, env.Runner.Ran("apt-get", "install", "-y", "curl=8.5.0-1"))
+	})
+
+	t.Run("a pinned version that is not installed is installed", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("dpkg-query", versionQuery...).Stderr("dpkg-query: no packages found matching curl\n").Exit(1)
+		env.Runner.On("apt-get", "install", "-y", "curl=8.5.0-1")
+
+		log, err := env.Apply(env.Context(), Pkg("curl=8.5.0-1"))
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+	})
+
+	t.Run("latest upgrades only installed packages with a newer candidate", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("dpkg-query", dpkgQuery("curl", "git", "vim")...).
+			Stdout("curl\tcurl\tinstalled\ngit\tgit\tinstalled\n").
+			Exit(1)
+		env.Runner.On("apt-cache", "policy", "curl", "git").Stdout(`curl:
+  Installed: 8.5.0-1
+  Candidate: 8.5.0-2
+  Version table:
+ *** 8.5.0-1 100
+        100 /var/lib/dpkg/status
+git:
+  Installed: 2.43.0-1
+  Candidate: 2.43.0-1
+`)
+		env.Runner.On("apt-get", "install", "-y", "curl", "vim")
+
+		log, err := env.Apply(env.Context(), &Package{Names: []string{"curl", "git", "vim"}, Latest: true})
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.True(t, env.Runner.Ran("apt-get", "install", "-y", "curl", "vim"))
+	})
+
+	t.Run("latest is a noop when everything is up to date", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("dpkg-query", dpkgQuery("git")...).Stdout("git\tgit\tinstalled\n")
+		env.Runner.On("apt-cache", "policy", "git").Stdout("git:\n  Installed: 2.43.0-1\n  Candidate: 2.43.0-1\n")
+
+		log, err := env.Apply(env.Context(), &Package{Names: []string{"git"}, Latest: true})
+		require.NoError(t, err)
+
+		assert.False(t, log.Changed())
+	})
+
+	t.Run("latest only applies to installing", func(t *testing.T) {
+		env := viaducttest.NewEnv(t)
+
+		_, err := env.Apply(env.Context(), &Package{Names: []string{"git"}, Latest: true, Uninstall: true})
+		assert.ErrorContains(t, err, "cannot set Latest when not installing packages")
+	})
+}
+
+func TestPackageLatestSupported(t *testing.T) {
+	setPlatform(t, "fedora")
+
+	env := viaducttest.NewEnv(t)
+
+	_, err := env.Apply(env.Context(), &Package{Names: []string{"git"}, Latest: true})
+	assert.ErrorContains(t, err, "upgrading to the latest version is not supported on fedora")
 }
 
 func TestPackageFedora(t *testing.T) {
