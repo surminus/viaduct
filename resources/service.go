@@ -24,6 +24,11 @@ type Service struct {
 
 	// Disable disables the service on boot. Optional.
 	Disable bool
+
+	// DaemonReload runs "systemctl daemon-reload" first when systemd reports
+	// that the unit's files, including its drop-ins, have changed on disk
+	// since they were loaded. Optional.
+	DaemonReload bool
 }
 
 // StartService is a shortcut for starting a service
@@ -77,8 +82,8 @@ func (s *Service) PreflightChecks(ctx context.Context, log *viaduct.Logger) erro
 		return fmt.Errorf("cannot set both Enable and Disable")
 	}
 
-	if s.Action == "" && !s.Enable && !s.Disable {
-		return fmt.Errorf("requires one of Action, Enable or Disable")
+	if s.Action == "" && !s.Enable && !s.Disable && !s.DaemonReload {
+		return fmt.Errorf("requires one of Action, Enable, Disable or DaemonReload")
 	}
 
 	if err := requireRoot(ctx, "service"); err != nil {
@@ -90,6 +95,10 @@ func (s *Service) PreflightChecks(ctx context.Context, log *viaduct.Logger) erro
 
 func (s *Service) OperationName() string {
 	var ops []string
+
+	if s.DaemonReload {
+		ops = append(ops, "DaemonReload")
+	}
 
 	if s.Enable {
 		ops = append(ops, "Enable")
@@ -107,6 +116,12 @@ func (s *Service) OperationName() string {
 }
 
 func (s *Service) Run(ctx context.Context, log *viaduct.Logger) error {
+	if s.DaemonReload {
+		if err := s.daemonReload(ctx, log); err != nil {
+			return err
+		}
+	}
+
 	if s.Enable {
 		if err := s.setEnabled(ctx, log, true); err != nil {
 			return err
@@ -193,6 +208,33 @@ func (s *Service) runAction(ctx context.Context, log *viaduct.Logger) error {
 
 	if err := runCommand(ctx, log, "systemctl", s.Action, s.Name); err != nil {
 		return fmt.Errorf("systemctl %s failed for %s: %w", s.Action, s.Name, err)
+	}
+
+	return nil
+}
+
+// daemonReload reloads systemd's configuration when the unit's files have
+// changed since systemd loaded them, so the steps that follow use them.
+func (s *Service) daemonReload(ctx context.Context, log *viaduct.Logger) error {
+	out, err := viaduct.Command{
+		Name: "systemctl",
+		Args: []string{"show", "--property=NeedDaemonReload", "--value", s.Name},
+	}.Output(ctx, log)
+	if err != nil {
+		return fmt.Errorf("systemctl show failed for %s: %w", s.Name, err)
+	}
+
+	if strings.TrimSpace(string(out)) != "yes" {
+		log.Noop("daemon-reload-unneeded", "service", s.Name)
+		return nil
+	}
+
+	if !change(ctx, log, "daemon-reload", "service", s.Name) {
+		return nil
+	}
+
+	if err := runCommand(ctx, log, "systemctl", "daemon-reload"); err != nil {
+		return fmt.Errorf("systemctl daemon-reload failed: %w", err)
 	}
 
 	return nil

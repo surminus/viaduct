@@ -155,6 +155,8 @@ resources needs no change. Beyond that:
 - `Event.DryRun` is set on every event in a dry run. `Run` tags changes that
   would have been made `DRY` rather than `OK`, and `--json` has
   `"dry_run": true`
+- `DaemonReload` on `Service`, which runs `systemctl daemon-reload` first
+  when systemd reports that the unit or its drop-ins changed on disk
 
 ### Changed
 

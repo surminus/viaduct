@@ -37,7 +37,7 @@ func TestServicePreflightChecks(t *testing.T) {
 		s := &Service{Name: "docker"}
 
 		err := s.PreflightChecks(testCtx, testLogger)
-		assert.EqualError(t, err, "requires one of Action, Enable or Disable")
+		assert.EqualError(t, err, "requires one of Action, Enable, Disable or DaemonReload")
 	})
 }
 
@@ -53,6 +53,58 @@ func TestServiceOperationName(t *testing.T) {
 	assert.Equal(t, "Restart", (&Service{Name: "docker", Action: "restart"}).OperationName())
 	assert.Equal(t, "Enable", (&Service{Name: "docker", Enable: true}).OperationName())
 	assert.Equal(t, "Disable+Stop", (&Service{Name: "docker", Disable: true, Action: "stop"}).OperationName())
+	assert.Equal(t, "DaemonReload+Restart", (&Service{Name: "docker", DaemonReload: true, Action: "restart"}).OperationName())
+}
+
+func TestServiceDaemonReload(t *testing.T) {
+	t.Parallel()
+
+	show := []string{"show", "--property=NeedDaemonReload", "--value", "docker"}
+
+	t.Run("reloads before restarting when the unit changed", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("systemctl", show...).Stdout("yes\n")
+		env.Runner.On("systemctl", "daemon-reload")
+		env.Runner.On("systemctl", "restart", "docker")
+
+		log, err := env.Apply(env.Context(), &Service{Name: "docker", Action: "restart", DaemonReload: true})
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, []string{
+			"systemctl show --property=NeedDaemonReload --value docker",
+			"systemctl daemon-reload",
+			"systemctl restart docker",
+		}, env.Runner.Commands())
+	})
+
+	t.Run("a noop when the unit has not changed", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("systemctl", show...).Stdout("no\n")
+
+		log, err := env.Apply(env.Context(), &Service{Name: "docker", DaemonReload: true})
+		require.NoError(t, err)
+
+		assert.False(t, log.Changed())
+		assert.Equal(t, []string{"systemctl show --property=NeedDaemonReload --value docker"}, env.Runner.Commands())
+	})
+
+	t.Run("dry run checks but does not reload", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("systemctl", show...).Stdout("yes\n")
+
+		log, err := env.Apply(env.DryRunContext(), &Service{Name: "docker", DaemonReload: true})
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.False(t, env.Runner.Ran("systemctl", "daemon-reload"))
+	})
 }
 
 func TestServiceRun(t *testing.T) {
