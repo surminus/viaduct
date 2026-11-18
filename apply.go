@@ -41,6 +41,13 @@ type Options struct {
 	// it finishes. It is never called concurrently. Optional.
 	OnResult func(Result)
 
+	// OnGroupResult is called with the result of each group made with
+	// Manifest.Group, once every resource in it has its final result, after
+	// OnResult is called with the last of them. A group with a resource that
+	// never gets one, as when preflight checks fail, is not reported. It is
+	// never called concurrently with itself or OnResult. Optional.
+	OnGroupResult func(GroupResult)
+
 	// ResourceTimeout overrides how long each resource is given to run,
 	// ahead of WithTimeout and SetResourceTimeout. Zero leaves it to them,
 	// and a negative duration means no timeout.
@@ -52,6 +59,11 @@ type Report struct {
 	// Results holds the result of each resource, in the order they
 	// finished.
 	Results []Result
+
+	// Groups holds the result of each group whose resources all have a
+	// final result, in the order they finished. A group with a resource that
+	// never gets one, as when preflight checks fail, is left out.
+	Groups []GroupResult
 
 	// Duration is how long the run took.
 	Duration time.Duration
@@ -128,12 +140,110 @@ type Result struct {
 	Duration time.Duration
 }
 
+// GroupResult is the outcome of a group, from the results of the resources
+// in it.
+type GroupResult struct {
+	// Name is the name given to Manifest.Group.
+	Name string
+
+	// Status is StatusFailed if any resource failed, otherwise
+	// StatusDependencyFailed if any did not run because a dependency failed,
+	// otherwise StatusSkipped if every resource was skipped, and
+	// StatusSuccess if not. A failure does not fail the run when
+	// AllowFailure is set.
+	Status Status
+
+	// Changed is true when any resource changed something, including on an
+	// attempt that was retried.
+	Changed bool
+
+	// AllowFailure is true when every resource that failed is allowed to
+	// fail.
+	AllowFailure bool
+
+	// Start is when the first attempt at any resource started, and is zero
+	// if none did.
+	Start time.Time
+
+	// Duration is from Start until the last attempt finished, including any
+	// time spent waiting between resources.
+	Duration time.Duration
+
+	// Results holds the final result of each resource, in the order they
+	// finished.
+	Results []Result
+}
+
+// summarise builds a group's result from every attempt at its resources. The
+// status comes from the final results, while a change or start on an attempt
+// that was retried still counts.
+func summarise(name string, attempts []Result) GroupResult {
+	g := GroupResult{Name: name, Status: StatusSkipped, AllowFailure: true}
+
+	var end time.Time
+
+	for _, r := range attempts {
+		g.Changed = g.Changed || r.Changed
+
+		if !r.Start.IsZero() {
+			if g.Start.IsZero() || r.Start.Before(g.Start) {
+				g.Start = r.Start
+			}
+
+			if e := r.Start.Add(r.Duration); e.After(end) {
+				end = e
+			}
+		}
+
+		if !r.Final {
+			continue
+		}
+
+		g.Results = append(g.Results, r)
+
+		switch r.Status {
+		case StatusFailed:
+			g.Status = StatusFailed
+		case StatusDependencyFailed:
+			if g.Status != StatusFailed {
+				g.Status = StatusDependencyFailed
+			}
+		case StatusSuccess:
+			if g.Status == StatusSkipped {
+				g.Status = StatusSuccess
+			}
+		}
+
+		if r.Status == StatusFailed || r.Status == StatusDependencyFailed {
+			g.AllowFailure = g.AllowFailure && r.AllowFailure
+		}
+	}
+
+	if g.Status != StatusFailed && g.Status != StatusDependencyFailed {
+		g.AllowFailure = false
+	}
+
+	if !g.Start.IsZero() {
+		g.Duration = end.Sub(g.Start)
+	}
+
+	return g
+}
+
 // results collects results from resources running concurrently, passing each
-// one on to the OnResult callback.
+// one on to the OnResult callback, and each completed group on to
+// OnGroupResult.
 type results struct {
 	mu       sync.Mutex
 	list     []Result
 	onResult func(Result)
+
+	// remaining counts the resources in each group still without a final
+	// result, and attempts holds every result of the group so far
+	remaining map[string]int
+	attempts  map[string][]Result
+	groups    []GroupResult
+	onGroup   func(GroupResult)
 }
 
 func (rs *results) add(r Result) {
@@ -145,6 +255,34 @@ func (rs *results) add(r Result) {
 	if rs.onResult != nil {
 		rs.onResult(r)
 	}
+
+	if r.Group == "" {
+		return
+	}
+
+	rs.attempts[r.Group] = append(rs.attempts[r.Group], r)
+
+	if !r.Final {
+		return
+	}
+
+	if rs.remaining[r.Group]--; rs.remaining[r.Group] > 0 {
+		return
+	}
+
+	g := summarise(r.Group, rs.attempts[r.Group])
+	rs.groups = append(rs.groups, g)
+
+	if rs.onGroup != nil {
+		rs.onGroup(g)
+	}
+}
+
+func (rs *results) allGroups() []GroupResult {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+
+	return append([]GroupResult(nil), rs.groups...)
 }
 
 func (rs *results) all() []Result {
@@ -188,13 +326,22 @@ func newRun(m *Manifest, o Options) *run {
 		m:       m,
 		options: o,
 		handler: serialise(o.Handler),
-		results: &results{onResult: o.OnResult},
-		locks:   newLockSet(),
-		states:  make(map[*Resource]*resourceState, len(m.order)),
+		results: &results{
+			onResult:  o.OnResult,
+			onGroup:   o.OnGroupResult,
+			remaining: make(map[string]int),
+			attempts:  make(map[string][]Result),
+		},
+		locks:  newLockSet(),
+		states: make(map[*Resource]*resourceState, len(m.order)),
 	}
 
 	for _, r := range m.order {
 		rn.states[r] = &resourceState{done: make(chan struct{})}
+
+		if r.group != "" {
+			rn.results.remaining[r.group]++
+		}
 	}
 
 	return rn
@@ -256,7 +403,7 @@ func (m *Manifest) Apply(ctx context.Context, o Options) (Report, error) {
 	}
 
 	if err := rn.preflight(ctx, l); err != nil {
-		return Report{Results: rn.results.all(), Duration: time.Since(start)}, err
+		return Report{Results: rn.results.all(), Groups: rn.results.allGroups(), Duration: time.Since(start)}, err
 	}
 
 	var wg sync.WaitGroup
@@ -274,7 +421,7 @@ func (m *Manifest) Apply(ctx context.Context, o Options) (Report, error) {
 
 	wg.Wait()
 
-	report := Report{Results: rn.results.all(), Duration: time.Since(start)}
+	report := Report{Results: rn.results.all(), Groups: rn.results.allGroups(), Duration: time.Since(start)}
 
 	if failed := report.Failed(); len(failed) > 0 {
 		ids := make([]string, 0, len(failed))

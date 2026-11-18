@@ -151,9 +151,9 @@ func (m *Manifest) OnChange(r *Resource) {
 
 // Group labels resources as one named step, such as several resources that
 // configure the same thing. The name is the Group of each resource's results
-// and events, so a handler or OnResult can report the step as a whole. It
-// changes nothing about how the resources run. A resource can be in one
-// group.
+// and events, and OnGroupResult reports the group as a whole once every
+// resource in it has finished. It changes nothing about how the resources
+// run. A resource can be in one group.
 func (m *Manifest) Group(name string, resources ...*Resource) {
 	if name == "" {
 		m.errorf("Group: name is empty")

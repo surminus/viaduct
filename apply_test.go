@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -492,6 +493,154 @@ func TestGroup(t *testing.T) {
 				assert.Equal(t, "hosts", e.Group, e.Description)
 			}
 		}
+	})
+
+	t.Run("reports each group once all of it has finished", func(t *testing.T) {
+		m := New()
+		chain := m.Chain(
+			&changingResource{testResourceType{Value: "a"}},
+			newTestResource("b"),
+		)
+		m.Group("hosts", chain...)
+		m.Group("quiet", m.Add(newTestResource("c")))
+		m.Add(newTestResource("other"))
+
+		var order []string
+		report, err := m.Apply(context.Background(), Options{
+			OnResult: func(r Result) { order = append(order, r.Description) },
+			OnGroupResult: func(g GroupResult) {
+				order = append(order, "group "+g.Name)
+			},
+		})
+		require.NoError(t, err)
+
+		assert.Less(t, slices.Index(order, "b"), slices.Index(order, "group hosts"))
+		assert.Less(t, slices.Index(order, "c"), slices.Index(order, "group quiet"))
+		assert.NotContains(t, order, "group ")
+
+		require.Len(t, report.Groups, 2)
+
+		groups := map[string]GroupResult{}
+		for _, g := range report.Groups {
+			groups[g.Name] = g
+		}
+
+		hosts := groups["hosts"]
+		assert.Equal(t, StatusSuccess, hosts.Status)
+		assert.True(t, hosts.Changed)
+		assert.False(t, hosts.AllowFailure)
+		assert.Len(t, hosts.Results, 2)
+		assert.False(t, hosts.Start.IsZero())
+		last := hosts.Results[1]
+		assert.WithinDuration(t, last.Start.Add(last.Duration), hosts.Start.Add(hosts.Duration), 0)
+
+		assert.False(t, groups["quiet"].Changed)
+	})
+
+	t.Run("a group fails when a resource in it fails", func(t *testing.T) {
+		m := New()
+		a := m.Add(&failingResource{testResourceType: testResourceType{Value: "a"}, runErr: errors.New("boom")})
+		b := m.Add(newTestResource("b"), a)
+		m.Group("hosts", a, b)
+		m.AllowFailure(a)
+		m.AllowFailure(b)
+
+		report, err := m.Apply(context.Background(), Options{})
+		require.NoError(t, err)
+
+		require.Len(t, report.Groups, 1)
+		assert.Equal(t, StatusFailed, report.Groups[0].Status)
+		assert.True(t, report.Groups[0].AllowFailure)
+	})
+
+	t.Run("a change made by a retried attempt counts", func(t *testing.T) {
+		m := New()
+		a := m.Add(&changeOnceResource{testResourceType: testResourceType{Value: "a"}})
+		m.WithRetry(a, fastRetry(2))
+		m.Group("g", a)
+
+		var calls int
+		report, err := m.Apply(context.Background(), Options{OnGroupResult: func(GroupResult) { calls++ }})
+		require.NoError(t, err)
+
+		assert.Equal(t, 1, calls)
+		require.Len(t, report.Groups, 1)
+
+		g := report.Groups[0]
+		assert.Equal(t, StatusSuccess, g.Status)
+		assert.True(t, g.Changed)
+		require.Len(t, g.Results, 1)
+		assert.Equal(t, 2, g.Results[0].Attempt)
+
+		var first Result
+		for _, r := range report.Results {
+			if r.Attempt == 1 {
+				first = r
+			}
+		}
+		assert.Equal(t, first.Start, g.Start)
+	})
+
+	t.Run("a group is not reported when preflight checks fail", func(t *testing.T) {
+		m := New()
+		a := m.Add(&failingResource{testResourceType: testResourceType{Value: "a"}, preflightErr: errors.New("bad")})
+		m.Group("g", a, m.Add(newTestResource("b")))
+
+		report, err := m.Apply(context.Background(), Options{})
+		require.ErrorIs(t, err, ErrPreflightFailed)
+		assert.Empty(t, report.Groups)
+	})
+
+	t.Run("a group whose resources did not start is reported", func(t *testing.T) {
+		m := New()
+		m.Group("g", m.Add(newTestResource("a")))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		report, _ := m.Apply(ctx, Options{})
+		require.Len(t, report.Groups, 1)
+		assert.Equal(t, StatusDependencyFailed, report.Groups[0].Status)
+		assert.True(t, report.Groups[0].Start.IsZero())
+		assert.Zero(t, report.Groups[0].Duration)
+	})
+
+	t.Run("summarises statuses", func(t *testing.T) {
+		at := time.Now()
+		cases := []struct {
+			statuses []Status
+			want     Status
+		}{
+			{[]Status{StatusSkipped, StatusSkipped}, StatusSkipped},
+			{[]Status{StatusSkipped, StatusSuccess}, StatusSuccess},
+			{[]Status{StatusDependencyFailed, StatusSuccess}, StatusDependencyFailed},
+			{[]Status{StatusFailed, StatusDependencyFailed}, StatusFailed},
+			{[]Status{StatusDependencyFailed, StatusFailed}, StatusFailed},
+		}
+
+		for _, c := range cases {
+			var members []Result
+			for _, st := range c.statuses {
+				members = append(members, Result{Status: st, Start: at, Final: true})
+			}
+
+			g := summarise("g", members)
+			assert.Equal(t, c.want, g.Status, c.statuses)
+			assert.False(t, g.AllowFailure, c.statuses)
+		}
+	})
+
+	t.Run("allows failure only when every failure is allowed", func(t *testing.T) {
+		failed := func(allow bool) Result {
+			return Result{Status: StatusFailed, AllowFailure: allow, Final: true}
+		}
+
+		assert.False(t, summarise("g", []Result{failed(true), failed(false)}).AllowFailure)
+		assert.True(t, summarise("g", []Result{failed(true), {Status: StatusSuccess, Final: true}}).AllowFailure)
+		assert.True(t, summarise("g", []Result{
+			failed(true),
+			{Status: StatusDependencyFailed, AllowFailure: true, Final: true},
+		}).AllowFailure)
 	})
 
 	t.Run("a resource can be in one group", func(t *testing.T) {
