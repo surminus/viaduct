@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/surminus/viaduct"
 	"github.com/surminus/viaduct/viaducttest"
 )
 
@@ -61,6 +62,20 @@ func TestLinePreflightChecks(t *testing.T) {
 
 		err := l.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "delete requires one of Line or Match")
+	})
+
+	t.Run("substitute requires match", func(t *testing.T) {
+		l := &Line{Path: "/tmp/test", Substitute: true}
+
+		err := l.PreflightChecks(testCtx, testLogger)
+		assert.EqualError(t, err, "substitute requires Match")
+	})
+
+	t.Run("substitute cannot delete", func(t *testing.T) {
+		l := &Line{Path: "/tmp/test", Match: "x", Substitute: true, Delete: true}
+
+		err := l.PreflightChecks(testCtx, testLogger)
+		assert.EqualError(t, err, "cannot set both Delete and Substitute")
 	})
 
 	t.Run("invalid match expression", func(t *testing.T) {
@@ -175,6 +190,34 @@ func TestLine(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NoFileExists(t, l.Path)
 	})
+
+	t.Run("substitute removes text within matching lines", func(t *testing.T) {
+		content := "auth required pam_unix.so nullok try_first_pass\nauth optional pam_cap.so\n"
+		l := newTestLine(t, content, &Line{Match: ` nullok\b`, Substitute: true})
+
+		log := viaduct.NewLogger(nil, "Line", "Update")
+		require.NoError(t, l.Run(testCtx, log))
+		assert.True(t, log.Changed())
+		assert.Equal(t, "auth required pam_unix.so try_first_pass\nauth optional pam_cap.so\n", readTestFile(t, l.Path))
+
+		log = viaduct.NewLogger(nil, "Line", "Update")
+		require.NoError(t, l.Run(testCtx, log))
+		assert.False(t, log.Changed())
+	})
+
+	t.Run("substitute expands groups in every match", func(t *testing.T) {
+		l := newTestLine(t, "a=1 b=2\n", &Line{Match: `(\w)=(\d)`, Line: "${1}:$2", Substitute: true})
+
+		require.NoError(t, l.Run(testCtx, testLogger))
+		assert.Equal(t, "a:1 b:2\n", readTestFile(t, l.Path))
+	})
+
+	t.Run("substitute leaves a missing file alone", func(t *testing.T) {
+		l := newTestLine(t, "", &Line{Match: "x", Line: "y", Substitute: true})
+
+		require.NoError(t, l.Run(testCtx, testLogger))
+		assert.NoFileExists(t, l.Path)
+	})
 }
 
 func TestLineConcurrentSameFile(t *testing.T) {
@@ -221,6 +264,7 @@ func TestLineHelpers(t *testing.T) {
 	assert.Equal(t, &Line{Path: "/tmp/f", Line: "foo"}, AppendLine("/tmp/f", "foo"))
 	assert.Equal(t, &Line{Path: "/tmp/f", Match: "^foo", Line: "foo=1"}, ReplaceLine("/tmp/f", "^foo", "foo=1"))
 	assert.Equal(t, &Line{Path: "/tmp/f", Match: "^foo", Delete: true}, DeleteLine("/tmp/f", "^foo"))
+	assert.Equal(t, &Line{Path: "/tmp/f", Match: "o+", Line: "0", Substitute: true}, Substitute("/tmp/f", "o+", "0"))
 }
 
 func TestLineAtomicWrite(t *testing.T) {

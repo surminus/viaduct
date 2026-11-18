@@ -31,6 +31,13 @@ type Line struct {
 	// is not set.
 	Delete bool
 
+	// Substitute replaces the text Match matches within each line with
+	// Line, like sed's s///g, rather than replacing whole lines. Line can
+	// refer to groups in Match with $1 or ${name}, and can be empty to remove
+	// the matched text. Nothing is appended, and a missing file is left
+	// alone. Requires Match.
+	Substitute bool
+
 	// regex is the compiled Match expression
 	regex *regexp.Regexp
 }
@@ -44,6 +51,12 @@ func AppendLine(path, line string) *Line {
 // it if there is no match
 func ReplaceLine(path, match, line string) *Line {
 	return &Line{Path: path, Match: match, Line: line}
+}
+
+// Substitute replaces the text matching the expression within each line of
+// the file with replacement
+func Substitute(path, match, replacement string) *Line {
+	return &Line{Path: path, Match: match, Line: replacement, Substitute: true}
 }
 
 // DeleteLine removes lines matching the expression from the file
@@ -67,11 +80,20 @@ func (l *Line) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 		return fmt.Errorf("required parameter: Path")
 	}
 
-	if l.Delete {
+	switch {
+	case l.Substitute:
+		if l.Delete {
+			return fmt.Errorf("cannot set both Delete and Substitute")
+		}
+
+		if l.Match == "" {
+			return fmt.Errorf("substitute requires Match")
+		}
+	case l.Delete:
 		if l.Line == "" && l.Match == "" {
 			return fmt.Errorf("delete requires one of Line or Match")
 		}
-	} else {
+	default:
 		if l.Line == "" {
 			return fmt.Errorf("required parameter: Line")
 		}
@@ -98,11 +120,47 @@ func (l *Line) OperationName() string {
 }
 
 func (l *Line) Run(ctx context.Context, log *viaduct.Logger) error {
-	if l.Delete {
+	switch {
+	case l.Substitute:
+		return l.substitute(ctx, log)
+	case l.Delete:
 		return l.deleteLine(ctx, log)
+	default:
+		return l.updateLine(ctx, log)
+	}
+}
+
+func (l *Line) substitute(ctx context.Context, log *viaduct.Logger) error {
+	env := viaduct.EnvFrom(ctx)
+	path := env.Path(viaduct.ExpandPath(l.Path))
+
+	defer lockPath(path)()
+
+	if !viaduct.FileExists(path) {
+		log.Noop("up-to-date", "path", path)
+		return nil
 	}
 
-	return l.updateLine(ctx, log)
+	lines, err := readLines(path)
+	if err != nil {
+		return err
+	}
+
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		out[i] = l.regex.ReplaceAllString(line, l.Line)
+	}
+
+	if slices.Equal(out, lines) {
+		log.Noop("up-to-date", "path", path)
+		return nil
+	}
+
+	if !change(ctx, log, "substituted", "path", path) {
+		return nil
+	}
+
+	return writeLines(path, out)
 }
 
 func (l *Line) updateLine(ctx context.Context, log *viaduct.Logger) error {
