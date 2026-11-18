@@ -668,3 +668,94 @@ func TestArchiveRename(t *testing.T) {
 		}
 	})
 }
+
+func TestArchiveAllowAbsoluteLinks(t *testing.T) {
+	t.Parallel()
+
+	t.Run("extracts an absolute symlink", func(t *testing.T) {
+		t.Parallel()
+
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "certs", Typeflag: tar.TypeSymlink, Linkname: "/etc/ssl/certs", Mode: 0o777},
+		}, nil)
+		dest := t.TempDir()
+
+		a := &Archive{Path: path, Dest: dest, AllowAbsoluteLinks: true}
+		require.NoError(t, a.Run(testCtx, testLogger))
+
+		link, err := os.Readlink(filepath.Join(dest, "certs"))
+		require.NoError(t, err)
+		assert.Equal(t, "/etc/ssl/certs", link)
+	})
+
+	t.Run("relative symlink outside dest still fails", func(t *testing.T) {
+		t.Parallel()
+
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "escape", Typeflag: tar.TypeSymlink, Linkname: "../outside", Mode: 0o777},
+		}, nil)
+
+		a := &Archive{Path: path, Dest: t.TempDir(), AllowAbsoluteLinks: true}
+		assert.EqualError(t, a.Run(testCtx, testLogger), "symlink escape points outside Dest: ../outside")
+	})
+
+	t.Run("an entry written through an absolute symlink fails", func(t *testing.T) {
+		t.Parallel()
+
+		outside := t.TempDir()
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "certs", Typeflag: tar.TypeSymlink, Linkname: outside, Mode: 0o777},
+			{Name: "certs/pwned", Typeflag: tar.TypeReg, Mode: 0o644},
+		}, map[string]string{"certs/pwned": "owned"})
+		dest := t.TempDir()
+
+		a := &Archive{Path: path, Dest: dest, AllowAbsoluteLinks: true}
+		err := a.Run(testCtx, testLogger)
+
+		assert.EqualError(t, err, filepath.Join(dest, "certs", "pwned")+" would be written through a symlink to outside Dest")
+		assert.NoFileExists(t, filepath.Join(outside, "pwned"))
+	})
+
+	t.Run("an entry written through a chain of symlinks fails", func(t *testing.T) {
+		t.Parallel()
+
+		outside := t.TempDir()
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "far", Typeflag: tar.TypeSymlink, Linkname: outside, Mode: 0o777},
+			{Name: "near", Typeflag: tar.TypeSymlink, Linkname: "far", Mode: 0o777},
+			{Name: "near/sub/pwned", Typeflag: tar.TypeReg, Mode: 0o644},
+		}, map[string]string{"near/sub/pwned": "owned"})
+		dest := t.TempDir()
+
+		a := &Archive{Path: path, Dest: dest, AllowAbsoluteLinks: true}
+		err := a.Run(testCtx, testLogger)
+
+		assert.ErrorContains(t, err, "would be written through a symlink to outside Dest")
+		assert.NoDirExists(t, filepath.Join(outside, "sub"))
+	})
+
+	t.Run("a file replaces a symlink rather than writing through it", func(t *testing.T) {
+		t.Parallel()
+
+		outside := filepath.Join(t.TempDir(), "file")
+		require.NoError(t, os.WriteFile(outside, []byte("original"), 0o644))
+
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			// Named differently so the helper gives it no content
+			{Name: "./file", Typeflag: tar.TypeSymlink, Linkname: outside, Mode: 0o777},
+			{Name: "file", Typeflag: tar.TypeReg, Mode: 0o644},
+		}, map[string]string{"file": "replaced"})
+		dest := t.TempDir()
+
+		a := &Archive{Path: path, Dest: dest, AllowAbsoluteLinks: true}
+		require.NoError(t, a.Run(testCtx, testLogger))
+
+		content, err := os.ReadFile(outside)
+		require.NoError(t, err)
+		assert.Equal(t, "original", string(content))
+
+		content, err = os.ReadFile(filepath.Join(dest, "file"))
+		require.NoError(t, err)
+		assert.Equal(t, "replaced", string(content))
+	})
+}

@@ -53,6 +53,11 @@ type Archive struct {
 	// archive. Optional.
 	Rename map[string]string
 
+	// AllowAbsoluteLinks extracts symlinks whose target is an absolute path,
+	// which otherwise fail the extraction. An entry that would be written
+	// through a symlink to outside Dest still fails. Optional.
+	AllowAbsoluteLinks bool
+
 	// NotIfExists will skip extraction if all Pick entries already exist
 	// within Dest, or if Dest exists when Pick is not set, without reading
 	// the archive. Optional.
@@ -343,12 +348,20 @@ func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string)
 			continue
 		}
 
+		if err := throughLink(dest, target); err != nil {
+			return count, err
+		}
+
 		switch hdr.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, hdr.FileInfo().Mode().Perm()); err != nil {
 				return count, err
 			}
 		case tar.TypeReg:
+			// Replace a symlink at the path rather than writing through it
+			if err := removeSymlink(target); err != nil {
+				return count, err
+			}
 			if err := writeFromReader(target, tr, hdr.FileInfo().Mode().Perm()); err != nil {
 				return count, err
 			}
@@ -358,7 +371,8 @@ func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string)
 			// later entry could be written through the symlink to a
 			// path outside the destination (a tar-slip). Skipping it
 			// instead would leave a partial extraction that succeeds.
-			if !symlinkWithinDest(dest, target, hdr.Linkname) {
+			absolute := a.AllowAbsoluteLinks && filepath.IsAbs(hdr.Linkname)
+			if !absolute && !symlinkWithinDest(dest, target, hdr.Linkname) {
 				return count, fmt.Errorf("symlink %s points outside Dest: %s", hdr.Name, hdr.Linkname)
 			}
 			if err := os.RemoveAll(target); err != nil {
@@ -414,14 +428,62 @@ func symlinkWithinDest(dest, linkPath, linkname string) bool {
 		return false
 	}
 
-	resolved := filepath.Clean(filepath.Join(filepath.Dir(linkPath), linkname))
+	return within(dest, filepath.Clean(filepath.Join(filepath.Dir(linkPath), linkname)))
+}
 
-	rel, err := filepath.Rel(dest, resolved)
+// within reports whether path is dest or somewhere beneath it
+func within(dest, path string) bool {
+	rel, err := filepath.Rel(dest, path)
 	if err != nil {
 		return false
 	}
 
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// throughLink returns an error if writing target would go through a symlink
+// that leads outside dest. Checking each link's own target is not enough,
+// since a link within dest can point at another that leaves it, so the
+// nearest existing parent of target is resolved in full instead.
+func throughLink(dest, target string) error {
+	root, err := filepath.EvalSymlinks(dest)
+	if err != nil {
+		return err
+	}
+
+	for dir := filepath.Dir(target); ; dir = filepath.Dir(dir) {
+		resolved, err := filepath.EvalSymlinks(dir)
+		if errors.Is(err, fs.ErrNotExist) && dir != filepath.Dir(dir) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+
+		if !within(root, resolved) {
+			return fmt.Errorf("%s would be written through a symlink to outside Dest", target)
+		}
+
+		return nil
+	}
+}
+
+// removeSymlink removes path if it is a symlink, so a file extracted there
+// replaces the link rather than being written to wherever it points
+func removeSymlink(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	if info.Mode()&fs.ModeSymlink == 0 {
+		return nil
+	}
+
+	return os.Remove(path)
 }
 
 func (a *Archive) extractZip(apath, dest string) (int, error) {
@@ -442,11 +504,19 @@ func (a *Archive) extractZip(apath, dest string) (int, error) {
 			continue
 		}
 
+		if err := throughLink(dest, target); err != nil {
+			return count, err
+		}
+
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, f.Mode().Perm()); err != nil {
 				return count, err
 			}
 			continue
+		}
+
+		if err := removeSymlink(target); err != nil {
+			return count, err
 		}
 
 		rc, err := f.Open()

@@ -184,6 +184,8 @@ resources needs no change. Beyond that:
   events carries the name as `Group`, and `--json` reports it as `group`, so
   a handler or `OnResult` can report the step as a whole. The resources run
   as they otherwise would
+- `AllowAbsoluteLinks` on `Archive`, which extracts symlinks with an absolute
+  target
 
 ### Changed
 
@@ -275,7 +277,9 @@ resources needs no change. Beyond that:
 - **`Archive` fails on an entry it will not extract.** An entry or link that
   points outside `Dest`, or a hardlink to an entry that was not extracted, used
   to be skipped with a warning, leaving a partial extraction that succeeded.
-  It now fails the resource
+  It now fails the resource. An entry is never written through a symlink to
+  outside `Dest`, and a file in the archive replaces a symlink at its path
+  rather than being written to where it points
 - A `Download` whose file already exists with a matching `Checksum` is a noop,
   rather than being downloaded again
 - Downloads and Git clones and pulls stop when the context is cancelled
