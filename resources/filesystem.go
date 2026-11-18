@@ -23,6 +23,16 @@ type Filesystem struct {
 
 	// Options are extra arguments for mkfs, such as "-L", "data". Optional.
 	Options []string
+
+	// uuid is the filesystem's UUID, once Run has found or created it.
+	uuid string
+}
+
+// UUID returns the UUID of the filesystem on the device, once Run has
+// succeeded, for mounting it by UUID. It is empty before then, and after a
+// dry run that would have formatted the device.
+func (f *Filesystem) UUID() string {
+	return f.uuid
 }
 
 // Mkfs creates a Filesystem of the given type on a device.
@@ -76,6 +86,8 @@ func (f *Filesystem) Run(ctx context.Context, log *viaduct.Logger) error {
 	if !p.Empty {
 		if blkidType(p.Type) == blkidType(f.Type) && p.PartitionTable == "" {
 			log.Noop("up-to-date", "device", f.Device, "type", f.Type)
+			f.uuid = p.UUID
+
 			return nil
 		}
 
@@ -95,6 +107,12 @@ func (f *Filesystem) Run(ctx context.Context, log *viaduct.Logger) error {
 	if err := runCommand(ctx, log, append([]string{"mkfs"}, args...)...); err != nil {
 		return fmt.Errorf("mkfs failed on %s: %w", f.Device, err)
 	}
+
+	if p, err = probeDevice(ctx, log, f.Device); err != nil {
+		return fmt.Errorf("reading the filesystem mkfs created: %w", err)
+	}
+
+	f.uuid = p.UUID
 
 	return nil
 }

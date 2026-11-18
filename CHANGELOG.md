@@ -169,6 +169,8 @@ resources needs no change. Beyond that:
   of another file, read when the resource runs, so it can be one an earlier
   resource creates
 - `Rename` on `Archive`, which extracts an entry to another path in `Dest`
+- `Filesystem.UUID`, the UUID of the filesystem once the resource has run,
+  for mounting it by UUID from a custom resource that runs it with `ApplyOne`
 
 ### Changed
 

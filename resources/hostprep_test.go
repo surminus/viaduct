@@ -45,25 +45,45 @@ func TestFilesystem(t *testing.T) {
 
 	t.Run("formats an empty device", func(t *testing.T) {
 		env := setup(t)
-		env.Runner.On(blkid, blkidArgs...).Exit(2)
+		env.Runner.On(blkid, blkidArgs...).Stdout("TYPE=ext4\nUUID=1234\n")
+		env.Runner.On(blkid, blkidArgs...).Exit(2).Times(1)
 		env.Runner.On("mkfs", "-t", "ext4", "-L", "data", "/dev/sdb")
 
-		log, err := env.Apply(env.Context(), &Filesystem{Device: "/dev/sdb", Type: "ext4", Options: []string{"-L", "data"}})
+		f := &Filesystem{Device: "/dev/sdb", Type: "ext4", Options: []string{"-L", "data"}}
+
+		log, err := env.Apply(env.Context(), f)
 		require.NoError(t, err)
 
 		assert.True(t, log.Changed())
 		assert.True(t, env.Runner.Ran("mkfs", "-t", "ext4", "-L", "data", "/dev/sdb"))
+		assert.Equal(t, "1234", f.UUID())
+	})
+
+	t.Run("a dry run has no UUID for a device it would format", func(t *testing.T) {
+		env := setup(t)
+		env.Runner.On(blkid, blkidArgs...).Exit(2)
+
+		f := Mkfs("/dev/sdb", "ext4")
+
+		log, err := env.Apply(env.DryRunContext(), f)
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Empty(t, f.UUID())
 	})
 
 	t.Run("the same filesystem is a noop", func(t *testing.T) {
 		env := setup(t)
 		env.Runner.On(blkid, blkidArgs...).Stdout("TYPE=ext4\nUUID=abcd\n")
 
-		log, err := env.Apply(env.Context(), Mkfs("/dev/sdb", "ext4"))
+		f := Mkfs("/dev/sdb", "ext4")
+
+		log, err := env.Apply(env.Context(), f)
 		require.NoError(t, err)
 
 		assert.False(t, log.Changed())
 		assert.Equal(t, []string{"blkid -p -o export /dev/sdb"}, env.Runner.Commands())
+		assert.Equal(t, "abcd", f.UUID())
 	})
 
 	for name, out := range map[string]string{
