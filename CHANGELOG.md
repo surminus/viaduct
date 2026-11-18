@@ -190,6 +190,8 @@ resources needs no change. Beyond that:
   the tar archive records
 - `Response.Then` in `viaducttest`, which sets the answer a command gives
   once the previous answer has been used
+- `Replace` on `File`, which replaces text in `Content` or `Source` before the
+  file is written. With `Source` set to `Path`, it edits the file in place
 
 ### Changed
 

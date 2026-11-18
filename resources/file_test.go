@@ -293,6 +293,110 @@ func TestFileSource(t *testing.T) {
 	})
 }
 
+func TestFileReplace(t *testing.T) {
+	t.Parallel()
+
+	t.Run("replaces text in the source, then is a noop", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		env.WriteFile("/src/notify.in", "url=@NOTIFY_URL@\n")
+
+		f := CopyFile("/src/notify.in", "/usr/local/bin/notify")
+		f.CreateDirIfMissing = true
+		f.Replace = []Replacement{{Old: "@NOTIFY_URL@", New: "https://example.com/notify"}}
+
+		log, err := env.Apply(env.Context(), f)
+		require.NoError(t, err)
+		assert.True(t, log.Changed())
+		assert.Equal(t, "url=https://example.com/notify\n", env.ReadFile("/usr/local/bin/notify"))
+
+		log, err = env.Apply(env.Context(), f)
+		require.NoError(t, err)
+		assert.False(t, log.Changed())
+	})
+
+	t.Run("replaces text in the content", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+
+		f := CreateFileP("/etc/app.conf", "name=NAME\nport=PORT\n")
+		f.Replace = []Replacement{{Old: "NAME", New: "app"}, {Old: "PORT", New: "8080"}}
+
+		_, err := env.Apply(env.Context(), f)
+		require.NoError(t, err)
+		assert.Equal(t, "name=app\nport=8080\n", env.ReadFile("/etc/app.conf"))
+	})
+
+	t.Run("edits a file in place", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		env.WriteFile("/etc/ssh/sshd_config", "PasswordAuthentication yes\n")
+
+		f := CopyFile("/etc/ssh/sshd_config", "/etc/ssh/sshd_config")
+		f.Replace = []Replacement{{Old: "PasswordAuthentication yes", New: "PasswordAuthentication no"}}
+
+		log, err := env.Apply(env.Context(), f)
+		require.NoError(t, err)
+		assert.True(t, log.Changed())
+		assert.Equal(t, "PasswordAuthentication no\n", env.ReadFile("/etc/ssh/sshd_config"))
+
+		log, err = env.Apply(env.Context(), f)
+		require.NoError(t, err)
+		assert.False(t, log.Changed())
+	})
+
+	t.Run("an in-place edit that would change again fails", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		env.WriteFile("/etc/app.conf", "a    b\n")
+
+		f := CopyFile("/etc/app.conf", "/etc/app.conf")
+		f.Replace = []Replacement{{Old: "  ", New: " "}}
+
+		_, err := env.Apply(env.Context(), f)
+		assert.ErrorContains(t, err, "the replacements change their own result")
+		assert.Equal(t, "a    b\n", env.ReadFile("/etc/app.conf"))
+	})
+
+	t.Run("dry run leaves the file alone", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		env.WriteFile("/etc/app.conf", "name=NAME\n")
+
+		f := CopyFile("/etc/app.conf", "/etc/app.conf")
+		f.Replace = []Replacement{{Old: "NAME", New: "app"}}
+
+		log, err := env.Apply(env.DryRunContext(), f)
+		require.NoError(t, err)
+		assert.True(t, log.Changed())
+		assert.Equal(t, "name=NAME\n", env.ReadFile("/etc/app.conf"))
+	})
+
+	t.Run("preflight", func(t *testing.T) {
+		t.Parallel()
+
+		err := (&File{Path: "/a", Replace: []Replacement{{New: "new"}}}).PreflightChecks(testCtx, testLogger)
+		assert.EqualError(t, err, "every Replacement needs an Old string")
+
+		err = (&File{Path: "/a", Delete: true, Replace: []Replacement{{Old: "old", New: "new"}}}).PreflightChecks(testCtx, testLogger)
+		assert.EqualError(t, err, "cannot set both Delete and Replace")
+
+		err = (&File{Path: "/a", PermissionsOnly: true, Replace: []Replacement{{Old: "old", New: "new"}}, Permissions: Permissions{Mode: 0o600}}).PreflightChecks(testCtx, testLogger)
+		assert.EqualError(t, err, "cannot set both Replace and PermissionsOnly")
+
+		err = (&File{Path: "/a", Source: "/a", Replace: []Replacement{{Old: "old", New: "older"}}}).PreflightChecks(testCtx, testLogger)
+		assert.EqualError(t, err, `replacing "old" inserts "old", which is also replaced, so the file changes every run; set Source to a different file`)
+
+		err = (&File{Path: "/a", Source: "/b", Replace: []Replacement{{Old: "old", New: "older"}}}).PreflightChecks(testCtx, testLogger)
+		assert.NoError(t, err)
+	})
+}
+
 func TestFileAtomicWrite(t *testing.T) {
 	env := viaducttest.NewEnv(t)
 	env.WriteFile("/etc/app.conf", "old\n")

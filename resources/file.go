@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"strings"
 	"text/template"
 
 	"github.com/surminus/viaduct"
@@ -23,6 +25,11 @@ type File struct {
 	// runs, so it can be one that an earlier resource creates. Set either
 	// Content or Source.
 	Source string
+	// Replace replaces text in Content or Source before the file is written.
+	// The replacements are applied together, in one pass, so the text one
+	// inserts is not replaced by another. When Source is Path, the result must
+	// contain nothing the replacements would change again. Optional.
+	Replace []Replacement
 	// Delete will delete the file rather than create it if set to true.
 	Delete bool
 	// CreateDirIfMissing creates the parent directory if it does not already
@@ -41,6 +48,14 @@ type File struct {
 
 	// Permissions manages permissions for the file
 	Permissions
+}
+
+// Replacement replaces every Old in the content of a File with New
+type Replacement struct {
+	// Old is the text to replace. Required.
+	Old string
+	// New is the text to put in its place
+	New string
 }
 
 // Touch simply touches an empty file to disk
@@ -103,6 +118,12 @@ func (f *File) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 		}
 	}
 
+	if len(f.Replace) > 0 {
+		if err := f.preflightReplace(); err != nil {
+			return err
+		}
+	}
+
 	if f.PermissionsOnly {
 		if f.Content != "" {
 			return fmt.Errorf("cannot set both Content and PermissionsOnly")
@@ -126,6 +147,43 @@ func (f *File) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	}
 
 	return f.preflightPermissions(pfile)
+}
+
+func (f *File) preflightReplace() error {
+	switch {
+	case f.Delete:
+		return fmt.Errorf("cannot set both Delete and Replace")
+	case f.PermissionsOnly:
+		return fmt.Errorf("cannot set both Replace and PermissionsOnly")
+	}
+
+	for _, r := range f.Replace {
+		if r.Old == "" {
+			return fmt.Errorf("every Replacement needs an Old string")
+		}
+	}
+
+	// Editing a file in place runs the replacements on their own output the
+	// next time, so the file only settles when nothing they insert matches
+	// again
+	if !f.inPlace() {
+		return nil
+	}
+
+	for _, r := range f.Replace {
+		for _, other := range f.Replace {
+			if strings.Contains(r.New, other.Old) {
+				return fmt.Errorf("replacing %q inserts %q, which is also replaced, so the file changes every run; set Source to a different file", r.Old, other.Old)
+			}
+		}
+	}
+
+	return nil
+}
+
+// inPlace reports whether the file is its own Source
+func (f *File) inPlace() bool {
+	return f.Source != "" && filepath.Clean(viaduct.ExpandPath(f.Source)) == filepath.Clean(viaduct.ExpandPath(f.Path))
 }
 
 // EmbeddedFile returns the contents of an embedded file. Wrap it in
@@ -201,6 +259,23 @@ func (f *File) createFile(ctx context.Context, log *viaduct.Logger) error {
 		}
 
 		content = string(b)
+	}
+
+	if len(f.Replace) > 0 {
+		pairs := make([]string, 0, 2*len(f.Replace))
+		for _, r := range f.Replace {
+			pairs = append(pairs, r.Old, r.New)
+		}
+
+		replacer := strings.NewReplacer(pairs...)
+		content = replacer.Replace(content)
+
+		// Preflight catches a New that contains an Old, but text can also
+		// form a new match with what is around it, as collapsing double
+		// spaces does
+		if f.inPlace() && replacer.Replace(content) != content {
+			return fmt.Errorf("the replacements change their own result, so the file changes every run; set Source to a different file")
+		}
 	}
 
 	return writeManagedFile(ctx, log, f.Path, content, &f.Permissions, f.CreateDirIfMissing)
