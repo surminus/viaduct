@@ -7,7 +7,7 @@ A configuration management framework written in Go.
 ### Upgrading from v0.8.0
 
 A manifest that only uses `New`, `Add`, `Chain` and `Run` with the standard
-resources needs no change. Beyond that:
+resources mostly compiles as it is. Beyond that:
 
 - `viaduct.Attribute.X` becomes `viaduct.Attributes().X`
 - `PreflightChecks(log *Logger)` and `Run(log *Logger)` on a custom resource
@@ -33,6 +33,16 @@ resources needs no change. Beyond that:
 - The helpers that exited on error now return it, and the ones listed under
   Removed have standard library or `Command` replacements
 - A program with flags of its own uses `Apply` rather than `Run`
+- `resources.NewTemplate` and `resources.EmbeddedFile` return an error. Wrap
+  them in `viaduct.Must` to use them inline
+- `Resource.Status` and `Resource.Error` are gone. Read each resource's
+  outcome from the `Report` that `Apply` returns, or from `Options.OnResult`
+- Some resources behave differently with the same fields. `Package` no longer
+  upgrades installed packages unless `Latest` is set, `Sysctl` fails on a key
+  the kernel does not have unless `IgnoreMissing` is set, and `Archive`
+  extracts once and fails on an entry it will not extract. See Changed
+- Scripts that read `--json` or `--dump-manifest` output should check the
+  changes to both under Changed
 
 ### Added
 
@@ -72,7 +82,6 @@ resources needs no change. Beyond that:
   module with `modprobe` unless it is already loaded or built in, and with
   `Persist` loads it at boot through `/etc/modules-load.d`
 - `FstabLock` and `NetworkLock`, alongside `PackageLock` and `PasswdLock`
-
 - `Apply(ctx, Options)` runs a manifest and returns a `Report` with a `Result`
   for every resource, and an error, rather than printing and exiting. The
   error wraps `ErrInvalidManifest`, `ErrPreflightFailed` or `ErrRunFailed`.
@@ -201,6 +210,12 @@ resources needs no change. Beyond that:
 - `AptClean`, which removes the package files apt has downloaded
 - `reload` as an `Action` on `Service`, and `ReloadService`. A service that
   is not running is left alone
+- Smaller additions for custom resources and handlers: `WithEnv`,
+  `Env.IsRoot`, `Env.IsBlockDevice`, `HandlerFunc`, `DiscardHandler`,
+  `RunnerFunc`, `TextOptions`, `Logger.Changed`, `IsSkip`, `IsPermanent`,
+  `Report.Duration`, `Event.Field`, `Command.String`, and the `Stdout` and
+  `Stderr` stream names
+- `Mode` on `Mount`, the mode of the mount point when it is created
 
 ### Changed
 
@@ -236,8 +251,8 @@ resources needs no change. Beyond that:
 - **`Logger` is backed by a `Handler`.** `NewLogger(handler, kind, operation)`
   replaces `NewLogger`, `NewStandardLogger`, `NewQuietLogger` and
   `NewSilentLogger`, and its fields take any value rather than only strings.
-  `Logger.Entries`, `Logger.Quiet`, `Logger.Silent`, `ResultCollector` and the
-  package-level `Log` are gone
+  `Logger.Entries`, `Logger.Quiet`, `Logger.Silent`, `Logger.Resource`,
+  `Logger.Action`, `ResultCollector` and the package-level `Log` are gone
 - **`Add` returns the resource the manifest holds.** `SetName` therefore
   renames the caller's `*Resource`, and resources that depend on it follow the
   new name
@@ -333,7 +348,6 @@ resources needs no change. Beyond that:
   symlink at `Path` is followed and kept, as with `WriteFileAtomic`
 - `Download` compares `Checksum` without regard to case, and refuses a
   redirect from https to anything else
-
 - **Importing viaduct no longer does anything.** Flags are parsed, system
   attributes are read and the temporary directory is created when they are
   first needed, rather than in `init()`. A program that imports viaduct can
