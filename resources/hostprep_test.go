@@ -826,11 +826,11 @@ Leap status     : Not synchronised
 
 		require.NoError(t, ts.PreflightChecks(env.Context(), env.Log))
 		assert.Equal(t, 5*time.Minute, ts.MaxWait)
-		assert.InDelta(t, 0.1, ts.Threshold, 1e-9)
+		assert.Equal(t, 100*time.Millisecond, ts.Threshold)
 
 		assert.Equal(t, 11*time.Minute, (&TimeSync{MaxWait: 10 * time.Minute}).Params().Timeout)
 		assert.Error(t, (&TimeSync{MaxWait: -1}).PreflightChecks(env.Context(), env.Log))
-		assert.Error(t, (&TimeSync{Threshold: -0.1}).PreflightChecks(env.Context(), env.Log))
+		assert.Error(t, (&TimeSync{Threshold: -time.Millisecond}).PreflightChecks(env.Context(), env.Log))
 	})
 
 	t.Run("synchronised is a noop", func(t *testing.T) {
@@ -850,7 +850,7 @@ Leap status     : Not synchronised
 		env.Runner.On("chronyc", "makestep")
 		env.Runner.On("chronyc", "waitsync", "12", "0.5", "0", "10")
 
-		log, err := env.Apply(env.Context(), &TimeSync{MaxWait: 2 * time.Minute, Threshold: 0.5})
+		log, err := env.Apply(env.Context(), &TimeSync{MaxWait: 2 * time.Minute, Threshold: 500 * time.Millisecond})
 		require.NoError(t, err)
 
 		assert.True(t, log.Changed())

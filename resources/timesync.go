@@ -16,7 +16,7 @@ const (
 	defaultTimeSyncWait = 5 * time.Minute
 
 	// defaultTimeSyncThreshold is the default for Threshold.
-	defaultTimeSyncThreshold = 0.1
+	defaultTimeSyncThreshold = 100 * time.Millisecond
 
 	// waitsyncInterval is the seconds between chronyc waitsync checks.
 	waitsyncInterval = 10
@@ -39,9 +39,9 @@ type TimeSync struct {
 	// is five minutes.
 	MaxWait time.Duration
 
-	// Threshold is the largest offset, in seconds, that counts as
-	// synchronised. The default is 0.1.
-	Threshold float64
+	// Threshold is the largest offset that counts as synchronised. The
+	// default is 100ms.
+	Threshold time.Duration
 
 	// NoStep never steps the clock, leaving chrony to slew it, so the time
 	// never jumps. MaxWait has to cover the slew. The default is to step the
@@ -75,7 +75,7 @@ func (t *TimeSync) PreflightChecks(ctx context.Context, log *viaduct.Logger) err
 	}
 
 	if t.Threshold < 0 {
-		return fmt.Errorf("cannot set Threshold to a negative number: %g", t.Threshold)
+		return fmt.Errorf("cannot set Threshold to a negative duration: %s", t.Threshold)
 	}
 
 	if t.MaxWait == 0 {
@@ -97,7 +97,7 @@ func (t *TimeSync) Run(ctx context.Context, log *viaduct.Logger) error {
 
 	tracking := parseTracking(string(out))
 
-	if tracking.synchronised && math.Abs(tracking.offset) <= t.Threshold {
+	if tracking.synchronised && math.Abs(tracking.offset) <= t.Threshold.Seconds() {
 		log.Noop("synchronised", "offset", tracking.offset)
 		return nil
 	}
@@ -122,7 +122,7 @@ func (t *TimeSync) Run(ctx context.Context, log *viaduct.Logger) error {
 
 	err = runCommand(ctx, log, "chronyc", "waitsync",
 		strconv.Itoa(tries),
-		strconv.FormatFloat(t.Threshold, 'f', -1, 64),
+		strconv.FormatFloat(t.Threshold.Seconds(), 'f', -1, 64),
 		"0",
 		strconv.Itoa(waitsyncInterval),
 	)
