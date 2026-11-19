@@ -35,7 +35,9 @@ type Resource struct {
 	ResourceKind
 	// Attributes are the resource type attributes.
 	Attributes ResourceAttributes
-	// DependsOn is a list of resource dependencies.
+	// DependsOn lists the resource's dependencies, filled in from those
+	// given to Add, SetDep and the Chain methods when the manifest is
+	// applied. Setting it directly has no effect.
 	DependsOn []ResourceID `json:"DependsOn,omitempty"`
 	// GlobalLock will mean the resource will not run at the same time
 	// as other resources that have this set to true.

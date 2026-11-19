@@ -11,7 +11,8 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
-// CliFlags configures the command-line toolset
+// CliFlags configures the command-line toolset. Each Set method does the
+// same as setting its field.
 type CliFlags struct {
 	Attributes bool
 	// ResourceTimeout overrides how long each resource is given to run.
