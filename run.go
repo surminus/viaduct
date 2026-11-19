@@ -145,7 +145,7 @@ func (m *Manifest) runWith(ctx context.Context, flags CliFlags, stdout, stderr i
 	interrupted := err != nil && ctx.Err() != nil
 	duration := report.Duration.Round(time.Second).String()
 
-	var failures []failureSummary
+	var failures []FailureSummary
 	if !interrupted {
 		failures = collectFailures(report.Final())
 	}
@@ -508,15 +508,23 @@ type RunOutput struct {
 	// resource ran.
 	Error string `json:"error,omitempty"`
 
-	Duration  string           `json:"duration"`
+	// Duration is how long the run took.
+	Duration string `json:"duration"`
+
+	// Resources has the final result of each resource.
 	Resources []ResourceResult `json:"resources"`
-	Failures  []failureSummary `json:"failures,omitempty"`
+
+	// Failures has each resource that failed, with the resources that did
+	// not run because of it.
+	Failures []FailureSummary `json:"failures,omitempty"`
 
 	// Manifest is where --dump-manifest wrote the manifest.
 	Manifest string `json:"manifest,omitempty"`
 }
 
-type failureDependent struct {
+// FailureDependent is a resource that did not run because another failed.
+// Its fields are as in ResourceResult.
+type FailureDependent struct {
 	ResourceID   string `json:"resource_id"`
 	ResourceKind string `json:"resource_kind"`
 	Description  string `json:"description"`
@@ -525,18 +533,21 @@ type failureDependent struct {
 	Error        string `json:"error"`
 }
 
-type failureSummary struct {
+// FailureSummary is a resource that failed, in --json output. Its fields are
+// as in ResourceResult, with Dependents listing what did not run because of
+// it.
+type FailureSummary struct {
 	ResourceID   string             `json:"resource_id"`
 	ResourceKind string             `json:"resource_kind"`
 	Description  string             `json:"description"`
 	Operation    string             `json:"operation"`
 	Status       string             `json:"status"`
 	Error        string             `json:"error"`
-	Dependents   []failureDependent `json:"dependents,omitempty"`
+	Dependents   []FailureDependent `json:"dependents,omitempty"`
 }
 
-func toDependent(r Result) failureDependent {
-	d := failureDependent{
+func toDependent(r Result) FailureDependent {
+	d := FailureDependent{
 		ResourceID:   string(r.ID),
 		ResourceKind: string(r.Kind),
 		Description:  r.Description,
@@ -551,10 +562,10 @@ func toDependent(r Result) failureDependent {
 	return d
 }
 
-func toSummary(r Result) failureSummary {
+func toSummary(r Result) FailureSummary {
 	d := toDependent(r)
 
-	return failureSummary{
+	return FailureSummary{
 		ResourceID:   d.ResourceID,
 		ResourceKind: d.ResourceKind,
 		Description:  d.Description,
@@ -570,7 +581,7 @@ func toSummary(r Result) failureSummary {
 // the run depended on it. A failure with no cause to follow, such as a
 // resource that never started because the run was cancelled, is listed on
 // its own after the rest.
-func collectFailures(final []Result) []failureSummary {
+func collectFailures(final []Result) []FailureSummary {
 	byID := make(map[ResourceID]Result, len(final))
 	for _, r := range final {
 		byID[r.ID] = r
@@ -595,9 +606,9 @@ func collectFailures(final []Result) []failureSummary {
 		return r, r.Status == StatusFailed
 	}
 
-	roots := map[ResourceID]*failureSummary{}
+	roots := map[ResourceID]*FailureSummary{}
 
-	rootFor := func(r Result) *failureSummary {
+	rootFor := func(r Result) *FailureSummary {
 		s, ok := roots[r.ID]
 		if !ok {
 			summary := toSummary(r)
@@ -608,7 +619,7 @@ func collectFailures(final []Result) []failureSummary {
 		return s
 	}
 
-	var orphans []failureSummary
+	var orphans []FailureSummary
 
 	for _, r := range final {
 		if r.AllowFailure {
@@ -630,17 +641,17 @@ func collectFailures(final []Result) []failureSummary {
 		}
 	}
 
-	out := make([]failureSummary, 0, len(roots)+len(orphans))
+	out := make([]FailureSummary, 0, len(roots)+len(orphans))
 
 	for _, s := range roots {
-		slices.SortFunc(s.Dependents, func(a, b failureDependent) int {
+		slices.SortFunc(s.Dependents, func(a, b FailureDependent) int {
 			return strings.Compare(a.ResourceID, b.ResourceID)
 		})
 
 		out = append(out, *s)
 	}
 
-	byResourceID := func(a, b failureSummary) int {
+	byResourceID := func(a, b FailureSummary) int {
 		return strings.Compare(a.ResourceID, b.ResourceID)
 	}
 
@@ -650,7 +661,7 @@ func collectFailures(final []Result) []failureSummary {
 	return append(out, orphans...)
 }
 
-func printFailuresTree(failures []failureSummary, l *Logger) {
+func printFailuresTree(failures []FailureSummary, l *Logger) {
 	var b strings.Builder
 
 	b.WriteString("Failed resources:\n")
