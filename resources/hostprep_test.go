@@ -188,25 +188,25 @@ func TestMount(t *testing.T) {
 	mountArgs := []string{"-t", "ext4", "-o", "defaults,nofail", "/dev/sdb", "/data"}
 
 	mount := func() *Mount {
-		return &Mount{Source: "/dev/sdb", Path: "/data", FSType: "ext4", Options: "defaults,nofail", Pass: 2}
+		return &Mount{Source: "/dev/sdb", Path: "/data", Type: "ext4", Options: []string{"defaults", "nofail"}, Pass: 2}
 	}
 
 	t.Run("preflight", func(t *testing.T) {
 		env := setup(t)
 
 		for _, m := range []*Mount{
-			{Path: "/data", FSType: "ext4"},
-			{Source: "/dev/sdb", FSType: "ext4"},
-			{Source: "/dev/sdb", Path: "/", FSType: "ext4"},
-			{Source: "/dev/sdb", Path: "data", FSType: "ext4"},
+			{Path: "/data", Type: "ext4"},
+			{Source: "/dev/sdb", Type: "ext4"},
+			{Source: "/dev/sdb", Path: "/", Type: "ext4"},
+			{Source: "/dev/sdb", Path: "data", Type: "ext4"},
 			{Source: "/dev/sdb", Path: "/data"},
 		} {
 			assert.Error(t, m.PreflightChecks(env.Context(), env.Log), "%+v", m)
 		}
 
-		m := &Mount{Source: "/dev/sdb", Path: "/data", FSType: "ext4"}
+		m := &Mount{Source: "/dev/sdb", Path: "/data", Type: "ext4"}
 		require.NoError(t, m.PreflightChecks(env.Context(), env.Log))
-		assert.Equal(t, "defaults", m.Options)
+		assert.Equal(t, []string{"defaults"}, m.Options)
 		assert.Equal(t, os.FileMode(0o755), m.Mode)
 		assert.Equal(t, viaduct.FstabLock, m.Params().LockKey)
 	})
@@ -243,7 +243,7 @@ func TestMount(t *testing.T) {
 		env.WriteFile("/proc/self/mountinfo", mountinfo+"30 22 259:2 / /srv/data rw - ext4 /dev/nvme1n1 rw\n")
 		env.WriteFile("/etc/fstab", "/dev/sdb /mnt/data ext4 defaults 0 0\n")
 
-		log, err := env.Apply(env.Context(), &Mount{Source: "/dev/sdb", Path: "/mnt/data", FSType: "ext4"})
+		log, err := env.Apply(env.Context(), &Mount{Source: "/dev/sdb", Path: "/mnt/data", Type: "ext4"})
 		require.NoError(t, err)
 
 		assert.False(t, log.Changed())
@@ -284,7 +284,7 @@ func TestMount(t *testing.T) {
 		env.WriteFile("/etc/fstab", "UUID=1234 /data ext4 defaults 0 0\n")
 		require.NoError(t, os.Mkdir(env.Path("/data"), 0o755))
 
-		log, err := env.Apply(env.Context(), &Mount{Source: "UUID=1234", Path: "/data", FSType: "ext4"})
+		log, err := env.Apply(env.Context(), &Mount{Source: "UUID=1234", Path: "/data", Type: "ext4"})
 		require.NoError(t, err)
 		assert.False(t, log.Changed(), "the mounted device is the one the UUID names")
 	})
@@ -332,8 +332,8 @@ func TestMount(t *testing.T) {
 		env := setup(t)
 		env.WriteFile("/proc/self/mountinfo", mountinfo+"30 22 0:40 /@data /data rw - btrfs /dev/nvme1n1 rw\n")
 
-		m := func(options string) *Mount {
-			return &Mount{Source: "/dev/sdb", Path: "/data", FSType: "btrfs", Options: options}
+		m := func(options ...string) *Mount {
+			return &Mount{Source: "/dev/sdb", Path: "/data", Type: "btrfs", Options: options}
 		}
 
 		env.Runner.On("systemctl", "daemon-reload")
@@ -361,7 +361,7 @@ func TestMount(t *testing.T) {
 		// device with a root of /srv/a
 		bound := mountinfo + "30 22 259:1 /srv/a /data rw - ext4 /dev/nvme0n1p1 rw\n"
 		bind := func(source string) *Mount {
-			return &Mount{Source: source, Path: "/data", FSType: "none", Options: "bind"}
+			return &Mount{Source: source, Path: "/data", Type: "none", Options: []string{"bind"}}
 		}
 
 		env := setup(t)

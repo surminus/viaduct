@@ -23,11 +23,12 @@ type Mount struct {
 	// Path is the mount point.
 	Path string
 
-	// FSType is the filesystem type, such as ext4.
-	FSType string
+	// Type is the filesystem type, such as ext4, passed to "mount -t".
+	Type string
 
-	// Options are the mount options. The default is "defaults".
-	Options string
+	// Options are the mount options, such as "noatime". The default is
+	// "defaults".
+	Options []string
 
 	// Dump is the fifth fstab field, whether dump backs the filesystem up.
 	// The default is 0.
@@ -66,12 +67,12 @@ func (m *Mount) PreflightChecks(ctx context.Context, log *viaduct.Logger) error 
 		return fmt.Errorf("path must be an absolute path other than /: %s", m.Path)
 	}
 
-	if m.FSType == "" {
-		return fmt.Errorf("required parameter: FSType")
+	if m.Type == "" {
+		return fmt.Errorf("required parameter: Type")
 	}
 
-	if m.Options == "" {
-		m.Options = "defaults"
+	if len(m.Options) == 0 {
+		m.Options = []string{"defaults"}
 	}
 
 	if m.Mode == 0 {
@@ -115,7 +116,7 @@ func (m *Mount) Run(ctx context.Context, log *viaduct.Logger) error {
 	if mounted {
 		log.Noop("mounted", "path", path, "source", current.Source)
 	} else if change(ctx, log, "mounted", "path", path, "source", m.Source) {
-		if err := runCommand(ctx, log, "mount", "-t", m.FSType, "-o", m.Options, m.Source, path); err != nil {
+		if err := runCommand(ctx, log, "mount", "-t", m.Type, "-o", m.options(), m.Source, path); err != nil {
 			return fmt.Errorf("mounting %s: %w", path, err)
 		}
 	}
@@ -123,8 +124,8 @@ func (m *Mount) Run(ctx context.Context, log *viaduct.Logger) error {
 	changed, err := ensureFstabEntry(ctx, log, fstabEntry{
 		Source:  m.Source,
 		Path:    path,
-		FSType:  m.FSType,
-		Options: m.Options,
+		FSType:  m.Type,
+		Options: m.options(),
 		Dump:    m.Dump,
 		Pass:    m.Pass,
 	}, func(fields []string) bool {
@@ -181,7 +182,7 @@ func (m *Mount) isMounted(env viaduct.Env, current mountInfo) bool {
 // subvol. A subvolume given by subvolid cannot be compared, so any root
 // matches it.
 func (m *Mount) sameRoot(root string) bool {
-	for _, o := range strings.Split(m.Options, ",") {
+	for _, o := range strings.Split(m.options(), ",") {
 		if subvol, ok := strings.CutPrefix(o, "subvol="); ok {
 			return root == filepath.Join("/", subvol)
 		}
@@ -194,9 +195,15 @@ func (m *Mount) sameRoot(root string) bool {
 	return root == "/"
 }
 
+// options returns the mount options as mount and fstab take them, separated
+// by commas
+func (m *Mount) options() string {
+	return strings.Join(m.Options, ",")
+}
+
 // isBind reports whether the options make this a bind mount.
 func (m *Mount) isBind() bool {
-	for _, o := range strings.Split(m.Options, ",") {
+	for _, o := range strings.Split(m.options(), ",") {
 		if o == "bind" || o == "rbind" {
 			return true
 		}

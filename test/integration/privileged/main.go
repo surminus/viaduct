@@ -31,8 +31,8 @@ func main() {
 	m.AddNamed("mount", &resources.Mount{
 		Source:  fsDevice,
 		Path:    "/mnt/viaduct data",
-		FSType:  "ext4",
-		Options: "defaults,nofail",
+		Type:    "ext4",
+		Options: []string{"defaults", "nofail"},
 	}, fs)
 
 	// A bind mount's mountinfo source is the device underneath, so a second
@@ -40,8 +40,8 @@ func main() {
 	m.AddNamed("bind-mount", &resources.Mount{
 		Source:  "/viaduct-bind-dir",
 		Path:    "/mnt/viaduct-bind",
-		FSType:  "none",
-		Options: "bind",
+		Type:    "none",
+		Options: []string{"bind"},
 	})
 
 	m.AddNamed("swap", &resources.Swap{Device: swapDevice, Priority: 5})

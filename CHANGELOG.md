@@ -218,7 +218,6 @@ resources mostly compiles as it is. Beyond that:
   `RunnerFunc`, `TextOptions`, `Logger.Changed`, `IsSkip`, `IsPermanent`,
   `Report.Duration`, `Event.Field`, `Command.String`, and the `Stdout` and
   `Stderr` stream names
-- `Mode` on `Mount`, the mode of the mount point when it is created
 - `FailureSummary` and `FailureDependent`, the types of `RunOutput.Failures`,
   which were unexported
 
