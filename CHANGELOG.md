@@ -65,6 +65,9 @@ resources needs no change. Beyond that:
   clock, waiting up to `MaxWait` if not. The clock is stepped first only when
   chrony is not synchronised or it is more than a second out, and never with
   `NoStep`
+- A new `CopyDir` resource, which copies a directory tree, writing only the
+  files, directories and symlinks that differ. Each entry takes its mode from
+  `Source`, and entries in `Path` that are not in `Source` are left alone
 - A new `KernelModule` resource, with a `LoadModule` shortcut, which loads a
   module with `modprobe` unless it is already loaded or built in, and with
   `Persist` loads it at boot through `/etc/modules-load.d`
