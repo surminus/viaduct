@@ -2,7 +2,7 @@
 
 A configuration management framework written in Go.
 
-## v1.0.0 (unreleased)
+## v1.0.0
 
 ### Upgrading from v0.8.0
 
@@ -389,6 +389,8 @@ resources mostly compiles as it is. Beyond that:
   and removed when `Run` finishes, whether or not the run failed. It used to be
   under `~/.viaduct/tmp` and was left behind by every failed run.
   `SystemAttributes.TmpDir` is gone
+- Dependencies are updated, including `spf13/pflag` to v1.1.0 and
+  `golang.org/x/crypto` to v0.59.0
 
 ### Removed
 
