@@ -217,8 +217,8 @@ resources mostly compiles as it is. Beyond that:
 - Smaller additions for custom resources and handlers: `WithEnv`,
   `Env.IsRoot`, `Env.IsBlockDevice`, `HandlerFunc`, `DiscardHandler`,
   `RunnerFunc`, `TextOptions`, `Logger.Changed`, `IsSkip`, `IsPermanent`,
-  `Report.Duration`, `Event.Field`, `Command.String`, and the `Stdout` and
-  `Stderr` stream names
+  `Report.Duration`, `Event.Field`, `Command.String`, and the `Stream` type
+  with `Stdout` and `Stderr`
 - `FailureSummary` and `FailureDependent`, the types of `RunOutput.Failures`,
   which were unexported
 

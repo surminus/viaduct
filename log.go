@@ -55,10 +55,15 @@ func (l Level) String() string {
 	}
 }
 
-// Output streams, as the value of the "stream" field on a LevelOutput event.
+// Stream is the output a line of command output came from, as the value of
+// the "stream" field on a LevelOutput event.
+type Stream string
+
 const (
-	Stdout = "stdout"
-	Stderr = "stderr"
+	// Stdout is a command's standard output
+	Stdout Stream = "stdout"
+	// Stderr is a command's standard error
+	Stderr Stream = "stderr"
 )
 
 // Field is a key and value attached to an event.
@@ -295,7 +300,7 @@ const maxLineLength = 64 * 1024
 // event on the given stream, Stdout or Stderr. A line ends at "\n", "\r" or
 // "\r\n", and one longer than 64 KiB is logged in pieces. Close it to log a
 // final line that has no line break.
-func (l *Logger) Writer(stream string) io.WriteCloser {
+func (l *Logger) Writer(stream Stream) io.WriteCloser {
 	if l == nil {
 		return nopCloser{io.Discard}
 	}
@@ -314,7 +319,7 @@ func (nopCloser) Close() error {
 // lineWriter splits what is written to it into lines, logging each one.
 type lineWriter struct {
 	log    *Logger
-	stream string
+	stream Stream
 
 	mu  sync.Mutex
 	buf []byte
