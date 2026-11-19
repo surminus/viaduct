@@ -210,6 +210,9 @@ resources mostly compiles as it is. Beyond that:
 - `AptClean`, which removes the package files apt has downloaded
 - `reload` as an `Action` on `Service`, and `ReloadService`. A service that
   is not running is left alone
+- `ServiceAction`, the type of `Service.Action`, with `ServiceStart`,
+  `ServiceStop`, `ServiceRestart` and `ServiceReload`. A string such as
+  `"restart"` still works
 - Smaller additions for custom resources and handlers: `WithEnv`,
   `Env.IsRoot`, `Env.IsBlockDevice`, `HandlerFunc`, `DiscardHandler`,
   `RunnerFunc`, `TextOptions`, `Logger.Changed`, `IsSkip`, `IsPermanent`,

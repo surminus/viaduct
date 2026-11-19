@@ -15,9 +15,9 @@ type Service struct {
 	// Name is the name of the service unit
 	Name string
 
-	// Action is performed against the service: one of start, stop, restart
-	// or reload. A service that is not running is not reloaded. Optional.
-	Action string
+	// Action is performed against the service. A service that is not
+	// running is not reloaded. Optional.
+	Action ServiceAction
 
 	// Enable enables the service on boot. Optional.
 	Enable bool
@@ -31,24 +31,38 @@ type Service struct {
 	DaemonReload bool
 }
 
+// ServiceAction is what Service does to a running or stopped service
+type ServiceAction string
+
+const (
+	// ServiceStart starts the service unless it is running
+	ServiceStart ServiceAction = "start"
+	// ServiceStop stops the service if it is running
+	ServiceStop ServiceAction = "stop"
+	// ServiceRestart restarts the service every run
+	ServiceRestart ServiceAction = "restart"
+	// ServiceReload reloads the service if it is running
+	ServiceReload ServiceAction = "reload"
+)
+
 // StartService is a shortcut for starting a service
 func StartService(name string) *Service {
-	return &Service{Name: name, Action: "start"}
+	return &Service{Name: name, Action: ServiceStart}
 }
 
 // StopService is a shortcut for stopping a service
 func StopService(name string) *Service {
-	return &Service{Name: name, Action: "stop"}
+	return &Service{Name: name, Action: ServiceStop}
 }
 
 // RestartService is a shortcut for restarting a service
 func RestartService(name string) *Service {
-	return &Service{Name: name, Action: "restart"}
+	return &Service{Name: name, Action: ServiceRestart}
 }
 
 // ReloadService is a shortcut for reloading a running service
 func ReloadService(name string) *Service {
-	return &Service{Name: name, Action: "reload"}
+	return &Service{Name: name, Action: ServiceReload}
 }
 
 // EnableService is a shortcut for enabling a service on boot
@@ -78,7 +92,7 @@ func (s *Service) PreflightChecks(ctx context.Context, log *viaduct.Logger) erro
 	}
 
 	switch s.Action {
-	case "", "start", "stop", "restart", "reload":
+	case "", ServiceStart, ServiceStop, ServiceRestart, ServiceReload:
 	default:
 		return fmt.Errorf("action must be one of start, stop, restart or reload: %s", s.Action)
 	}
@@ -114,7 +128,8 @@ func (s *Service) OperationName() string {
 	}
 
 	if s.Action != "" {
-		ops = append(ops, strings.ToUpper(s.Action[:1])+s.Action[1:])
+		action := string(s.Action)
+		ops = append(ops, strings.ToUpper(action[:1])+action[1:])
 	}
 
 	return strings.Join(ops, "+")
@@ -186,11 +201,11 @@ func (s *Service) setEnabled(ctx context.Context, log *viaduct.Logger, enable bo
 }
 
 func (s *Service) runAction(ctx context.Context, log *viaduct.Logger) error {
-	msg := map[string]string{
-		"start":   "started",
-		"stop":    "stopped",
-		"restart": "restarted",
-		"reload":  "reloaded",
+	msg := map[ServiceAction]string{
+		ServiceStart:   "started",
+		ServiceStop:    "stopped",
+		ServiceRestart: "restarted",
+		ServiceReload:  "reloaded",
 	}[s.Action]
 
 	// Starting an active service or stopping an inactive one is a noop;
@@ -198,12 +213,12 @@ func (s *Service) runAction(ctx context.Context, log *viaduct.Logger) error {
 	// reload, and reads its configuration when it starts, while systemctl
 	// fails the reload
 	switch s.Action {
-	case "start":
+	case ServiceStart:
 		if s.isActive(ctx, log) {
 			log.Noop(msg, "service", s.Name)
 			return nil
 		}
-	case "stop", "reload":
+	case ServiceStop, ServiceReload:
 		if !s.isActive(ctx, log) {
 			log.Noop(msg, "service", s.Name)
 			return nil
@@ -214,7 +229,7 @@ func (s *Service) runAction(ctx context.Context, log *viaduct.Logger) error {
 		return nil
 	}
 
-	if err := runCommand(ctx, log, "systemctl", s.Action, s.Name); err != nil {
+	if err := runCommand(ctx, log, "systemctl", string(s.Action), s.Name); err != nil {
 		return fmt.Errorf("systemctl %s failed for %s: %w", s.Action, s.Name, err)
 	}
 
