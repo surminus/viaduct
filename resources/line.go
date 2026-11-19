@@ -132,7 +132,10 @@ func (l *Line) Run(ctx context.Context, log *viaduct.Logger) error {
 
 func (l *Line) substitute(ctx context.Context, log *viaduct.Logger) error {
 	env := viaduct.EnvFrom(ctx)
-	path := env.Path(viaduct.ExpandPath(l.Path))
+	path, err := env.ResolveSymlink(viaduct.ExpandPath(l.Path))
+	if err != nil {
+		return err
+	}
 
 	defer lockPath(path)()
 
@@ -165,7 +168,10 @@ func (l *Line) substitute(ctx context.Context, log *viaduct.Logger) error {
 
 func (l *Line) updateLine(ctx context.Context, log *viaduct.Logger) error {
 	env := viaduct.EnvFrom(ctx)
-	path := env.Path(viaduct.ExpandPath(l.Path))
+	path, err := env.ResolveSymlink(viaduct.ExpandPath(l.Path))
+	if err != nil {
+		return err
+	}
 
 	// Serialise edits to this file so a concurrent Line resource on the
 	// same path can't clobber our read-modify-write.
@@ -230,7 +236,10 @@ func (l *Line) updateLine(ctx context.Context, log *viaduct.Logger) error {
 
 func (l *Line) deleteLine(ctx context.Context, log *viaduct.Logger) error {
 	env := viaduct.EnvFrom(ctx)
-	path := env.Path(viaduct.ExpandPath(l.Path))
+	path, err := env.ResolveSymlink(viaduct.ExpandPath(l.Path))
+	if err != nil {
+		return err
+	}
 
 	// Serialise edits to this file so a concurrent Line resource on the
 	// same path can't clobber our read-modify-write.

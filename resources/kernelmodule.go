@@ -123,7 +123,10 @@ func builtinModule(env viaduct.Env, name string) bool {
 
 func (k *KernelModule) persist(ctx context.Context, log *viaduct.Logger) error {
 	conf := "/etc/modules-load.d/" + k.Name + ".conf"
-	path := viaduct.EnvFrom(ctx).Path(conf)
+	path, err := viaduct.EnvFrom(ctx).ResolveSymlink(conf)
+	if err != nil {
+		return err
+	}
 	content := k.Name + "\n"
 
 	if current, err := os.ReadFile(path); err == nil && string(current) == content {

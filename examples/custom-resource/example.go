@@ -60,7 +60,12 @@ func (m *Motd) Run(ctx context.Context, log *viaduct.Logger) error {
 	env := viaduct.EnvFrom(ctx)
 
 	// Paths go through Env.Path, so tests can run against a directory
-	path := env.Path("/etc/motd")
+	// Resolved under the environment's root, so a symlink there cannot lead
+	// out of it
+	path, err := env.ResolveSymlink("/etc/motd")
+	if err != nil {
+		return err
+	}
 
 	current, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {

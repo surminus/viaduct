@@ -289,3 +289,30 @@ func TestLineAtomicWrite(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, entries, 1, "no temporary file is left behind")
 }
+
+func TestLineAbsoluteSymlinkStaysUnderRoot(t *testing.T) {
+	outside := t.TempDir()
+	victim := filepath.Join(outside, "victim")
+	require.NoError(t, os.WriteFile(victim, []byte("original\n"), 0o600))
+
+	for name, line := range map[string]*Line{
+		"append":     AppendLine("/etc/link", "added"),
+		"substitute": {Path: "/etc/link", Match: "original", Line: "changed", Substitute: true},
+		"delete":     {Path: "/etc/link", Match: "original", Delete: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env := viaducttest.NewEnv(t)
+			env.WriteFile(victim, "original\n")
+			require.NoError(t, os.MkdirAll(env.Path("/etc"), 0o755))
+			require.NoError(t, os.Symlink(victim, env.Path("/etc/link")))
+
+			_, err := env.Apply(env.Context(), line)
+			require.NoError(t, err)
+
+			content, err := os.ReadFile(victim)
+			require.NoError(t, err)
+			assert.Equal(t, "original\n", string(content), "the file outside Root is left alone")
+			assert.NotEqual(t, "original\n", env.ReadFile(victim), "the file under Root is changed")
+		})
+	}
+}

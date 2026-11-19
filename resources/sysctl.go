@@ -94,7 +94,10 @@ func (s *Sysctl) OperationName() string {
 
 func (s *Sysctl) Run(ctx context.Context, log *viaduct.Logger) error {
 	env := viaduct.EnvFrom(ctx)
-	path := env.Path(s.path)
+	path, err := env.ResolveSymlink(s.path)
+	if err != nil {
+		return err
+	}
 	content := s.content()
 
 	// Checked before anything is written, as with -e a missing key is
