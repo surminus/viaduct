@@ -348,6 +348,41 @@ func TestMount(t *testing.T) {
 		assert.ErrorContains(t, err, "already mounted from /dev/nvme1n1[/@data]")
 	})
 
+	t.Run("a btrfs mount without a subvolume accepts the default one", func(t *testing.T) {
+		env := setup(t)
+		env.WriteFile("/proc/self/mountinfo", mountinfo+"30 22 0:40 /@data /data rw - btrfs /dev/nvme1n1 rw\n")
+		require.NoError(t, os.Mkdir(env.Path("/data"), 0o755))
+		env.Runner.On("systemctl", "daemon-reload")
+
+		_, err := env.Apply(env.Context(), &Mount{Source: "/dev/sdb", Path: "/data", Type: "btrfs"})
+		require.NoError(t, err)
+		assert.False(t, env.Runner.Ran("mount", "-t", "btrfs", "-o", "defaults", "/dev/sdb", "/data"))
+	})
+
+	t.Run("mounted as another type is an error and changes nothing", func(t *testing.T) {
+		env := setup(t)
+		env.WriteFile("/proc/self/mountinfo", mountinfo+"30 22 259:2 / /data rw - xfs /dev/nvme1n1 rw\n")
+
+		_, err := env.Apply(env.Context(), mount())
+		require.Error(t, err)
+
+		assert.True(t, viaduct.IsPermanent(err))
+		assert.ErrorContains(t, err, "/data is mounted as xfs, not ext4; unmount it or change Type")
+		assert.Equal(t, "LABEL=root / ext4 defaults 0 1\n", env.ReadFile("/etc/fstab"))
+		assert.Empty(t, env.Runner.Calls())
+	})
+
+	t.Run("mount types with more than one name match", func(t *testing.T) {
+		env := setup(t)
+		env.WriteFile("/proc/self/mountinfo", mountinfo+"30 22 259:2 / /data rw - vfat /dev/nvme1n1 rw\n")
+		env.WriteFile("/etc/fstab", "/dev/sdb /data msdos defaults 0 0\n")
+		require.NoError(t, os.Mkdir(env.Path("/data"), 0o755))
+
+		log, err := env.Apply(env.Context(), &Mount{Source: "/dev/sdb", Path: "/data", Type: "msdos"})
+		require.NoError(t, err)
+		assert.False(t, log.Changed())
+	})
+
 	t.Run("a file at the mount point is an error", func(t *testing.T) {
 		env := setup(t)
 		env.WriteFile("/data", "")

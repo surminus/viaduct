@@ -56,11 +56,12 @@ resources mostly compiles as it is. Beyond that:
 - A new `Mount` resource, which creates the mount point, mounts the path if
   it is not already, and only once the mount succeeds keeps one `/etc/fstab`
   entry for the path, running `systemctl daemon-reload` when the entry
-  changes. A path already mounted from another source is an error, and so is
-  a mount point that is itself a symlink. `UUID=` and `LABEL=` sources, and
-  symlinked devices, are compared by the device they resolve to, and a bind
-  mount by the directory it comes from. Part of the same device mounted at the
-  path is a different source, unless `subvol` or `subvolid` selects it
+  changes. A path already mounted from another source or as another type is
+  an error, and so is a mount point that is itself a symlink. `UUID=` and
+  `LABEL=` sources, and symlinked devices, are compared by the device they
+  resolve to, and a bind mount by the directory it comes from. Part of the same device mounted at the
+  path is a different source, unless `subvol` or `subvolid` selects it, or
+  a btrfs mount names neither and so mounts the default subvolume
 - A new `Swap` resource, which runs `mkswap` on an empty device, never forced,
   records the swap in `/etc/fstab` by UUID, runs `systemctl daemon-reload`
   when the entry changes, and turns it on. An active swap missing from

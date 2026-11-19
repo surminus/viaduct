@@ -107,6 +107,10 @@ func (m *Mount) Run(ctx context.Context, log *viaduct.Logger) error {
 		return viaduct.Permanent(fmt.Errorf("%s is already mounted from %s, not %s; unmount it or change Source", path, from, m.Source))
 	}
 
+	if mounted && !m.sameType(current.FSType) {
+		return viaduct.Permanent(fmt.Errorf("%s is mounted as %s, not %s; unmount it or change Type", path, current.FSType, m.Type))
+	}
+
 	if err := m.ensureDirectory(ctx, log, path); err != nil {
 		return err
 	}
@@ -192,7 +196,37 @@ func (m *Mount) sameRoot(root string) bool {
 		}
 	}
 
+	// Without either, btrfs mounts its default subvolume, which need not be
+	// the top level, and finding it needs the btrfs tool
+	if m.Type == "btrfs" {
+		return true
+	}
+
 	return root == "/"
+}
+
+// sameType reports whether a mount's filesystem type is the one Type asks
+// for. "auto" matches any type, and so does a bind mount, which mountinfo
+// lists with the type of the filesystem underneath.
+func (m *Mount) sameType(fstype string) bool {
+	if m.Type == "auto" || m.isBind() {
+		return true
+	}
+
+	return mountType(fstype) == mountType(m.Type)
+}
+
+// mountType returns the type mountinfo lists for a filesystem mounted as
+// fstype, which differs for a few that mount takes under more than one name
+func mountType(fstype string) string {
+	switch fstype {
+	case "msdos", "fat", "vfat":
+		return "vfat"
+	case "nfs4":
+		return "nfs"
+	default:
+		return fstype
+	}
 }
 
 // options returns the mount options as mount and fstab take them, separated
