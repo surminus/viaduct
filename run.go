@@ -429,7 +429,7 @@ var jsonLevels = map[Level]string{
 
 func (c *jsonCollector) Handle(_ context.Context, e Event) {
 	level, ok := jsonLevels[e.Level]
-	if !ok || e.ResourceID == "" {
+	if !ok || e.ID == "" {
 		return
 	}
 
@@ -442,7 +442,7 @@ func (c *jsonCollector) Handle(_ context.Context, e Event) {
 		}
 	}
 
-	c.entries[e.ResourceID] = append(c.entries[e.ResourceID], entry)
+	c.entries[e.ID] = append(c.entries[e.ID], entry)
 }
 
 // resources returns a result for each resource in the report, sorted by ID.

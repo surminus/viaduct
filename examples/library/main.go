@@ -36,8 +36,8 @@ func (h slogHandler) Handle(ctx context.Context, e viaduct.Event) {
 	}
 
 	attrs := []any{"kind", string(e.Kind), "op", e.Operation}
-	if e.ResourceID != "" {
-		attrs = append(attrs, "id", string(e.ResourceID))
+	if e.ID != "" {
+		attrs = append(attrs, "id", string(e.ID))
 	}
 
 	for _, f := range e.Fields {

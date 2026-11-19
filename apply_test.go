@@ -339,7 +339,7 @@ func TestApplyResults(t *testing.T) {
 		for _, e := range rec.all() {
 			if e.Level == LevelChanged {
 				found = true
-				assert.Equal(t, r.ResourceID, e.ResourceID)
+				assert.Equal(t, r.ResourceID, e.ID)
 				assert.Equal(t, ResourceKind("changingResource"), e.Kind)
 				assert.Equal(t, "Test", e.Operation)
 				assert.Equal(t, "a", e.Description)

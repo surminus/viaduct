@@ -78,8 +78,9 @@ type Event struct {
 	// Level is what kind of event it is, such as a change or an error.
 	Level Level
 
-	// ResourceID is empty for events about the run itself.
-	ResourceID ResourceID
+	// ID identifies the resource, as in Result. It is empty for events
+	// about the run itself.
+	ID ResourceID
 
 	// Kind is the resource kind, such as "File", or "Viaduct" for events
 	// about the run itself.
@@ -249,7 +250,7 @@ func (l *Logger) emit(level Level, msg string, kv []any) {
 	l.handler.Handle(l.ctx, Event{
 		Time:        time.Now(),
 		Level:       level,
-		ResourceID:  l.id,
+		ID:          l.id,
 		Kind:        l.kind,
 		Operation:   l.operation,
 		Description: l.description,
