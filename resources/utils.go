@@ -188,8 +188,12 @@ const (
 )
 
 const (
+	// DefaultDirectoryPermissions is the mode a directory is given when
+	// Mode is not set
 	DefaultDirectoryPermissions fs.FileMode = os.ModeDir | 0o755
-	DefaultFilePermissions      fs.FileMode = 0o644
+	// DefaultFilePermissions is the mode a file is given when Mode is not
+	// set
+	DefaultFilePermissions fs.FileMode = 0o644
 )
 
 func (p *Permissions) preflightPermissions(t ptype) error {

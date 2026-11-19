@@ -93,6 +93,7 @@ type ExitError struct {
 	Code int
 }
 
+// Error returns "exit status" and the code.
 func (e *ExitError) Error() string {
 	return fmt.Sprintf("exit status %d", e.Code)
 }

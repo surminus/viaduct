@@ -305,9 +305,14 @@ type Env struct {
 	// DryRun makes Context carry a dry run.
 	DryRun bool
 
-	Runner   *Runner
+	// Runner answers the commands resources run.
+	Runner *Runner
+
+	// Recorder holds the events resources report.
 	Recorder *Recorder
-	Log      *viaduct.Logger
+
+	// Log is a logger that reports to Recorder.
+	Log *viaduct.Logger
 
 	blockDevices map[string]bool
 }

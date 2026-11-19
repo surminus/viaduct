@@ -284,7 +284,7 @@ func dumpManifest(m *Manifest, report Report) (string, error) {
 	return f.Name(), f.Close()
 }
 
-// TextOptions configures a TextHandler.
+// TextOptions configures NewTextHandler.
 type TextOptions struct {
 	// Stdout writes everything except warnings and errors to Out rather
 	// than Err. Command output keeps its own stream either way.

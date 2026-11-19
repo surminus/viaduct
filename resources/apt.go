@@ -16,15 +16,17 @@ import (
 	"github.com/surminus/viaduct"
 )
 
+// AptFormat is the format of the sources file Apt writes
 type AptFormat string
 
 const (
-	List    AptFormat = "list"
+	// List writes a one-line ".list" file
+	List AptFormat = "list"
+	// Sources writes a deb822 ".sources" file
 	Sources AptFormat = "sources"
 )
 
-// Apt configures Ubuntu apt repositories. It will automatically use sudo
-// if the user is not root.
+// Apt configures Ubuntu apt repositories. It must be run as root.
 type Apt struct {
 	// Name is the name of the resource, and is what the file written to
 	// disk will be based on
@@ -147,6 +149,7 @@ func (a *Apt) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	return nil
 }
 
+// AptUpdate runs "apt-get update"
 func AptUpdate() *Apt {
 	return &Apt{UpdateOnly: true}
 }

@@ -101,11 +101,20 @@ func (r Report) Failed() []Result {
 // Result is the outcome of one attempt at a resource. A resource that is not
 // retried has a single result.
 type Result struct {
-	ID          ResourceID
-	Kind        ResourceKind
-	Operation   string
+	// ID identifies the resource in the manifest.
+	ID ResourceID
+
+	// Kind is the resource kind, such as "File".
+	Kind ResourceKind
+
+	// Operation is what the resource did, such as "Create".
+	Operation string
+
+	// Description identifies the resource, such as a file path.
 	Description string
-	Status      Status
+
+	// Status is how the attempt ended.
+	Status Status
 
 	// Changed is true when the resource logged a change, or in a dry run,
 	// a change it would have made.

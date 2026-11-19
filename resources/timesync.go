@@ -32,8 +32,8 @@ const (
 // it with "chronyc makestep" when chrony is not synchronised or the clock is
 // more than a second out, unless NoStep is set.
 //
-// The resource's timeout is MaxWait plus a minute, regardless of the
-// manifest's own timeout.
+// The resource's timeout is MaxWait plus a minute, unless WithTimeout or
+// Options.ResourceTimeout sets one.
 type TimeSync struct {
 	// MaxWait is how long to wait for the clock to synchronise. The default
 	// is five minutes.
@@ -71,11 +71,11 @@ func (t *TimeSync) wait() time.Duration {
 
 func (t *TimeSync) PreflightChecks(ctx context.Context, log *viaduct.Logger) error {
 	if t.MaxWait < 0 {
-		return fmt.Errorf("MaxWait cannot be negative: %s", t.MaxWait)
+		return fmt.Errorf("cannot set MaxWait to a negative duration: %s", t.MaxWait)
 	}
 
 	if t.Threshold < 0 {
-		return fmt.Errorf("threshold cannot be negative: %g", t.Threshold)
+		return fmt.Errorf("cannot set Threshold to a negative number: %g", t.Threshold)
 	}
 
 	if t.MaxWait == 0 {

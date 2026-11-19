@@ -32,8 +32,8 @@ type Execute struct {
 	// Env is added to the command's environment, as "KEY=value". Optional.
 	Env []string
 
-	// Unless is another command to run, which if exits cleanly signifies
-	// that we should not run the execute command. It runs through bash in the
+	// Unless is another command to run first. If it exits cleanly, the
+	// resource does not run its command. It runs through bash in the
 	// same way as Command, in WorkingDirectory, as User and with Env.
 	// Optional.
 	Unless string

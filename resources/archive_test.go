@@ -136,7 +136,7 @@ func TestArchivePreflightChecks(t *testing.T) {
 		a := &Archive{Path: "/tmp/test.tar.gz", Dest: "/tmp", Strip: -1}
 
 		err := a.PreflightChecks(testCtx, testLogger)
-		assert.EqualError(t, err, "strip must not be negative")
+		assert.EqualError(t, err, "cannot set Strip to a negative number: -1")
 	})
 }
 

@@ -97,7 +97,7 @@ func (a *Archive) PreflightChecks(ctx context.Context, log *viaduct.Logger) erro
 	}
 
 	if a.Strip < 0 {
-		return fmt.Errorf("strip must not be negative")
+		return fmt.Errorf("cannot set Strip to a negative number: %d", a.Strip)
 	}
 
 	if _, err := archiveFormat(a.Path); err != nil {

@@ -15,7 +15,7 @@ import (
 type Link struct {
 	// Path is the path of the symlinked file/directory
 	Path string
-	// Source is the original file/directory we are linking to
+	// Source is the file or directory the link points to
 	Source string
 	// Delete will delete the symlink.
 	Delete bool

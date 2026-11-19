@@ -29,9 +29,12 @@ type Mount struct {
 	// Options are the mount options. The default is "defaults".
 	Options string
 
-	// Dump and Pass are the fifth and sixth fstab fields. The default for
-	// both is 0.
+	// Dump is the fifth fstab field, whether dump backs the filesystem up.
+	// The default is 0.
 	Dump int
+
+	// Pass is the sixth fstab field, the order fsck checks the filesystem
+	// in at boot. The default is 0, not checked.
 	Pass int
 
 	// Mode is the mode of the mount point, if created. The default is 0755.

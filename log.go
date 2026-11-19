@@ -63,13 +63,19 @@ const (
 
 // Field is a key and value attached to an event.
 type Field struct {
-	Key   string
+	// Key names the value, such as "path".
+	Key string
+
+	// Value is the value, usually a string.
 	Value any
 }
 
 // Event is a single thing a resource or the run reports.
 type Event struct {
-	Time  time.Time
+	// Time is when the event happened.
+	Time time.Time
+
+	// Level is what kind of event it is, such as a change or an error.
 	Level Level
 
 	// ResourceID is empty for events about the run itself.
@@ -89,8 +95,11 @@ type Event struct {
 	// Group is the name of the group the resource is in, or empty.
 	Group string
 
+	// Message says what happened, such as "created".
 	Message string
-	Fields  []Field
+
+	// Fields add detail to Message, such as the path created.
+	Fields []Field
 
 	// DryRun is true when the run is a dry run, so a LevelChanged event is a
 	// change that would have been made.

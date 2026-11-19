@@ -37,6 +37,7 @@ type Download struct {
 	Permissions
 }
 
+// Wget downloads url to path
 func Wget(url, path string) *Download {
 	return &Download{
 		URL:  url,
