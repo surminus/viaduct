@@ -384,6 +384,8 @@ resources needs no change. Beyond that:
 
 ### Fixed
 
+- `Echo` passes its message to `echo` without a shell. A quote in the message
+  broke the command, and `$(...)` in it ran
 - `Apt` writes its `Parameters` in a stable order. With more than one, the
   order changed between runs, so the file was rewritten and `apt-get update`
   ran again on an otherwise unchanged host

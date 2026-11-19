@@ -76,8 +76,9 @@ func ExecArgsLocked(args ...string) *Execute {
 	return &Execute{Args: args, Lock: true}
 }
 
+// Echo prints message, passed to echo as it is, without a shell
 func Echo(message string) *Execute {
-	return &Execute{Command: fmt.Sprintf("echo \"%s\"", message)}
+	return &Execute{Args: []string{"echo", message}}
 }
 
 func (e *Execute) Description() string {

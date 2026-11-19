@@ -133,6 +133,10 @@ func TestExecuteArgs(t *testing.T) {
 	t.Run("describes itself with the full command", func(t *testing.T) {
 		assert.Equal(t, "touch /tmp/test", ExecArgs("touch", "/tmp/test").Description())
 	})
+
+	t.Run("Echo passes the message to echo without a shell", func(t *testing.T) {
+		assert.Equal(t, []string{"echo", `"quoted" $(touch x)`}, Echo(`"quoted" $(touch x)`).Args)
+	})
 }
 
 func TestExecutePreflightChecks(t *testing.T) {
