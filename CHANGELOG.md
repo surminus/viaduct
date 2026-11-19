@@ -277,6 +277,11 @@ resources needs no change. Beyond that:
   `Latest` is set
 - `InstallDeb` is a noop when the deb's package is installed at the deb's
   version, rather than running `dpkg -i` on every run
+- **`Package`, `DistUpgrade`, `AptAutoremove` and `InstallDeb` never ask a
+  question.** `apt-get` and `dpkg` run with `DEBIAN_FRONTEND=noninteractive`,
+  so debconf takes each default. A configuration file that was edited locally
+  is kept, and any other is replaced by the package's version, rather than
+  dpkg prompting on the terminal
 - **`Archive` extracts an archive once.** After extracting it writes a
   marker holding the archive's SHA-256, `Strip`, `Pick`, `Rename` and
   `PreserveOwners` under `/var/lib/viaduct/archive`, or

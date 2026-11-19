@@ -47,7 +47,7 @@ func TestInstallArgs(t *testing.T) {
 	for _, platform := range []string{"debian", "ubuntu", "linuxmint"} {
 		args, err := installArgs(platform, []string{"curl", "git"})
 		assert.NoError(t, err)
-		assert.Equal(t, []string{"apt-get", "install", "-y", "curl", "git"}, args, platform)
+		assert.Equal(t, []string{"apt-get", "install", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "curl", "git"}, args, platform)
 	}
 
 	args, err := installArgs("fedora", []string{"curl"})
@@ -66,7 +66,7 @@ func TestRemoveArgs(t *testing.T) {
 	t.Run("remove leaves configuration alone", func(t *testing.T) {
 		args, err := removeArgs("ubuntu", []string{"nginx"}, false)
 		assert.NoError(t, err)
-		assert.Equal(t, []string{"apt-get", "remove", "-y", "nginx"}, args)
+		assert.Equal(t, []string{"apt-get", "remove", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "nginx"}, args)
 
 		args, err = removeArgs("arch", []string{"nginx"}, false)
 		assert.NoError(t, err)
@@ -76,7 +76,7 @@ func TestRemoveArgs(t *testing.T) {
 	t.Run("purge takes the configuration with it", func(t *testing.T) {
 		args, err := removeArgs("ubuntu", []string{"nginx"}, true)
 		assert.NoError(t, err)
-		assert.Equal(t, []string{"apt-get", "purge", "-y", "nginx"}, args)
+		assert.Equal(t, []string{"apt-get", "purge", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "nginx"}, args)
 
 		args, err = removeArgs("arch", []string{"nginx"}, true)
 		assert.NoError(t, err)
@@ -165,13 +165,14 @@ func TestPackageRun(t *testing.T) {
 	t.Run("install", func(t *testing.T) {
 		env := viaducttest.NewEnv(t)
 		env.Runner.On("dpkg-query", dpkgQuery("curl", "git")...).Exit(1).Stderr("dpkg-query: no packages found matching curl\n")
-		env.Runner.On("apt-get", "install", "-y", "curl", "git").Stdout("Reading package lists...\n").Stderr("warning\n")
+		env.Runner.On("apt-get", "install", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "curl", "git").Stdout("Reading package lists...\n").Stderr("warning\n")
 
 		log, err := env.Apply(env.Context(), Pkgs("curl", "git"))
 		require.NoError(t, err)
 
 		assert.True(t, log.Changed())
-		assert.Equal(t, []string{dpkgQueryLine("curl", "git"), "apt-get install -y curl git"}, env.Runner.Commands())
+		assert.Equal(t, []string{dpkgQueryLine("curl", "git"), "apt-get install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold curl git"}, env.Runner.Commands())
+		assert.Equal(t, []string{"DEBIAN_FRONTEND=noninteractive"}, env.Runner.Calls()[1].Env)
 
 		// Without Verbose only stderr is logged, and never the query's
 		assert.Equal(t, []string{"warning"}, env.Recorder.Messages(viaduct.LevelOutput))
@@ -180,7 +181,7 @@ func TestPackageRun(t *testing.T) {
 	t.Run("verbose logs stdout", func(t *testing.T) {
 		env := viaducttest.NewEnv(t)
 		env.Runner.On("dpkg-query", dpkgQuery("curl")...).Exit(1)
-		env.Runner.On("apt-get", "install", "-y", "curl").Stdout("Reading package lists...\n")
+		env.Runner.On("apt-get", "install", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "curl").Stdout("Reading package lists...\n")
 
 		_, err := env.Apply(env.Context(), &Package{Names: []string{"curl"}, Verbose: true})
 		require.NoError(t, err)
@@ -191,13 +192,13 @@ func TestPackageRun(t *testing.T) {
 	t.Run("purge", func(t *testing.T) {
 		env := viaducttest.NewEnv(t)
 		env.Runner.On("dpkg-query", dpkgQuery("nginx")...).Stdout("nginx\tnginx\tinstalled\n")
-		env.Runner.On("apt-get", "purge", "-y", "nginx")
+		env.Runner.On("apt-get", "purge", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "nginx")
 
 		log, err := env.Apply(env.Context(), PurgePkg("nginx"))
 		require.NoError(t, err)
 
 		assert.True(t, log.Changed())
-		assert.Equal(t, []string{dpkgQueryLine("nginx"), "apt-get purge -y nginx"}, env.Runner.Commands())
+		assert.Equal(t, []string{dpkgQueryLine("nginx"), "apt-get purge -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold nginx"}, env.Runner.Commands())
 	})
 
 	t.Run("dry run install only queries", func(t *testing.T) {
@@ -322,13 +323,13 @@ func TestPackageDebian(t *testing.T) {
 			Stdout("curl\tcurl\tinstalled\ngit\tgit\tconfig-files\n").
 			Stderr("dpkg-query: no packages found matching vim\n").
 			Exit(1)
-		env.Runner.On("apt-get", "install", "-y", "git", "vim")
+		env.Runner.On("apt-get", "install", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "git", "vim")
 
 		log, err := env.Apply(env.Context(), Pkgs("curl", "git", "vim"))
 		require.NoError(t, err)
 
 		assert.True(t, log.Changed())
-		assert.Equal(t, []string{dpkgQueryLine("curl", "git", "vim"), "apt-get install -y git vim"}, env.Runner.Commands())
+		assert.Equal(t, []string{dpkgQueryLine("curl", "git", "vim"), "apt-get install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold git vim"}, env.Runner.Commands())
 		assert.Empty(t, env.Recorder.Messages(viaduct.LevelOutput))
 	})
 
@@ -346,7 +347,7 @@ func TestPackageDebian(t *testing.T) {
 	t.Run("a half-configured package is installed again", func(t *testing.T) {
 		env := viaducttest.NewEnv(t)
 		env.Runner.On("dpkg-query", dpkgQuery("curl")...).Stdout("curl\tcurl\thalf-configured\n")
-		env.Runner.On("apt-get", "install", "-y", "curl")
+		env.Runner.On("apt-get", "install", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "curl")
 
 		log, err := env.Apply(env.Context(), Pkg("curl"))
 		require.NoError(t, err)
@@ -371,26 +372,26 @@ func TestPackageDebian(t *testing.T) {
 		env.Runner.On("dpkg-query", dpkgQuery("nginx", "apache2")...).
 			Stdout("apache2\tapache2\tinstalled\n").
 			Exit(1)
-		env.Runner.On("apt-get", "remove", "-y", "apache2")
+		env.Runner.On("apt-get", "remove", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "apache2")
 
 		log, err := env.Apply(env.Context(), &Package{Names: []string{"nginx", "apache2"}, Uninstall: true})
 		require.NoError(t, err)
 
 		assert.True(t, log.Changed())
-		assert.Equal(t, []string{dpkgQueryLine("nginx", "apache2"), "apt-get remove -y apache2"}, env.Runner.Commands())
+		assert.Equal(t, []string{dpkgQueryLine("nginx", "apache2"), "apt-get remove -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold apache2"}, env.Runner.Commands())
 	})
 
 	t.Run("purge takes a package left with its configuration", func(t *testing.T) {
 		env := viaducttest.NewEnv(t)
 		env.Runner.On("dpkg-query", dpkgQuery("cron", "hello")...).
 			Stdout("cron\tcron\tconfig-files\nhello\thello\tnot-installed\n")
-		env.Runner.On("apt-get", "purge", "-y", "cron")
+		env.Runner.On("apt-get", "purge", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "cron")
 
 		log, err := env.Apply(env.Context(), PurgePkgs("cron", "hello"))
 		require.NoError(t, err)
 
 		assert.True(t, log.Changed())
-		assert.Equal(t, []string{dpkgQueryLine("cron", "hello"), "apt-get purge -y cron"}, env.Runner.Commands())
+		assert.Equal(t, []string{dpkgQueryLine("cron", "hello"), "apt-get purge -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold cron"}, env.Runner.Commands())
 	})
 
 	t.Run("purge of unknown packages is a noop", func(t *testing.T) {
@@ -406,13 +407,13 @@ func TestPackageDebian(t *testing.T) {
 	t.Run("a versioned name is not queried", func(t *testing.T) {
 		env := viaducttest.NewEnv(t)
 		env.Runner.On("dpkg-query", dpkgQuery("git")...).Stdout("git\tgit\tnot-installed\n")
-		env.Runner.On("apt-get", "remove", "-y", "curl=8.5.0")
+		env.Runner.On("apt-get", "remove", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "curl=8.5.0")
 
 		log, err := env.Apply(env.Context(), &Package{Names: []string{"curl=8.5.0", "git"}, Uninstall: true})
 		require.NoError(t, err)
 
 		assert.True(t, log.Changed())
-		assert.Equal(t, []string{dpkgQueryLine("git"), "apt-get remove -y curl=8.5.0"}, env.Runner.Commands())
+		assert.Equal(t, []string{dpkgQueryLine("git"), "apt-get remove -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold curl=8.5.0"}, env.Runner.Commands())
 	})
 
 	t.Run("a failed query fails the resource", func(t *testing.T) {
@@ -447,19 +448,19 @@ func TestPackageDebian(t *testing.T) {
 	t.Run("a pinned version is installed when another version is", func(t *testing.T) {
 		env := viaducttest.NewEnv(t)
 		env.Runner.On("dpkg-query", versionQuery...).Stdout("installed\t8.4.0-1\n")
-		env.Runner.On("apt-get", "install", "-y", "curl=8.5.0-1")
+		env.Runner.On("apt-get", "install", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "curl=8.5.0-1")
 
 		log, err := env.Apply(env.Context(), Pkg("curl=8.5.0-1"))
 		require.NoError(t, err)
 
 		assert.True(t, log.Changed())
-		assert.True(t, env.Runner.Ran("apt-get", "install", "-y", "curl=8.5.0-1"))
+		assert.True(t, env.Runner.Ran("apt-get", "install", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "curl=8.5.0-1"))
 	})
 
 	t.Run("a pinned version that is not installed is installed", func(t *testing.T) {
 		env := viaducttest.NewEnv(t)
 		env.Runner.On("dpkg-query", versionQuery...).Stderr("dpkg-query: no packages found matching curl\n").Exit(1)
-		env.Runner.On("apt-get", "install", "-y", "curl=8.5.0-1")
+		env.Runner.On("apt-get", "install", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "curl=8.5.0-1")
 
 		log, err := env.Apply(env.Context(), Pkg("curl=8.5.0-1"))
 		require.NoError(t, err)
@@ -482,13 +483,13 @@ git:
   Installed: 2.43.0-1
   Candidate: 2.43.0-1
 `)
-		env.Runner.On("apt-get", "install", "-y", "curl", "vim")
+		env.Runner.On("apt-get", "install", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "curl", "vim")
 
 		log, err := env.Apply(env.Context(), &Package{Names: []string{"curl", "git", "vim"}, Latest: true})
 		require.NoError(t, err)
 
 		assert.True(t, log.Changed())
-		assert.True(t, env.Runner.Ran("apt-get", "install", "-y", "curl", "vim"))
+		assert.True(t, env.Runner.Ran("apt-get", "install", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold", "curl", "vim"))
 	})
 
 	t.Run("latest is a noop when everything is up to date", func(t *testing.T) {

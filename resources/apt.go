@@ -151,14 +151,16 @@ func AptUpdate() *Apt {
 	return &Apt{UpdateOnly: true}
 }
 
-// DistUpgrade performs an apt-get dist-upgrade
+// DistUpgrade performs an apt-get dist-upgrade. A configuration file that
+// was edited locally is kept, and any other is replaced by the package's
+// version.
 func DistUpgrade() *Execute {
-	return aptExec("apt-get", "dist-upgrade", "-q", "-y")
+	return aptExec(append([]string{"apt-get", "dist-upgrade", "-q", "-y"}, aptDpkgOptions...)...)
 }
 
 // AptAutoremove removes packages that are no longer required
 func AptAutoremove() *Execute {
-	return aptExec("apt-get", "autoremove", "-q", "-y")
+	return aptExec(append([]string{"apt-get", "autoremove", "-q", "-y"}, aptDpkgOptions...)...)
 }
 
 // AptHold marks packages as held back from upgrades. The Hold option on the
@@ -169,11 +171,12 @@ func AptHold(names ...string) *Execute {
 }
 
 // InstallDeb installs a deb package from a file using dpkg, unless the same
-// version of the package is already installed
+// version of the package is already installed. A configuration file that was
+// edited locally is kept, and any other is replaced by the package's version.
 func InstallDeb(path string) *Execute {
 	path = viaduct.ExpandPath(path)
 
-	e := aptExec("dpkg", "-i", path)
+	e := aptExec(append(append([]string{"dpkg"}, dpkgNonInteractive...), "-i", path)...)
 	e.Unless = debInstalled(path)
 
 	return e
@@ -196,7 +199,7 @@ func debInstalled(path string) string {
 // unmangled. It takes the package lock rather than the global one, so it
 // serialises against other package work only.
 func aptExec(args ...string) *Execute {
-	return &Execute{Args: args, LockKey: viaduct.PackageLock}
+	return &Execute{Args: args, Env: pkgEnv(args[0]), LockKey: viaduct.PackageLock}
 }
 
 func (a *Apt) OperationName() string {

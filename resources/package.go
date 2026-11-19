@@ -752,7 +752,7 @@ func removeArgs(platform string, pkgs []string, purge bool) ([]string, error) {
 // runPkgCmd runs a package manager command, logging its stderr, and its stdout
 // when verbose
 func runPkgCmd(ctx context.Context, log *viaduct.Logger, args []string, verbose bool) error {
-	c := viaduct.Command{Name: args[0], Args: args[1:]}
+	c := viaduct.Command{Name: args[0], Args: args[1:], Env: pkgEnv(args[0])}
 
 	if !verbose {
 		c.Stdout = io.Discard
@@ -761,8 +761,30 @@ func runPkgCmd(ctx context.Context, log *viaduct.Logger, args []string, verbose 
 	return c.Run(ctx, log)
 }
 
+// dpkgNonInteractive answers the questions dpkg would otherwise ask on the
+// terminal about a configuration file the package changes: a file that was
+// edited locally is kept, and any other takes the package's version
+var dpkgNonInteractive = []string{"--force-confdef", "--force-confold"}
+
+// aptDpkgOptions passes dpkgNonInteractive through apt-get
+var aptDpkgOptions = []string{
+	"-o", "Dpkg::Options::=" + dpkgNonInteractive[0],
+	"-o", "Dpkg::Options::=" + dpkgNonInteractive[1],
+}
+
+// pkgEnv stops debconf asking questions while apt-get or dpkg installs a
+// package, since there is nobody to answer them
+func pkgEnv(name string) []string {
+	switch name {
+	case "apt-get", "dpkg":
+		return []string{"DEBIAN_FRONTEND=noninteractive"}
+	default:
+		return nil
+	}
+}
+
 func aptGetArgs(command string, packages []string) []string {
-	args := []string{"apt-get", command, "-y"}
+	args := append([]string{"apt-get", command, "-y"}, aptDpkgOptions...)
 
 	return append(args, packages...)
 }
