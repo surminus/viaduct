@@ -288,7 +288,8 @@ resources needs no change. Beyond that:
   with a warning, leaving a partial extraction that succeeded. Each now fails
   the resource, even when `Pick` leaves the entry out. A symlink with an
   absolute target fails unless `AllowAbsoluteLinks` is set. Entries already
-  extracted stay, and the next run extracts the archive again
+  extracted stay, and the next run extracts the archive again, even with
+  `NotIfExists`
 - A `Download` whose file already exists with a matching `Checksum` is a noop,
   rather than being downloaded again
 - Downloads and Git clones and pulls stop when the context is cancelled

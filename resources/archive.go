@@ -132,14 +132,18 @@ func (a *Archive) Run(ctx context.Context, log *viaduct.Logger) error {
 	apath := env.Path(viaduct.ExpandPath(a.Path))
 	dest := env.Path(viaduct.ExpandPath(a.Dest))
 
-	if a.NotIfExists && a.upToDate(dest) {
-		log.Noop("up-to-date", "path", apath, "dest", dest)
-		return nil
-	}
-
 	marker, err := archiveMarker(env, a.Path, a.Dest)
 	if err != nil {
 		return err
+	}
+
+	// An extraction that failed part way leaves Dest behind, so the partial
+	// marker it leaves too is what stops NotIfExists taking it as finished
+	partial := marker + ".partial"
+
+	if a.NotIfExists && a.upToDate(dest) && !viaduct.FileExists(partial) {
+		log.Noop("up-to-date", "path", apath, "dest", dest)
+		return nil
 	}
 
 	// In a dry run the archive may not exist yet, because an earlier
@@ -173,16 +177,24 @@ func (a *Archive) Run(ctx context.Context, log *viaduct.Logger) error {
 		return err
 	}
 
+	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(partial, nil, 0o644); err != nil {
+		return err
+	}
+
 	count, err := a.extract(log, apath, dest)
 	if err != nil {
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+	if err := viaduct.WriteFileAtomic(marker, []byte(stamp), 0o644); err != nil {
 		return err
 	}
 
-	if err := viaduct.WriteFileAtomic(marker, []byte(stamp), 0o644); err != nil {
+	if err := os.Remove(partial); err != nil {
 		return err
 	}
 

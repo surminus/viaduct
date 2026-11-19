@@ -347,6 +347,34 @@ func rootedTarGz(t *testing.T, env *viaducttest.Env, path string, files map[stri
 func TestArchiveRun(t *testing.T) {
 	t.Parallel()
 
+	t.Run("not if exists retries an extraction that failed", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		bad, err := os.ReadFile(newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "ok", Typeflag: tar.TypeReg, Mode: 0o644},
+			{Name: "../evil", Typeflag: tar.TypeReg, Mode: 0o644},
+		}, map[string]string{"ok": "ok", "../evil": "evil"}))
+		require.NoError(t, err)
+		env.WriteFile("/tmp/app.tar.gz", string(bad))
+
+		a := &Archive{Path: "/tmp/app.tar.gz", Dest: "/opt/app", NotIfExists: true}
+
+		_, err = env.Apply(env.Context(), a)
+		require.Error(t, err)
+
+		rootedTarGz(t, env, "/tmp/app.tar.gz", map[string]string{"ok": "ok", "needed": "needed"})
+
+		log, err := env.Apply(env.Context(), a)
+		require.NoError(t, err)
+		assert.True(t, log.Changed())
+		assert.Equal(t, "needed", env.ReadFile("/opt/app/needed"))
+
+		log, err = env.Apply(env.Context(), a)
+		require.NoError(t, err)
+		assert.False(t, log.Changed())
+	})
+
 	t.Run("extract under the root, then a noop", func(t *testing.T) {
 		t.Parallel()
 
