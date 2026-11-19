@@ -30,7 +30,7 @@ const (
 // clock within Threshold is left alone. Otherwise TimeSync waits up to
 // MaxWait for "chronyc waitsync" to report it synchronised, first stepping
 // it with "chronyc makestep" when chrony is not synchronised or the clock is
-// more than a second out.
+// more than a second out, unless NoStep is set.
 //
 // The resource's timeout is MaxWait plus a minute, regardless of the
 // manifest's own timeout.
@@ -42,6 +42,11 @@ type TimeSync struct {
 	// Threshold is the largest offset, in seconds, that counts as
 	// synchronised. The default is 0.1.
 	Threshold float64
+
+	// NoStep never steps the clock, leaving chrony to slew it, so the time
+	// never jumps. MaxWait has to cover the slew. The default is to step the
+	// clock when chrony is not synchronised or it is more than a second out.
+	NoStep bool
 }
 
 func (t *TimeSync) Description() string {
@@ -104,7 +109,7 @@ func (t *TimeSync) Run(ctx context.Context, log *viaduct.Logger) error {
 	// A small offset is slewed away by chrony, which a step would only jump
 	// over. makestep fails while chrony has no source, which waitsync waits
 	// for anyway.
-	if !tracking.synchronised || math.Abs(tracking.offset) > stepThreshold {
+	if !t.NoStep && (!tracking.synchronised || math.Abs(tracking.offset) > stepThreshold) {
 		if err := runCommand(ctx, log, "chronyc", "makestep"); err != nil {
 			log.Warn("makestep-failed", "error", err.Error())
 		}

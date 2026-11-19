@@ -881,6 +881,22 @@ Leap status     : Not synchronised
 		assert.Equal(t, []string{"chronyc -n tracking", "chronyc makestep", "chronyc waitsync 30 0.1 0 10"}, env.Runner.Commands())
 	})
 
+	t.Run("NoStep waits without stepping", func(t *testing.T) {
+		for name, out := range map[string]string{"unsynchronised": unsynced, "over a second out": offsetBy(3.5)} {
+			t.Run(name, func(t *testing.T) {
+				env := viaducttest.NewEnv(t)
+				env.Runner.On("chronyc", "-n", "tracking").Stdout(out)
+				env.Runner.On("chronyc", "waitsync", "30", "0.1", "0", "10")
+
+				log, err := env.Apply(env.Context(), &TimeSync{NoStep: true})
+				require.NoError(t, err)
+
+				assert.True(t, log.Changed())
+				assert.Equal(t, []string{"chronyc -n tracking", "chronyc waitsync 30 0.1 0 10"}, env.Runner.Commands())
+			})
+		}
+	})
+
 	t.Run("a failed makestep is a warning", func(t *testing.T) {
 		env := viaducttest.NewEnv(t)
 		env.Runner.OnAny("chronyc")
