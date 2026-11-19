@@ -253,7 +253,7 @@ func TestArchive(t *testing.T) {
 		a := &Archive{Path: path, Dest: dest}
 
 		err := a.Run(testCtx, testLogger)
-		assert.EqualError(t, err, "symlink escape points outside Dest: ../../outside")
+		assert.EqualError(t, err, "extracting escape: symlink points outside Dest: ../../outside")
 
 		assert.NoFileExists(t, filepath.Join(dest, "escape"))
 		assert.NoFileExists(t, filepath.Join(base, "outside"))
@@ -270,7 +270,7 @@ func TestArchive(t *testing.T) {
 		a := &Archive{Path: path, Dest: dest}
 
 		err := a.Run(testCtx, testLogger)
-		assert.EqualError(t, err, "symlink abs points outside Dest: /etc/passwd")
+		assert.EqualError(t, err, "extracting abs: symlink points outside Dest: /etc/passwd; set AllowAbsoluteLinks to extract it")
 		assert.NoFileExists(t, filepath.Join(dest, "abs"))
 	})
 
@@ -318,7 +318,7 @@ func TestArchive(t *testing.T) {
 		a := &Archive{Path: path, Dest: t.TempDir()}
 
 		err := a.Run(testCtx, testLogger)
-		assert.EqualError(t, err, "hardlink duplicate points outside Dest: ../original")
+		assert.EqualError(t, err, "extracting duplicate: hardlink points outside Dest: ../original")
 	})
 
 	t.Run("hardlink to an entry not extracted fails", func(t *testing.T) {
@@ -330,7 +330,7 @@ func TestArchive(t *testing.T) {
 		a := &Archive{Path: path, Dest: t.TempDir(), Pick: []string{"duplicate"}}
 
 		err := a.Run(testCtx, testLogger)
-		assert.EqualError(t, err, "hardlink duplicate points to original, which was not extracted")
+		assert.EqualError(t, err, "extracting duplicate: hardlink points to original, which was not extracted")
 	})
 }
 
@@ -697,7 +697,7 @@ func TestArchiveAllowAbsoluteLinks(t *testing.T) {
 		}, nil)
 
 		a := &Archive{Path: path, Dest: t.TempDir(), AllowAbsoluteLinks: true}
-		assert.EqualError(t, a.Run(testCtx, testLogger), "symlink escape points outside Dest: ../outside")
+		assert.EqualError(t, a.Run(testCtx, testLogger), "extracting escape: symlink points outside Dest: ../outside")
 	})
 
 	t.Run("an entry written through an absolute symlink fails", func(t *testing.T) {
@@ -713,7 +713,7 @@ func TestArchiveAllowAbsoluteLinks(t *testing.T) {
 		a := &Archive{Path: path, Dest: dest, AllowAbsoluteLinks: true}
 		err := a.Run(testCtx, testLogger)
 
-		assert.EqualError(t, err, filepath.Join(dest, "certs", "pwned")+" would be written through a symlink to outside Dest")
+		assert.Error(t, err, "os.Root refuses it, with an error that varies between Go versions")
 		assert.NoFileExists(t, filepath.Join(outside, "pwned"))
 	})
 
@@ -731,7 +731,7 @@ func TestArchiveAllowAbsoluteLinks(t *testing.T) {
 		a := &Archive{Path: path, Dest: dest, AllowAbsoluteLinks: true}
 		err := a.Run(testCtx, testLogger)
 
-		assert.ErrorContains(t, err, "would be written through a symlink to outside Dest")
+		assert.Error(t, err, "os.Root refuses it, with an error that varies between Go versions")
 		assert.NoDirExists(t, filepath.Join(outside, "sub"))
 	})
 
@@ -823,5 +823,307 @@ func TestArchivePreserveOwners(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.NotEqual(t, plain, owners)
+	})
+}
+
+// newTestZipWith builds a zip from names and contents in order, so tests can
+// rely on which entry comes first
+func newTestZipWith(t *testing.T, names []string, contents map[string]string) string {
+	path := filepath.Join(t.TempDir(), "test.zip")
+
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	defer f.Close()
+
+	zw := zip.NewWriter(f)
+	defer zw.Close()
+
+	for _, name := range names {
+		w, err := zw.Create(name)
+		require.NoError(t, err)
+
+		_, err = w.Write([]byte(contents[name]))
+		require.NoError(t, err)
+	}
+
+	return path
+}
+
+// outsideVictim creates a file outside dest that no extraction may change
+func outsideVictim(t *testing.T) (dir, victim string) {
+	dir = t.TempDir()
+	victim = filepath.Join(dir, "victim")
+	require.NoError(t, os.WriteFile(victim, []byte("original"), 0o600))
+
+	return dir, victim
+}
+
+func assertUntouched(t *testing.T, victim string) {
+	t.Helper()
+
+	content, err := os.ReadFile(victim)
+	require.NoError(t, err)
+	assert.Equal(t, "original", string(content))
+
+	info, err := os.Stat(victim)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+}
+
+func TestArchiveSkipsUnknownEntries(t *testing.T) {
+	t.Parallel()
+
+	dest := t.TempDir()
+	path := newTestTarGzHeaders(t, []*tar.Header{
+		{Name: "pipe", Typeflag: tar.TypeFifo, Mode: 0o644},
+		{Name: "file", Typeflag: tar.TypeReg, Mode: 0o644},
+	}, map[string]string{"file": "content"})
+
+	var warnings []viaduct.Event
+	log := viaduct.NewLogger(viaduct.HandlerFunc(func(_ context.Context, e viaduct.Event) {
+		if e.Level == viaduct.LevelWarn {
+			warnings = append(warnings, e)
+		}
+	}), "Archive", "Extract")
+
+	require.NoError(t, (&Archive{Path: path, Dest: dest}).Run(testCtx, log))
+
+	assert.NoFileExists(t, filepath.Join(dest, "pipe"))
+	assert.FileExists(t, filepath.Join(dest, "file"))
+
+	require.Len(t, warnings, 1)
+	assert.Equal(t, "skipped-entry", warnings[0].Message)
+	name, _ := warnings[0].Field("name")
+	assert.Equal(t, "pipe", name)
+}
+
+func TestArchiveEscapes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a relative symlink beneath another symlink fails", func(t *testing.T) {
+		t.Parallel()
+
+		outside, victim := outsideVictim(t)
+		dest := t.TempDir()
+
+		// a/b looks like dest/<outside> from its name, but a is dest itself,
+		// so b would land in dest pointing at ../<outside>
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "a", Typeflag: tar.TypeSymlink, Linkname: ".", Mode: 0o777},
+			{Name: "a/b", Typeflag: tar.TypeSymlink, Linkname: "../" + filepath.Base(outside), Mode: 0o777},
+			{Name: "./h", Typeflag: tar.TypeLink, Linkname: "b/victim"},
+			{Name: "h", Typeflag: tar.TypeReg, Mode: 0o777},
+		}, map[string]string{"h": "pwned"})
+
+		err := (&Archive{Path: path, Dest: dest}).Run(testCtx, testLogger)
+		assert.EqualError(t, err, "extracting a/b: symlink is beneath another symlink, a")
+
+		assert.NoFileExists(t, filepath.Join(dest, "b"))
+		assertUntouched(t, victim)
+	})
+
+	t.Run("a hardlink through an absolute symlink fails", func(t *testing.T) {
+		t.Parallel()
+
+		outside, victim := outsideVictim(t)
+		dest := t.TempDir()
+
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "x", Typeflag: tar.TypeSymlink, Linkname: outside, Mode: 0o777},
+			{Name: "./h", Typeflag: tar.TypeLink, Linkname: "x/victim"},
+			{Name: "h", Typeflag: tar.TypeReg, Mode: 0o777},
+		}, map[string]string{"h": "pwned"})
+
+		err := (&Archive{Path: path, Dest: dest, AllowAbsoluteLinks: true}).Run(testCtx, testLogger)
+		assert.Error(t, err, "os.Root refuses it, with an error that varies between Go versions")
+
+		assertUntouched(t, victim)
+	})
+
+	t.Run("a file replaces a hardlink rather than writing to the shared inode", func(t *testing.T) {
+		t.Parallel()
+
+		dest := t.TempDir()
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "original", Typeflag: tar.TypeReg, Mode: 0o600},
+			{Name: "./link", Typeflag: tar.TypeLink, Linkname: "original"},
+			{Name: "link", Typeflag: tar.TypeReg, Mode: 0o644},
+		}, map[string]string{"original": "original", "link": "replaced"})
+
+		require.NoError(t, (&Archive{Path: path, Dest: dest}).Run(testCtx, testLogger))
+
+		content, err := os.ReadFile(filepath.Join(dest, "original"))
+		require.NoError(t, err)
+		assert.Equal(t, "original", string(content))
+
+		content, err = os.ReadFile(filepath.Join(dest, "link"))
+		require.NoError(t, err)
+		assert.Equal(t, "replaced", string(content))
+	})
+
+	t.Run("a directory entry through a symlink already in dest fails", func(t *testing.T) {
+		t.Parallel()
+
+		outside := t.TempDir()
+		dest := t.TempDir()
+		require.NoError(t, os.Symlink(outside, filepath.Join(dest, "link")))
+
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "link/sub", Typeflag: tar.TypeDir, Mode: 0o755},
+		}, nil)
+
+		err := (&Archive{Path: path, Dest: dest}).Run(testCtx, testLogger)
+		assert.Error(t, err, "os.Root refuses it, with an error that varies between Go versions")
+		assert.NoDirExists(t, filepath.Join(outside, "sub"))
+	})
+
+	t.Run("a zip entry through a symlink already in dest fails", func(t *testing.T) {
+		t.Parallel()
+
+		outside := t.TempDir()
+		dest := t.TempDir()
+		require.NoError(t, os.Symlink(outside, filepath.Join(dest, "link")))
+
+		path := newTestZipWith(t, []string{"link/pwned"}, map[string]string{"link/pwned": "owned"})
+
+		err := (&Archive{Path: path, Dest: dest}).Run(testCtx, testLogger)
+		assert.Error(t, err, "os.Root refuses it, with an error that varies between Go versions")
+		assert.NoFileExists(t, filepath.Join(outside, "pwned"))
+	})
+
+	t.Run("a zip file replaces a symlink rather than writing through it", func(t *testing.T) {
+		t.Parallel()
+
+		_, victim := outsideVictim(t)
+		dest := t.TempDir()
+		require.NoError(t, os.Symlink(victim, filepath.Join(dest, "file")))
+
+		path := newTestZipWith(t, []string{"file"}, map[string]string{"file": "replaced"})
+
+		require.NoError(t, (&Archive{Path: path, Dest: dest}).Run(testCtx, testLogger))
+		assertUntouched(t, victim)
+
+		info, err := os.Lstat(filepath.Join(dest, "file"))
+		require.NoError(t, err)
+		assert.True(t, info.Mode().IsRegular())
+	})
+
+	t.Run("a zip directory entry is created", func(t *testing.T) {
+		t.Parallel()
+
+		dest := t.TempDir()
+		path := newTestZipWith(t, []string{"dir/", "dir/file"}, map[string]string{"dir/file": "content"})
+
+		require.NoError(t, (&Archive{Path: path, Dest: dest}).Run(testCtx, testLogger))
+		assert.DirExists(t, filepath.Join(dest, "dir"))
+		assert.FileExists(t, filepath.Join(dest, "dir", "file"))
+	})
+
+	t.Run("a relative symlink that climbs after descending fails", func(t *testing.T) {
+		t.Parallel()
+
+		// b is checked before a exists, and a then makes "a/.." leave dest
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "b", Typeflag: tar.TypeSymlink, Linkname: "a/../outside", Mode: 0o777},
+			{Name: "a", Typeflag: tar.TypeSymlink, Linkname: ".", Mode: 0o777},
+		}, nil)
+		dest := t.TempDir()
+
+		err := (&Archive{Path: path, Dest: dest}).Run(testCtx, testLogger)
+		assert.EqualError(t, err, "extracting b: symlink points outside Dest: a/../outside")
+	})
+
+	t.Run("a relative symlink may climb to a directory above it", func(t *testing.T) {
+		t.Parallel()
+
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "lib/real", Typeflag: tar.TypeReg, Mode: 0o644},
+			{Name: "bin/sub/tool", Typeflag: tar.TypeSymlink, Linkname: "../../lib/real", Mode: 0o777},
+		}, map[string]string{"lib/real": "content"})
+		dest := t.TempDir()
+
+		require.NoError(t, (&Archive{Path: path, Dest: dest}).Run(testCtx, testLogger))
+
+		content, err := os.ReadFile(filepath.Join(dest, "bin", "sub", "tool"))
+		require.NoError(t, err)
+		assert.Equal(t, "content", string(content))
+	})
+
+	t.Run("a hardlink to a symlink is checked where it lands", func(t *testing.T) {
+		t.Parallel()
+
+		// d/l stays in dest, but the same link at the top would not
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "d", Typeflag: tar.TypeDir, Mode: 0o755},
+			{Name: "d/l", Typeflag: tar.TypeSymlink, Linkname: "../x", Mode: 0o777},
+			{Name: "h", Typeflag: tar.TypeLink, Linkname: "d/l"},
+		}, nil)
+		dest := t.TempDir()
+
+		err := (&Archive{Path: path, Dest: dest}).Run(testCtx, testLogger)
+		assert.EqualError(t, err, "extracting h: symlink points outside Dest: ../x")
+		assert.NoFileExists(t, filepath.Join(dest, "h"))
+	})
+
+	t.Run("a symlink replaces a directory from an earlier version", func(t *testing.T) {
+		t.Parallel()
+
+		dest := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dest, "lib"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dest, "lib", "old"), nil, 0o644))
+
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "lib64", Typeflag: tar.TypeDir, Mode: 0o755},
+			{Name: "lib", Typeflag: tar.TypeSymlink, Linkname: "lib64", Mode: 0o777},
+		}, nil)
+
+		require.NoError(t, (&Archive{Path: path, Dest: dest}).Run(testCtx, testLogger))
+
+		link, err := os.Readlink(filepath.Join(dest, "lib"))
+		require.NoError(t, err)
+		assert.Equal(t, "lib64", link)
+	})
+
+	t.Run("a file does not replace a directory", func(t *testing.T) {
+		t.Parallel()
+
+		dest := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dest, "lib"), 0o755))
+
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "lib", Typeflag: tar.TypeReg, Mode: 0o644},
+		}, nil)
+
+		err := (&Archive{Path: path, Dest: dest}).Run(testCtx, testLogger)
+		assert.EqualError(t, err, "extracting lib: a directory is in the way")
+	})
+
+	t.Run("names", func(t *testing.T) {
+		t.Parallel()
+
+		for name, want := range map[string]bool{
+			"..":        true,
+			"../x":      true,
+			"a/../../x": true,
+			"/../x":     true,
+			"//../x":    true,
+			"a/..":      false,
+			"/etc/x":    false,
+			"./x":       false,
+		} {
+			assert.Equal(t, want, escapes(name), name)
+		}
+	})
+
+	t.Run("leading slashes do not change what Strip removes", func(t *testing.T) {
+		t.Parallel()
+
+		a := &Archive{Strip: 1}
+
+		for _, name := range []string{"top/file", "/top/file", "//top/file"} {
+			rel, ok := a.target(name)
+			assert.True(t, ok, name)
+			assert.Equal(t, "file", rel, name)
+		}
 	})
 }

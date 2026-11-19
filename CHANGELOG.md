@@ -282,12 +282,13 @@ resources needs no change. Beyond that:
   `PreserveOwners` under `/var/lib/viaduct/archive`, or
   `~/.local/state/viaduct/archive` when not running as root, and is a noop
   while the marker matches and `Dest` and the picked entries exist. A changed archive or changed options extract again
-- **`Archive` fails on an entry it will not extract.** An entry or link that
-  points outside `Dest`, or a hardlink to an entry that was not extracted, used
-  to be skipped with a warning, leaving a partial extraction that succeeded.
-  It now fails the resource. An entry is never written through a symlink to
-  outside `Dest`, and a file in the archive replaces a symlink at its path
-  rather than being written to where it points
+- **`Archive` fails on an entry it will not extract.** An entry whose name
+  climbs out of `Dest` used to be skipped silently, and a symlink pointing
+  outside `Dest` or a hardlink to an entry that was not extracted was skipped
+  with a warning, leaving a partial extraction that succeeded. Each now fails
+  the resource, even when `Pick` leaves the entry out. A symlink with an
+  absolute target fails unless `AllowAbsoluteLinks` is set. Entries already
+  extracted stay, and the next run extracts the archive again
 - A `Download` whose file already exists with a matching `Checksum` is a noop,
   rather than being downloaded again
 - Downloads and Git clones and pulls stop when the context is cancelled
@@ -378,6 +379,12 @@ resources needs no change. Beyond that:
   new file, and the next run found it up to date and skipped the update
 - `Apt` fetches an https `SigningKeyURL` with curl restricted to https, so a
   redirect cannot fetch the key over http
+- **`Archive` cannot write outside `Dest`.** A crafted archive could combine
+  symlinks and hardlinks to overwrite, chmod and chown any file the run could
+  write to. Every entry is now written through an `os.Root` opened on `Dest`,
+  which refuses any path that resolves outside it. A file in the archive
+  replaces what is at its path, rather than writing into it, so a symlink or
+  hardlink there is never followed
 
 ## v0.8.0
 

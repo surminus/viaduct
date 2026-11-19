@@ -319,8 +319,18 @@ func (a *Archive) extract(log *viaduct.Logger, apath, dest string) (int, error) 
 		return 0, err
 	}
 
+	// Every entry is written through root, which refuses any path that
+	// resolves outside dest, by ".." or by a symlink, at the moment it is
+	// used. Checking paths first and writing afterwards would leave a gap in
+	// which a symlink could be swapped in.
+	root, err := os.OpenRoot(dest)
+	if err != nil {
+		return 0, err
+	}
+	defer root.Close()
+
 	if format == "zip" {
-		return a.extractZip(apath, dest)
+		return a.extractZip(root, apath)
 	}
 
 	file, err := os.Open(apath)
@@ -342,10 +352,10 @@ func (a *Archive) extract(log *viaduct.Logger, apath, dest string) (int, error) 
 		reader = bzip2.NewReader(file)
 	}
 
-	return a.extractTar(log, reader, dest)
+	return a.extractTar(log, root, reader)
 }
 
-func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string) (int, error) {
+func (a *Archive) extractTar(log *viaduct.Logger, root *os.Root, reader io.Reader) (int, error) {
 	tr := tar.NewReader(reader)
 
 	var count int
@@ -362,171 +372,175 @@ func (a *Archive) extractTar(log *viaduct.Logger, reader io.Reader, dest string)
 			return count, fmt.Errorf("archive entry %s is outside Dest", hdr.Name)
 		}
 
-		target, ok := a.target(dest, hdr.Name)
+		rel, ok := a.target(hdr.Name)
 		if !ok {
 			continue
 		}
 
-		if err := throughLink(dest, target); err != nil {
-			return count, err
+		if err := a.extractEntry(log, root, tr, hdr, rel); err != nil {
+			return count, fmt.Errorf("extracting %s: %w", hdr.Name, err)
 		}
 
 		switch hdr.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, hdr.FileInfo().Mode().Perm()); err != nil {
-				return count, err
-			}
-			if err := a.chown(target, hdr); err != nil {
-				return count, err
-			}
-		case tar.TypeReg:
-			// Replace a symlink at the path rather than writing through it
-			if err := removeSymlink(target); err != nil {
-				return count, err
-			}
-			if err := writeFromReader(target, tr, hdr.FileInfo().Mode().Perm()); err != nil {
-				return count, err
-			}
-			if err := a.chown(target, hdr); err != nil {
-				return count, err
-			}
+		case tar.TypeReg, tar.TypeSymlink, tar.TypeLink:
 			count++
-		case tar.TypeSymlink:
-			// Reject symlinks whose target escapes dest. Otherwise a
-			// later entry could be written through the symlink to a
-			// path outside the destination (a tar-slip). Skipping it
-			// instead would leave a partial extraction that succeeds.
-			absolute := a.AllowAbsoluteLinks && filepath.IsAbs(hdr.Linkname)
-			if !absolute && !symlinkWithinDest(dest, target, hdr.Linkname) {
-				return count, fmt.Errorf("symlink %s points outside Dest: %s", hdr.Name, hdr.Linkname)
-			}
-			if err := os.RemoveAll(target); err != nil {
-				return count, err
-			}
-			if err := os.Symlink(hdr.Linkname, target); err != nil {
-				return count, err
-			}
-			if err := a.chown(target, hdr); err != nil {
-				return count, err
-			}
-			count++
-		case tar.TypeLink:
-			// Hardlinks point at another entry in the archive, which
-			// must already have been extracted to be linkable.
-			if escapes(hdr.Linkname) {
-				return count, fmt.Errorf("hardlink %s points outside Dest: %s", hdr.Name, hdr.Linkname)
-			}
-			source, ok := a.target(dest, hdr.Linkname)
-			if !ok || !viaduct.FileExists(source) {
-				return count, fmt.Errorf("hardlink %s points to %s, which was not extracted", hdr.Name, hdr.Linkname)
-			}
-			if err := os.RemoveAll(target); err != nil {
-				return count, err
-			}
-			if err := os.Link(source, target); err != nil {
-				return count, err
-			}
-			count++
-		case tar.TypeXGlobalHeader:
-			// pax global header, carries no file content
-		default:
-			log.Warn("skipped-entry", "name", hdr.Name, "type", string(rune(hdr.Typeflag)))
 		}
 	}
 
 	return count, nil
 }
 
-// chown gives an extracted entry the owner recorded in the archive, when
-// PreserveOwners is set. A symlink is changed itself, not what it points to.
-// A hardlink shares its owner with the entry it links to, so it is not
-// passed here.
-func (a *Archive) chown(target string, hdr *tar.Header) error {
+// extractEntry writes one tar entry at rel within root
+func (a *Archive) extractEntry(log *viaduct.Logger, root *os.Root, tr *tar.Reader, hdr *tar.Header, rel string) error {
+	mode := hdr.FileInfo().Mode().Perm()
+
+	switch hdr.Typeflag {
+	case tar.TypeDir:
+		if err := root.MkdirAll(rel, mode); err != nil {
+			return err
+		}
+
+		return a.chown(root, rel, hdr)
+	case tar.TypeReg:
+		return writeEntry(root, rel, tr, mode, func(f *os.File) error {
+			if !a.PreserveOwners {
+				return nil
+			}
+
+			return f.Chown(hdr.Uid, hdr.Gid)
+		})
+	case tar.TypeSymlink:
+		if err := a.linkAllowed(root, rel, hdr.Linkname); err != nil {
+			return err
+		}
+		if err := replace(root, rel, true); err != nil {
+			return err
+		}
+		if err := root.Symlink(hdr.Linkname, rel); err != nil {
+			return err
+		}
+
+		return a.chown(root, rel, hdr)
+	case tar.TypeLink:
+		// Hardlinks point at another entry in the archive, which must
+		// already have been extracted to be linkable
+		if escapes(hdr.Linkname) {
+			return fmt.Errorf("hardlink points outside Dest: %s", hdr.Linkname)
+		}
+		source, ok := a.target(hdr.Linkname)
+		if !ok {
+			return fmt.Errorf("hardlink points to %s, which was not extracted", hdr.Linkname)
+		}
+		info, err := root.Lstat(source)
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("hardlink points to %s, which was not extracted", hdr.Linkname)
+		}
+		if err != nil {
+			return err
+		}
+		// A hardlink to a symlink is the same link in another directory, so
+		// its target has to be allowed from there too
+		if info.Mode()&fs.ModeSymlink != 0 {
+			linkname, err := root.Readlink(source)
+			if err != nil {
+				return err
+			}
+			if err := a.linkAllowed(root, rel, linkname); err != nil {
+				return err
+			}
+		}
+		if err := replace(root, rel, true); err != nil {
+			return err
+		}
+
+		return root.Link(source, rel)
+	case tar.TypeXGlobalHeader:
+		// pax global header, carries no file content
+	default:
+		log.Warn("skipped-entry", "name", hdr.Name, "type", string(rune(hdr.Typeflag)))
+	}
+
+	return nil
+}
+
+// chown gives an extracted directory or symlink the owner recorded in the
+// archive, when PreserveOwners is set. A symlink is changed itself, not what
+// it points to.
+func (a *Archive) chown(root *os.Root, rel string, hdr *tar.Header) error {
 	if !a.PreserveOwners {
 		return nil
 	}
 
-	return os.Lchown(target, hdr.Uid, hdr.Gid)
+	return root.Lchown(rel, hdr.Uid, hdr.Gid)
 }
 
-// escapes reports whether an archive entry name climbs out of the directory
-// it is extracted into. A leading slash does not count, because it is
-// stripped before extracting.
-func escapes(name string) bool {
-	name = path.Clean(strings.TrimPrefix(name, "/"))
-
-	return name == ".." || strings.HasPrefix(name, "../")
-}
-
-// symlinkWithinDest reports whether a symlink at linkPath pointing to
-// linkname would resolve to a location inside dest. Absolute targets and
-// targets that climb above dest are rejected.
-func symlinkWithinDest(dest, linkPath, linkname string) bool {
-	// Absolute targets point outside the extraction entirely, so reject
-	// them rather than reasoning about where they land.
+// linkAllowed returns an error for a symlink that points outside Dest,
+// unless it is absolute and AllowAbsoluteLinks is set. Such a link cannot
+// make a write escape, since root refuses to follow it, but it would lead
+// anything else reading Dest outside it.
+func (a *Archive) linkAllowed(root *os.Root, rel, linkname string) error {
 	if filepath.IsAbs(linkname) {
-		return false
+		if a.AllowAbsoluteLinks {
+			return nil
+		}
+
+		return fmt.Errorf("symlink points outside Dest: %s; set AllowAbsoluteLinks to extract it", linkname)
 	}
 
-	return within(dest, filepath.Clean(filepath.Join(filepath.Dir(linkPath), linkname)))
-}
-
-// within reports whether path is dest or somewhere beneath it
-func within(dest, path string) bool {
-	rel, err := filepath.Rel(dest, path)
-	if err != nil {
-		return false
-	}
-
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
-// throughLink returns an error if writing target would go through a symlink
-// that leads outside dest. Checking each link's own target is not enough,
-// since a link within dest can point at another that leaves it, so the
-// nearest existing parent of target is resolved in full instead.
-func throughLink(dest, target string) error {
-	root, err := filepath.EvalSymlinks(dest)
-	if err != nil {
-		return err
-	}
-
-	for dir := filepath.Dir(target); ; dir = filepath.Dir(dir) {
-		resolved, err := filepath.EvalSymlinks(dir)
-		if errors.Is(err, fs.ErrNotExist) && dir != filepath.Dir(dir) {
+	// A relative target is checked against where the link sits, which is
+	// only its path in the archive when nothing above it is a symlink
+	dir := filepath.Dir(rel)
+	for d := dir; d != "."; d = filepath.Dir(d) {
+		info, err := root.Lstat(d)
+		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
 		if err != nil {
 			return err
 		}
 
-		if !within(root, resolved) {
-			return fmt.Errorf("%s would be written through a symlink to outside Dest", target)
+		if info.Mode()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("symlink is beneath another symlink, %s", d)
 		}
-
-		return nil
 	}
+
+	// The target may climb only to a directory above the link, with every
+	// ".." ahead of any other component. Cleaning "a/.." as text would be
+	// wrong when a is a symlink, since the kernel follows a first, and a may
+	// be extracted after this link. Held for every link, this means each one
+	// resolves to a path that only descends from a directory in Dest.
+	depth := 0
+	if dir != "." {
+		depth = len(strings.Split(dir, string(filepath.Separator)))
+	}
+
+	climbing := true
+	for _, part := range strings.Split(linkname, "/") {
+		switch part {
+		case "", ".":
+		case "..":
+			if !climbing || depth == 0 {
+				return fmt.Errorf("symlink points outside Dest: %s", linkname)
+			}
+			depth--
+		default:
+			climbing = false
+		}
+	}
+
+	return nil
 }
 
-// removeSymlink removes path if it is a symlink, so a file extracted there
-// replaces the link rather than being written to wherever it points
-func removeSymlink(path string) error {
-	info, err := os.Lstat(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
+// escapes reports whether an archive entry name climbs out of the directory
+// it is extracted into. Leading slashes do not count, because they are
+// stripped before extracting.
+func escapes(name string) bool {
+	name = path.Clean(strings.TrimLeft(name, "/"))
 
-	if info.Mode()&fs.ModeSymlink == 0 {
-		return nil
-	}
-
-	return os.Remove(path)
+	return name == ".." || strings.HasPrefix(name, "../")
 }
 
-func (a *Archive) extractZip(apath, dest string) (int, error) {
+func (a *Archive) extractZip(root *os.Root, apath string) (int, error) {
 	zr, err := zip.OpenReader(apath)
 	if err != nil {
 		return 0, err
@@ -539,24 +553,22 @@ func (a *Archive) extractZip(apath, dest string) (int, error) {
 			return count, fmt.Errorf("archive entry %s is outside Dest", f.Name)
 		}
 
-		target, ok := a.target(dest, f.Name)
+		rel, ok := a.target(f.Name)
 		if !ok {
 			continue
 		}
 
-		if err := throughLink(dest, target); err != nil {
-			return count, err
-		}
-
 		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(target, f.Mode().Perm()); err != nil {
-				return count, err
+			// A zip made outside Unix records a directory as read and write
+			// only, which would leave it impossible to enter, so it can
+			// search wherever it can be read
+			mode := f.Mode().Perm()
+			mode |= (mode & 0o444) >> 2
+
+			if err := root.MkdirAll(rel, mode); err != nil {
+				return count, fmt.Errorf("extracting %s: %w", f.Name, err)
 			}
 			continue
-		}
-
-		if err := removeSymlink(target); err != nil {
-			return count, err
 		}
 
 		rc, err := f.Open()
@@ -564,10 +576,10 @@ func (a *Archive) extractZip(apath, dest string) (int, error) {
 			return count, err
 		}
 
-		err = writeFromReader(target, rc, f.Mode().Perm())
+		err = writeEntry(root, rel, rc, f.Mode().Perm(), nil)
 		rc.Close()
 		if err != nil {
-			return count, err
+			return count, fmt.Errorf("extracting %s: %w", f.Name, err)
 		}
 
 		count++
@@ -576,14 +588,10 @@ func (a *Archive) extractZip(apath, dest string) (int, error) {
 	return count, nil
 }
 
-// target maps an archive entry name to a destination path, applying Strip
-// and Pick, and guarding against path traversal
-func (a *Archive) target(dest, name string) (string, bool) {
-	if escapes(name) {
-		return "", false
-	}
-
-	name = path.Clean(strings.TrimPrefix(name, "/"))
+// target maps an archive entry name to a path relative to Dest, applying
+// Strip, Pick and Rename. Callers reject names that escape first.
+func (a *Archive) target(name string) (string, bool) {
+	name = path.Clean(strings.TrimLeft(name, "/"))
 
 	if name == "." {
 		return "", false
@@ -600,29 +608,66 @@ func (a *Archive) target(dest, name string) (string, bool) {
 		return "", false
 	}
 
-	return filepath.Join(dest, a.renamed(rel)), true
+	return filepath.FromSlash(a.renamed(rel)), true
 }
 
-func writeFromReader(target string, reader io.Reader, mode os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+// replace creates the directory rel goes in and removes whatever is at rel,
+// so the entry extracted there is created afresh. Writing into an existing
+// file instead would follow a symlink, or change every name hardlinked to it.
+// A directory is removed with everything in it only when overDir is set, for
+// a link that takes its place, as when a newer version of an archive turns a
+// directory into a symlink.
+func replace(root *os.Root, rel string, overDir bool) error {
+	if err := root.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
 		return err
 	}
 
-	file, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	info, err := root.Lstat(rel)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	if !info.IsDir() {
+		return root.Remove(rel)
+	}
+
+	if !overDir {
+		return fmt.Errorf("a directory is in the way")
+	}
+
+	return root.RemoveAll(rel)
+}
+
+// writeEntry creates a file at rel with the content from reader, replacing
+// whatever was there. The file is created exclusively, so nothing put in its
+// place after replace removed the old one is written to. setup runs on the
+// open file before its mode is set, and may be nil.
+func writeEntry(root *os.Root, rel string, reader io.Reader, mode os.FileMode, setup func(*os.File) error) error {
+	if err := replace(root, rel, false); err != nil {
+		return err
+	}
+
+	file, err := root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 	if err != nil {
 		return err
 	}
 
 	// nolint:gosec
-	_, cerr := io.Copy(file, reader)
-	if err := file.Close(); err != nil {
-		return err
+	_, err = io.Copy(file, reader)
+	if err == nil && setup != nil {
+		err = setup(file)
 	}
-	if cerr != nil {
-		return cerr
+	if err == nil {
+		// The mode given to OpenFile is reduced by the umask
+		err = file.Chmod(mode)
 	}
 
-	// OpenFile only applies the mode on creation, so enforce it for
-	// existing files
-	return os.Chmod(target, mode)
+	if cerr := file.Close(); err == nil {
+		err = cerr
+	}
+
+	return err
 }
