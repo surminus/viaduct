@@ -111,7 +111,7 @@ func TestFilesDryRun(t *testing.T) {
 		env.WriteFile("/srv/app.tmpl", "name={{ .name }}\n")
 		env.WriteFile("/etc/app.conf", "name=old\n")
 
-		tmpl := &Template{Source: "/srv/app.tmpl", Dest: "/etc/app.conf", Variables: map[string]string{"name": "new"}}
+		tmpl := &Template{Source: "/srv/app.tmpl", Path: "/etc/app.conf", Variables: map[string]string{"name": "new"}}
 
 		log, err := env.Apply(env.DryRunContext(), tmpl)
 		require.NoError(t, err)
@@ -119,7 +119,7 @@ func TestFilesDryRun(t *testing.T) {
 		assert.True(t, log.Changed())
 		assert.Equal(t, "name=old\n", env.ReadFile("/etc/app.conf"))
 
-		log, err = env.Apply(env.DryRunContext(), &Template{Source: "/srv/app.tmpl", Dest: "/etc/new.conf", Variables: map[string]string{"name": "new"}})
+		log, err = env.Apply(env.DryRunContext(), &Template{Source: "/srv/app.tmpl", Path: "/etc/new.conf", Variables: map[string]string{"name": "new"}})
 		require.NoError(t, err)
 
 		assert.True(t, log.Changed())

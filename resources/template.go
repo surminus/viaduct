@@ -18,14 +18,14 @@ type Template struct {
 	// Source is the path to the template file
 	Source string
 
-	// Dest is where to write the rendered file
-	Dest string
+	// Path is where to write the rendered file
+	Path string
 
 	// Variables are made available to the template. Referencing a
 	// variable that does not exist in this map is an error.
 	Variables map[string]string
 
-	// CreateDirIfMissing creates the parent directory of Dest if it does not
+	// CreateDirIfMissing creates the parent directory of Path if it does not
 	// already exist. The parent is created with 0755 and default ownership.
 	CreateDirIfMissing bool
 
@@ -34,7 +34,7 @@ type Template struct {
 }
 
 func (t *Template) Description() string {
-	return fmt.Sprintf("%s -> %s", t.Source, t.Dest)
+	return fmt.Sprintf("%s -> %s", t.Source, t.Path)
 }
 
 func (t *Template) Params() *viaduct.ResourceParams {
@@ -49,8 +49,8 @@ func (t *Template) PreflightChecks(ctx context.Context, log *viaduct.Logger) err
 		return fmt.Errorf("required parameter: Source")
 	}
 
-	if t.Dest == "" {
-		return fmt.Errorf("required parameter: Dest")
+	if t.Path == "" {
+		return fmt.Errorf("required parameter: Path")
 	}
 
 	if t.Mode == 0 {
@@ -71,7 +71,7 @@ func (t *Template) Run(ctx context.Context, log *viaduct.Logger) error {
 	if !viaduct.FileExists(source) {
 		// In a dry run, an earlier resource may be what creates it
 		if env.DryRun {
-			log.Info("created", "path", env.Path(viaduct.ExpandPath(t.Dest)))
+			log.Info("created", "path", env.Path(viaduct.ExpandPath(t.Path)))
 			return nil
 		}
 
@@ -86,7 +86,7 @@ func (t *Template) Run(ctx context.Context, log *viaduct.Logger) error {
 	// Writing goes through the same helper as the File resource, so a
 	// rendered template gets the same content comparison and permission
 	// handling
-	return writeManagedFile(ctx, log, t.Dest, content, &t.Permissions, t.CreateDirIfMissing)
+	return writeManagedFile(ctx, log, t.Path, content, &t.Permissions, t.CreateDirIfMissing)
 }
 
 func (t *Template) render(source string) (string, error) {

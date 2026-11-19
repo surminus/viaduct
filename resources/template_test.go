@@ -10,7 +10,7 @@ import (
 
 func TestTemplatePreflightChecks(t *testing.T) {
 	t.Run("requires source", func(t *testing.T) {
-		tmpl := &Template{Dest: "/tmp/out"}
+		tmpl := &Template{Path: "/tmp/out"}
 
 		err := tmpl.PreflightChecks(testCtx, testLogger)
 		assert.EqualError(t, err, "required parameter: Source")
@@ -20,7 +20,7 @@ func TestTemplatePreflightChecks(t *testing.T) {
 		tmpl := &Template{Source: "/tmp/in"}
 
 		err := tmpl.PreflightChecks(testCtx, testLogger)
-		assert.EqualError(t, err, "required parameter: Dest")
+		assert.EqualError(t, err, "required parameter: Path")
 	})
 }
 
@@ -36,7 +36,7 @@ func TestTemplate(t *testing.T) {
 
 		tmpl := &Template{
 			Source: source,
-			Dest:   filepath.Join(dir, "out"),
+			Path:   filepath.Join(dir, "out"),
 		}
 
 		if err := tmpl.PreflightChecks(testCtx, testLogger); err != nil {
@@ -53,7 +53,7 @@ func TestTemplate(t *testing.T) {
 		err := tmpl.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
-		content, err := os.ReadFile(tmpl.Dest)
+		content, err := os.ReadFile(tmpl.Path)
 		assert.NoError(t, err)
 		assert.Equal(t, "url: https://example.com\n", string(content))
 	})
@@ -68,14 +68,14 @@ func TestTemplate(t *testing.T) {
 
 	t.Run("creates missing parent dir", func(t *testing.T) {
 		tmpl := newTestTemplate(t, "hello\n")
-		// Point Dest at a subdirectory that does not exist yet.
-		tmpl.Dest = filepath.Join(filepath.Dir(tmpl.Dest), "nested", "out")
+		// Point Path at a subdirectory that does not exist yet.
+		tmpl.Path = filepath.Join(filepath.Dir(tmpl.Path), "nested", "out")
 		tmpl.CreateDirIfMissing = true
 
 		err := tmpl.Run(testCtx, testLogger)
 		assert.NoError(t, err)
 
-		content, err := os.ReadFile(tmpl.Dest)
+		content, err := os.ReadFile(tmpl.Path)
 		assert.NoError(t, err)
 		assert.Equal(t, "hello\n", string(content))
 	})

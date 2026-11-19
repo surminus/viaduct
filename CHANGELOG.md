@@ -35,6 +35,7 @@ resources mostly compiles as it is. Beyond that:
 - A program with flags of its own uses `Apply` rather than `Run`
 - `resources.NewTemplate` and `resources.EmbeddedFile` return an error. Wrap
   them in `viaduct.Must` to use them inline
+- `Dest` on `Template` becomes `Path`, as on `File`
 - `Resource.Status` and `Resource.Error` are gone. Read each resource's
   outcome from the `Report` that `Apply` returns, or from `Options.OnResult`
 - Some resources behave differently with the same fields. `Package` no longer

@@ -103,7 +103,7 @@ func main() {
 	tmpl := m.Add(resources.CreateFile("/opt/viaduct-test/greeting.tmpl", "Hello, {{.name}}!\n"), dir)
 	m.Add(&resources.Template{
 		Source:    "/opt/viaduct-test/greeting.tmpl",
-		Dest:      "/opt/viaduct-test/greeting",
+		Path:      "/opt/viaduct-test/greeting",
 		Variables: map[string]string{"name": "viaduct"},
 	}, tmpl)
 
