@@ -187,7 +187,7 @@ resources needs no change. Beyond that:
 - `AllowAbsoluteLinks` on `Archive`, which extracts symlinks with an absolute
   target
 - `PreserveOwners` on `Archive`, which gives each entry the owner and group
-  the tar archive records
+  the tar archive records. A directory that already exists keeps its owner
 - `Response.Then` in `viaducttest`, which sets the answer a command gives
   once the previous answer has been used
 - `Replace` on `File`, which replaces text in `Content` or `Source` before the

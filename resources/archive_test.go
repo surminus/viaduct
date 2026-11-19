@@ -811,6 +811,48 @@ func TestArchivePreserveOwners(t *testing.T) {
 		assert.ErrorIs(t, a.Run(testCtx, testLogger), os.ErrPermission)
 	})
 
+	t.Run("a directory that already exists keeps its owner", func(t *testing.T) {
+		t.Parallel()
+
+		if os.Getuid() == 0 {
+			t.Skip("root can set any owner")
+		}
+
+		// Giving the directory uid 0 would fail unprivileged, so success
+		// shows it was left alone, while the new one is changed and fails
+		dest := t.TempDir()
+		require.NoError(t, os.Mkdir(filepath.Join(dest, "bin"), 0o755))
+
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "bin", Typeflag: tar.TypeDir, Mode: 0o755, Uid: 0, Gid: 0},
+		}, nil)
+		require.NoError(t, (&Archive{Path: path, Dest: dest, PreserveOwners: true}).Run(testCtx, testLogger))
+
+		path = newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "new", Typeflag: tar.TypeDir, Mode: 0o755, Uid: 0, Gid: 0},
+		}, nil)
+		assert.ErrorIs(t, (&Archive{Path: path, Dest: dest, PreserveOwners: true}).Run(testCtx, testLogger), os.ErrPermission)
+	})
+
+	t.Run("a directory created for an earlier entry still gets its owner", func(t *testing.T) {
+		t.Parallel()
+
+		if os.Getuid() == 0 {
+			t.Skip("root can set any owner")
+		}
+
+		// The file comes first, so extracting it creates dir. dir's own
+		// entry then has to chown it, which fails unprivileged for uid 0
+		uid, gid := os.Getuid(), os.Getgid()
+		path := newTestTarGzHeaders(t, []*tar.Header{
+			{Name: "dir/file", Typeflag: tar.TypeReg, Mode: 0o644, Uid: uid, Gid: gid},
+			{Name: "dir", Typeflag: tar.TypeDir, Mode: 0o755, Uid: 0, Gid: 0},
+		}, map[string]string{"dir/file": "content"})
+
+		err := (&Archive{Path: path, Dest: t.TempDir(), PreserveOwners: true}).Run(testCtx, testLogger)
+		assert.ErrorIs(t, err, os.ErrPermission)
+	})
+
 	t.Run("is part of the marker", func(t *testing.T) {
 		t.Parallel()
 

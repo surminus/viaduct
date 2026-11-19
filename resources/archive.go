@@ -59,8 +59,10 @@ type Archive struct {
 	AllowAbsoluteLinks bool
 
 	// PreserveOwners gives each extracted entry the owner and group recorded
-	// in the archive, by numeric ID. The default is to leave them owned by the
-	// user running viaduct. Requires root, and a tar archive. Optional.
+	// in the archive, by numeric ID. A directory that already exists keeps
+	// its owner, and one created only to hold an entry is owned by the user
+	// running viaduct. The default is to leave every entry owned by that
+	// user. Requires root, and a tar archive. Optional.
 	PreserveOwners bool
 
 	// NotIfExists will skip extraction if all Pick entries already exist
@@ -358,6 +360,11 @@ func (a *Archive) extract(log *viaduct.Logger, apath, dest string) (int, error) 
 func (a *Archive) extractTar(log *viaduct.Logger, root *os.Root, reader io.Reader) (int, error) {
 	tr := tar.NewReader(reader)
 
+	// Directories created only to hold an entry, before the archive's own
+	// entry for them, which tar does not have to put first
+	made := map[string]bool{}
+	seen := map[string]bool{}
+
 	var count int
 	for {
 		hdr, err := tr.Next()
@@ -377,7 +384,13 @@ func (a *Archive) extractTar(log *viaduct.Logger, root *os.Root, reader io.Reade
 			continue
 		}
 
-		if err := a.extractEntry(log, root, tr, hdr, rel); err != nil {
+		if a.PreserveOwners {
+			if err := noteMissingParents(root, rel, made, seen); err != nil {
+				return count, err
+			}
+		}
+
+		if err := a.extractEntry(log, root, tr, hdr, rel, made); err != nil {
 			return count, fmt.Errorf("extracting %s: %w", hdr.Name, err)
 		}
 
@@ -390,14 +403,44 @@ func (a *Archive) extractTar(log *viaduct.Logger, root *os.Root, reader io.Reade
 	return count, nil
 }
 
-// extractEntry writes one tar entry at rel within root
-func (a *Archive) extractEntry(log *viaduct.Logger, root *os.Root, tr *tar.Reader, hdr *tar.Header, rel string) error {
+// noteMissingParents records in made each directory above rel that does not
+// exist yet, so extracting rel creates it. seen holds the directories already
+// checked.
+func noteMissingParents(root *os.Root, rel string, made, seen map[string]bool) error {
+	for dir := filepath.Dir(rel); dir != "." && !seen[dir]; dir = filepath.Dir(dir) {
+		seen[dir] = true
+
+		_, err := root.Lstat(dir)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			made[dir] = true
+		case err != nil:
+			return err
+		}
+	}
+
+	return nil
+}
+
+// extractEntry writes one tar entry at rel within root. made holds the
+// directories that extraction created before reaching their own entry.
+func (a *Archive) extractEntry(log *viaduct.Logger, root *os.Root, tr *tar.Reader, hdr *tar.Header, rel string, made map[string]bool) error {
 	mode := hdr.FileInfo().Mode().Perm()
 
 	switch hdr.Typeflag {
 	case tar.TypeDir:
+		// A directory that is already there, such as bin when extracting
+		// into /usr/local, keeps its owner. Giving it the archive's would
+		// hand everything in it to that user.
+		_, err := root.Lstat(rel)
+		existed := err == nil && !made[rel]
+
 		if err := root.MkdirAll(rel, mode); err != nil {
 			return err
+		}
+
+		if existed {
+			return nil
 		}
 
 		return a.chown(root, rel, hdr)
