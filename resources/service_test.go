@@ -20,10 +20,10 @@ func TestServicePreflightChecks(t *testing.T) {
 	})
 
 	t.Run("invalid action", func(t *testing.T) {
-		s := &Service{Name: "docker", Action: "reload"}
+		s := &Service{Name: "docker", Action: "refresh"}
 
 		err := s.PreflightChecks(testCtx, testLogger)
-		assert.EqualError(t, err, "action must be one of start, stop or restart: reload")
+		assert.EqualError(t, err, "action must be one of start, stop, restart or reload: refresh")
 	})
 
 	t.Run("enable and disable conflict", func(t *testing.T) {
@@ -45,6 +45,7 @@ func TestServiceHelpers(t *testing.T) {
 	assert.Equal(t, &Service{Name: "docker", Action: "start"}, StartService("docker"))
 	assert.Equal(t, &Service{Name: "docker", Action: "stop"}, StopService("docker"))
 	assert.Equal(t, &Service{Name: "docker", Action: "restart"}, RestartService("docker"))
+	assert.Equal(t, &Service{Name: "docker", Action: "reload"}, ReloadService("docker"))
 	assert.Equal(t, &Service{Name: "docker", Enable: true}, EnableService("docker"))
 	assert.Equal(t, &Service{Name: "docker", Disable: true}, DisableService("docker"))
 }
@@ -223,6 +224,33 @@ func TestServiceRun(t *testing.T) {
 
 		assert.False(t, log.Changed())
 		assert.Equal(t, []string{"systemctl is-active --quiet docker"}, env.Runner.Commands())
+	})
+
+	t.Run("reload a running service", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("systemctl", "is-active", "--quiet", "nginx")
+		env.Runner.On("systemctl", "reload", "nginx")
+
+		log, err := env.Apply(env.Context(), ReloadService("nginx"))
+		require.NoError(t, err)
+
+		assert.True(t, log.Changed())
+		assert.Equal(t, []string{"systemctl is-active --quiet nginx", "systemctl reload nginx"}, env.Runner.Commands())
+	})
+
+	t.Run("reload is a noop when inactive", func(t *testing.T) {
+		t.Parallel()
+
+		env := viaducttest.NewEnv(t)
+		env.Runner.On("systemctl", "is-active", "--quiet", "nginx").Exit(3)
+
+		log, err := env.Apply(env.Context(), ReloadService("nginx"))
+		require.NoError(t, err)
+
+		assert.False(t, log.Changed())
+		assert.Equal(t, []string{"systemctl is-active --quiet nginx"}, env.Runner.Commands())
 	})
 
 	t.Run("restart always runs", func(t *testing.T) {

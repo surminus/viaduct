@@ -10,13 +10,13 @@ import (
 )
 
 // Service manages a systemd service, allowing it to be enabled or disabled
-// on boot, and started, stopped or restarted.
+// on boot, and started, stopped, restarted or reloaded.
 type Service struct {
 	// Name is the name of the service unit
 	Name string
 
-	// Action is performed against the service: one of start, stop or
-	// restart. Optional.
+	// Action is performed against the service: one of start, stop, restart
+	// or reload. A service that is not running is not reloaded. Optional.
 	Action string
 
 	// Enable enables the service on boot. Optional.
@@ -46,6 +46,11 @@ func RestartService(name string) *Service {
 	return &Service{Name: name, Action: "restart"}
 }
 
+// ReloadService is a shortcut for reloading a running service
+func ReloadService(name string) *Service {
+	return &Service{Name: name, Action: "reload"}
+}
+
 // EnableService is a shortcut for enabling a service on boot
 func EnableService(name string) *Service {
 	return &Service{Name: name, Enable: true}
@@ -73,9 +78,9 @@ func (s *Service) PreflightChecks(ctx context.Context, log *viaduct.Logger) erro
 	}
 
 	switch s.Action {
-	case "", "start", "stop", "restart":
+	case "", "start", "stop", "restart", "reload":
 	default:
-		return fmt.Errorf("action must be one of start, stop or restart: %s", s.Action)
+		return fmt.Errorf("action must be one of start, stop, restart or reload: %s", s.Action)
 	}
 
 	if s.Enable && s.Disable {
@@ -185,17 +190,20 @@ func (s *Service) runAction(ctx context.Context, log *viaduct.Logger) error {
 		"start":   "started",
 		"stop":    "stopped",
 		"restart": "restarted",
+		"reload":  "reloaded",
 	}[s.Action]
 
 	// Starting an active service or stopping an inactive one is a noop;
-	// restart always runs
+	// restart always runs. A service that is not running has nothing to
+	// reload, and reads its configuration when it starts, while systemctl
+	// fails the reload
 	switch s.Action {
 	case "start":
 		if s.isActive(ctx, log) {
 			log.Noop(msg, "service", s.Name)
 			return nil
 		}
-	case "stop":
+	case "stop", "reload":
 		if !s.isActive(ctx, log) {
 			log.Noop(msg, "service", s.Name)
 			return nil

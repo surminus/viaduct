@@ -195,6 +195,8 @@ resources needs no change. Beyond that:
 - `OnGroupResult` in `Options`, and `Groups` in the report, which give one
   result for each group once every resource in it has finished
 - `AptClean`, which removes the package files apt has downloaded
+- `reload` as an `Action` on `Service`, and `ReloadService`. A service that
+  is not running is left alone
 
 ### Changed
 
