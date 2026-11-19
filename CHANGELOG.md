@@ -194,6 +194,7 @@ resources needs no change. Beyond that:
   file is written. With `Source` set to `Path`, it edits the file in place
 - `OnGroupResult` in `Options`, and `Groups` in the report, which give one
   result for each group once every resource in it has finished
+- `AptClean`, which removes the package files apt has downloaded
 
 ### Changed
 

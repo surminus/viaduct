@@ -16,6 +16,7 @@ import (
 func TestAptExecuteHelpers(t *testing.T) {
 	assert.Equal(t, []string{"apt-get", "dist-upgrade", "-q", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold"}, DistUpgrade().Args)
 	assert.Equal(t, []string{"apt-get", "autoremove", "-q", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold"}, AptAutoremove().Args)
+	assert.Equal(t, []string{"apt-get", "clean"}, AptClean().Args)
 	assert.Equal(t, []string{"apt-mark", "hold", "docker", "containerd"}, AptHold("docker", "containerd").Args)
 	assert.Equal(t, []string{"dpkg", "--force-confdef", "--force-confold", "-i", "/tmp/test.deb"}, InstallDeb("/tmp/test.deb").Args)
 
@@ -28,7 +29,7 @@ func TestAptExecuteHelpers(t *testing.T) {
 		assert.Equal(t, []string{"DEBIAN_FRONTEND=noninteractive"}, e.Env)
 	}
 
-	for _, e := range []*Execute{DistUpgrade(), AptAutoremove(), AptHold("docker"), InstallDeb("/tmp/test.deb")} {
+	for _, e := range []*Execute{DistUpgrade(), AptAutoremove(), AptClean(), AptHold("docker"), InstallDeb("/tmp/test.deb")} {
 		assert.True(t, e.Params().GlobalLock)
 		assert.Equal(t, viaduct.PackageLock, e.Params().LockKey)
 		assert.Negative(t, e.Params().Timeout, "dpkg is not stopped part way through")
