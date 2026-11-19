@@ -36,7 +36,7 @@ type Line struct {
 	// refer to groups in Match with $1 or ${name}, and can be empty to remove
 	// the matched text. Nothing is appended, and a missing file is left
 	// alone. Requires Match.
-	Substitute bool
+	Substitute bool `json:",omitempty"`
 
 	// regex is the compiled Match expression
 	regex *regexp.Regexp

@@ -24,12 +24,12 @@ type File struct {
 	// Source is a file to copy the content from, read when the resource
 	// runs, so it can be one that an earlier resource creates. Set either
 	// Content or Source.
-	Source string
+	Source string `json:",omitempty"`
 	// Replace replaces text in Content or Source before the file is written.
 	// The replacements are applied together, in one pass, so the text one
 	// inserts is not replaced by another. When Source is Path, the result must
 	// contain nothing the replacements would change again. Optional.
-	Replace []Replacement
+	Replace []Replacement `json:",omitempty"`
 	// Delete will delete the file rather than create it if set to true.
 	Delete bool
 	// CreateDirIfMissing creates the parent directory if it does not already

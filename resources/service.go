@@ -28,7 +28,7 @@ type Service struct {
 	// DaemonReload runs "systemctl daemon-reload" first when systemd reports
 	// that the unit's files, including its drop-ins, have changed on disk
 	// since they were loaded. Optional.
-	DaemonReload bool
+	DaemonReload bool `json:",omitempty"`
 }
 
 // ServiceAction is what Service does to a running or stopped service

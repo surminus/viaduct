@@ -27,7 +27,7 @@ type Directory struct {
 	// Only what is set is applied: nothing is defaulted, so a Mode on its own
 	// leaves ownership as it is, and a User on its own leaves the mode and the
 	// group as they are.
-	PermissionsOnly bool
+	PermissionsOnly bool `json:",omitempty"`
 
 	// Permissions manages permissions for the directory
 	Permissions

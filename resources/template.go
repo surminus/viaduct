@@ -19,7 +19,7 @@ type Template struct {
 	Source string
 
 	// Path is where to write the rendered file
-	Path string
+	Path string `json:"Dest"`
 
 	// Variables are made available to the template. Referencing a
 	// variable that does not exist in this map is an error.

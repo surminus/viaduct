@@ -34,7 +34,7 @@ type Shell struct {
 	WorkingDirectory string
 
 	// Env is added to the script's environment, as "KEY=value". Optional.
-	Env []string
+	Env []string `json:",omitempty"`
 
 	// Unless is a command to run first, which if it exits cleanly means the
 	// script does not run. It runs through bash, in WorkingDirectory and with

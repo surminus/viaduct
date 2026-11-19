@@ -51,19 +51,19 @@ type Archive struct {
 	// Rename extracts the entries named by its keys, after stripping, to the
 	// paths in Dest given by its values. Pick still lists the names in the
 	// archive. Optional.
-	Rename map[string]string
+	Rename map[string]string `json:",omitempty"`
 
 	// AllowAbsoluteLinks extracts symlinks whose target is an absolute path,
 	// which otherwise fail the extraction. An entry that would be written
 	// through a symlink to outside Dest still fails. Optional.
-	AllowAbsoluteLinks bool
+	AllowAbsoluteLinks bool `json:",omitempty"`
 
 	// PreserveOwners gives each extracted entry the owner and group recorded
 	// in the archive, by numeric ID. A directory that already exists keeps
 	// its owner, and one created only to hold an entry is owned by the user
 	// running viaduct. The default is to leave every entry owned by that
 	// user. Requires root, and a tar archive. Optional.
-	PreserveOwners bool
+	PreserveOwners bool `json:",omitempty"`
 
 	// NotIfExists will skip extraction if all Pick entries already exist
 	// within Dest, or if Dest exists when Pick is not set, without reading

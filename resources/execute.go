@@ -27,10 +27,10 @@ type Execute struct {
 
 	// User runs the command as this user, with runuser, which sets HOME,
 	// USER and LOGNAME for them. Requires root. Optional.
-	User string
+	User string `json:",omitempty"`
 
 	// Env is added to the command's environment, as "KEY=value". Optional.
-	Env []string
+	Env []string `json:",omitempty"`
 
 	// Unless is another command to run first. If it exits cleanly, the
 	// resource does not run its command. It runs through bash in the

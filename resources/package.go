@@ -46,7 +46,7 @@ type Package struct {
 	// available, as well as installing missing ones. What is available is
 	// what the package lists held when they were last updated, such as by
 	// AptUpdate. Only supported on Debian derivatives.
-	Latest bool
+	Latest bool `json:",omitempty"`
 }
 
 func (p *Package) Description() string {
